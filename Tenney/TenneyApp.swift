@@ -9,9 +9,11 @@ import SwiftUI
 
 @main
 struct TenneyApp: App {
+    @StateObject private var tuner = TunerViewModel()
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environmentObject(tuner)
         }
     }
 }

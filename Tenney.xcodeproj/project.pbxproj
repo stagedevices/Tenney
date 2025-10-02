@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 77;
+	objectVersion = 90;
 	objects = {
 
 /* Begin PBXContainerItemProxy section */
@@ -29,9 +29,22 @@
 		964605422E8DA40E003B5415 /* TenneyUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TenneyUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		964605B62E8E265A003B5415 /* Exceptions for "Tenney" folder in "Tenney" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 9646052A2E8DA40D003B5415 /* Tenney */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		9646052D2E8DA40D003B5415 /* Tenney */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				964605B62E8E265A003B5415 /* Exceptions for "Tenney" folder in "Tenney" target */,
+			);
 			path = Tenney;
 			sourceTree = "<group>";
 		};
@@ -45,29 +58,38 @@
 			path = TenneyUITests;
 			sourceTree = "<group>";
 		};
+		964605612E8E0782003B5415 /* Core */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Core;
+			sourceTree = "<group>";
+		};
+		964605682E8E07B6003B5415 /* LatticeKit */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = LatticeKit;
+			sourceTree = "<group>";
+		};
+		9646056B2E8E07CB003B5415 /* Interop */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Interop;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		964605282E8DA40D003B5415 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 		964605352E8DA40E003B5415 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 		9646053F2E8DA40E003B5415 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
@@ -75,6 +97,9 @@
 		964605222E8DA40D003B5415 = {
 			isa = PBXGroup;
 			children = (
+				9646056B2E8E07CB003B5415 /* Interop */,
+				964605682E8E07B6003B5415 /* LatticeKit */,
+				964605612E8E0782003B5415 /* Core */,
 				9646052D2E8DA40D003B5415 /* Tenney */,
 				9646053B2E8DA40E003B5415 /* TenneyTests */,
 				964605452E8DA40E003B5415 /* TenneyUITests */,
@@ -105,14 +130,13 @@
 			);
 			buildRules = (
 			);
-			dependencies = (
-			);
 			fileSystemSynchronizedGroups = (
 				9646052D2E8DA40D003B5415 /* Tenney */,
+				964605612E8E0782003B5415 /* Core */,
+				964605682E8E07B6003B5415 /* LatticeKit */,
+				9646056B2E8E07CB003B5415 /* Interop */,
 			);
 			name = Tenney;
-			packageProductDependencies = (
-			);
 			productName = Tenney;
 			productReference = 9646052B2E8DA40D003B5415 /* Tenney.app */;
 			productType = "com.apple.product-type.application";
@@ -134,8 +158,6 @@
 				9646053B2E8DA40E003B5415 /* TenneyTests */,
 			);
 			name = TenneyTests;
-			packageProductDependencies = (
-			);
 			productName = TenneyTests;
 			productReference = 964605382E8DA40E003B5415 /* TenneyTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
@@ -157,8 +179,6 @@
 				964605452E8DA40E003B5415 /* TenneyUITests */,
 			);
 			name = TenneyUITests;
-			packageProductDependencies = (
-			);
 			productName = TenneyUITests;
 			productReference = 964605422E8DA40E003B5415 /* TenneyUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
@@ -195,7 +215,7 @@
 			);
 			mainGroup = 964605222E8DA40D003B5415;
 			minimizedProjectReferenceProxies = 1;
-			preferredProjectObjectVersion = 77;
+			preferredProjectObjectVersion = 90;
 			productRefGroup = 9646052C2E8DA40D003B5415 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -210,48 +230,36 @@
 /* Begin PBXResourcesBuildPhase section */
 		964605292E8DA40D003B5415 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 		964605362E8DA40E003B5415 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 		964605402E8DA40E003B5415 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		964605272E8DA40D003B5415 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 		964605342E8DA40E003B5415 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 		9646053E2E8DA40E003B5415 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
@@ -269,7 +277,7 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
-		9646054A2E8DA40E003B5415 /* Debug */ = {
+		9646054A2E8DA40E003B5415 /* Debug configuration for PBXProject "Tenney" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -322,6 +330,8 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "$(SRCROOT)/Tenney/Info.plist";
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
@@ -331,7 +341,7 @@
 			};
 			name = Debug;
 		};
-		9646054B2E8DA40E003B5415 /* Release */ = {
+		9646054B2E8DA40E003B5415 /* Release configuration for PBXProject "Tenney" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -378,6 +388,8 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "$(SRCROOT)/Tenney/Info.plist";
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
@@ -385,11 +397,12 @@
 			};
 			name = Release;
 		};
-		9646054D2E8DA40E003B5415 /* Debug */ = {
+		9646054D2E8DA40E003B5415 /* Debug configuration for PBXNativeTarget "Tenney" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = S74572Q65M;
@@ -398,6 +411,8 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Tenney - JI Lattice & Tuner";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -411,12 +426,12 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
-				MACOSX_DEPLOYMENT_TARGET = 15.6;
-				MARKETING_VERSION = 1.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.6;
+				MARKETING_VERSION = 0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.StageDevices.Tenney;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
-				SDKROOT = auto;
+				SDKROOT = iphoneos;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -429,11 +444,12 @@
 			};
 			name = Debug;
 		};
-		9646054E2E8DA40E003B5415 /* Release */ = {
+		9646054E2E8DA40E003B5415 /* Release configuration for PBXNativeTarget "Tenney" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = S74572Q65M;
@@ -442,6 +458,8 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Tenney - JI Lattice & Tuner";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -455,8 +473,8 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
-				MACOSX_DEPLOYMENT_TARGET = 15.6;
-				MARKETING_VERSION = 1.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.6;
+				MARKETING_VERSION = 0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.StageDevices.Tenney;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -473,7 +491,7 @@
 			};
 			name = Release;
 		};
-		964605502E8DA40E003B5415 /* Debug */ = {
+		964605502E8DA40E003B5415 /* Debug configuration for PBXNativeTarget "TenneyTests" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
@@ -499,7 +517,7 @@
 			};
 			name = Debug;
 		};
-		964605512E8DA40E003B5415 /* Release */ = {
+		964605512E8DA40E003B5415 /* Release configuration for PBXNativeTarget "TenneyTests" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
@@ -525,7 +543,7 @@
 			};
 			name = Release;
 		};
-		964605532E8DA40E003B5415 /* Debug */ = {
+		964605532E8DA40E003B5415 /* Debug configuration for PBXNativeTarget "TenneyUITests" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
@@ -550,7 +568,7 @@
 			};
 			name = Debug;
 		};
-		964605542E8DA40E003B5415 /* Release */ = {
+		964605542E8DA40E003B5415 /* Release configuration for PBXNativeTarget "TenneyUITests" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
@@ -581,37 +599,33 @@
 		964605262E8DA40D003B5415 /* Build configuration list for PBXProject "Tenney" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				9646054A2E8DA40E003B5415 /* Debug */,
-				9646054B2E8DA40E003B5415 /* Release */,
+				9646054A2E8DA40E003B5415 /* Debug configuration for PBXProject "Tenney" */,
+				9646054B2E8DA40E003B5415 /* Release configuration for PBXProject "Tenney" */,
 			);
-			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
 		9646054C2E8DA40E003B5415 /* Build configuration list for PBXNativeTarget "Tenney" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				9646054D2E8DA40E003B5415 /* Debug */,
-				9646054E2E8DA40E003B5415 /* Release */,
+				9646054D2E8DA40E003B5415 /* Debug configuration for PBXNativeTarget "Tenney" */,
+				9646054E2E8DA40E003B5415 /* Release configuration for PBXNativeTarget "Tenney" */,
 			);
-			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
 		9646054F2E8DA40E003B5415 /* Build configuration list for PBXNativeTarget "TenneyTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				964605502E8DA40E003B5415 /* Debug */,
-				964605512E8DA40E003B5415 /* Release */,
+				964605502E8DA40E003B5415 /* Debug configuration for PBXNativeTarget "TenneyTests" */,
+				964605512E8DA40E003B5415 /* Release configuration for PBXNativeTarget "TenneyTests" */,
 			);
-			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
 		964605522E8DA40E003B5415 /* Build configuration list for PBXNativeTarget "TenneyUITests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				964605532E8DA40E003B5415 /* Debug */,
-				964605542E8DA40E003B5415 /* Release */,
+				964605532E8DA40E003B5415 /* Debug configuration for PBXNativeTarget "TenneyUITests" */,
+				964605542E8DA40E003B5415 /* Release configuration for PBXNativeTarget "TenneyUITests" */,
 			);
-			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
