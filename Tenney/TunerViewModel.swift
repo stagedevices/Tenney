@@ -7,7 +7,7 @@
 import Foundation
 import Combine
 import AVFoundation
-
+@MainActor
 final class TunerViewModel: ObservableObject {
     // Stage text
     @Published var displayRatio: String = "—"
@@ -32,21 +32,21 @@ final class TunerViewModel: ObservableObject {
     private let tracker: PitchTracker
     private let resolver = RatioResolver()
 
-    init() {
+    init(tracker: PitchTracker = PitchTracker(strictness: .performance)) {
         // Configure detection
-        self.tracker = PitchTracker(strictness: .performance)
+        self.tracker = tracker
         resolver.rootHz = rootHz
         resolver.limit  = primeLimit
 
-        // Pitch callback
-        tracker.onHz = { [weak self] hz, t in
-            self?.handle(hz: hz, monotonic: t)
-        }
-
-        // Meter callback
-        tracker.onMetrics = { [weak self] rms in
-            DispatchQueue.main.async { self?.inputRMS = rms }
-        }
+        tracker.setUICallbacks(
+                    onHz: { [weak self] hz, t in
+                        guard let self else { return }
+                        self.handle(hz: hz, monotonic: t)
+                    },
+                    onMetrics: { [weak self] rms in
+                        self?.inputRMS = rms
+                    }
+                )
 
         // 1) Always start the analysis loop (even with no mic)
         tracker.startDetection()
@@ -62,12 +62,10 @@ final class TunerViewModel: ObservableObject {
     deinit { tracker.shutdown() }
 
     private func handle(hz: Double, monotonic: Double) {
-        let (r, cents, alts) = resolver.resolve(frequencyHz: hz, monotonicTime: monotonic)
-        DispatchQueue.main.async {
-            self.displayRatio = "\(r.n)/\(r.d)"
-            self.centsText = String(format: "%+0.1f cents", cents)
-            self.hzText = String(format: "%0.2f Hz", hz)
-            self.altRatios = alts.map { "\($0.n)/\($0.d)" }
+            let (r, cents, alts) = resolver.resolve(frequencyHz: hz, monotonicTime: monotonic)
+        displayRatio = "\(r.n)/\(r.d)"
+                centsText = String(format: "%+0.1f cents", cents)
+                hzText = String(format: "%0.2f Hz", hz)
+                altRatios = alts.map { "\($0.n)/\($0.d)" }
         }
-    }
 }

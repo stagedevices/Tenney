@@ -40,7 +40,20 @@ final class Locked<T> {
 final class PitchTracker {
     // MARK: - Public callbacks (UI stays untouched)
     var onHz: ((Double, Double)->Void)?
-    var onMetrics: ((Float)->Void)?
+        var onMetrics: ((Float)->Void)?
+    
+        /// Bind UI callbacks; forces delivery on the main actor.
+        func setUICallbacks(
+            onHz: @escaping @Sendable (Double, Double) -> Void,
+            onMetrics: @escaping @Sendable (Float) -> Void
+        ) {
+            self.onHz = { f, t in
+                Task { @MainActor in onHz(f, t) }
+            }
+            self.onMetrics = { rms in
+                Task { @MainActor in onMetrics(rms) }
+            }
+        }
 
     // MARK: - Engine / Session
     private let engine = AVAudioEngine()
@@ -80,7 +93,7 @@ final class PitchTracker {
 
     // Test tone state (RT-safe snapshot)
     private struct ToneState { var hz: Double; var amp: Float }
-    private let toneState = Locked(ToneState(hz: 220.0, amp: 0.15))
+    private let toneState = Locked(ToneState(hz: 220.0, amp: 0.25)) // a bit louder so it’s obvious
     private var useTestTone = false
     private var tonePhase: Double = 0
 
@@ -116,8 +129,12 @@ final class PitchTracker {
         toneState.set(ToneState(hz: hz, amp: 0.15))
         log.debug("setTestTone: \(enabled ? "ON" : "OFF") @ \(hz, privacy: .public) Hz")
 
-        // (Audible) update routing for tone node — connects only when ON
-        DispatchQueue.main.async { [weak self] in self?.updateToneConnection() }
+        // (Audible) always on the main thread for safety
+                if Thread.isMainThread {
+                    updateToneConnection()
+                } else {
+                    DispatchQueue.main.async { [weak self] in self?.updateToneConnection() }
+                }
 
         // (Analysis) drive tone-only frames via a timer ONLY when tone is on
         if enabled {
@@ -137,7 +154,7 @@ final class PitchTracker {
                 guard let self else { return }
                 let f = self.toneState.get().hz
                 let smoothed = self.kalman.filter(z: f)
-                DispatchQueue.main.async { self.onHz?(smoothed, CACurrentMediaTime()) }
+                self.onHz?(smoothed, CACurrentMediaTime())
                 self.log.debug("emit (forced) f0=\(String(format: "%.2f", smoothed), privacy: .public) Hz")
             }
         } else {
@@ -318,9 +335,13 @@ final class PitchTracker {
                 }    }
 
     private func updateToneConnection() {
-            // 🔒 Keep the graph static; just toggle gain
-            if let toneMixer {
-                toneMixer.outputVolume = useTestTone ? 1.0 : 0.0
+            if Thread.isMainThread {
+                toneMixer?.outputVolume = useTestTone ? 1.0 : 0.0
+            } else {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    self.toneMixer?.outputVolume = self.useTestTone ? 1.0 : 0.0
+                }
             }
         }
 
@@ -526,11 +547,9 @@ final class PitchTracker {
 
         // RMS (continuous)
         var rms: Float = 0
-                vDSP_rmsqv(x, 1, &rms, vDSP_Length(x.count))
-                dbgLastAnalyzeRMS = rms
-                DispatchQueue.main.async {
-                    self.onMetrics?(rms)
-                }
+                        vDSP_rmsqv(x, 1, &rms, vDSP_Length(x.count))
+                        dbgLastAnalyzeRMS = rms
+        self.onMetrics?(rms)
 
         // Gate out true silence only (very low threshold)
         if !rms.isFinite || rms < 5e-8 {
@@ -564,10 +583,8 @@ final class PitchTracker {
         }
 
         let primary = f0!
-                let smoothed = kalman.filter(z: primary)
-                DispatchQueue.main.async {
-                    self.onHz?(smoothed, CACurrentMediaTime())
-                }
+        let smoothed = kalman.filter(z: primary)
+        self.onHz?(smoothed, CACurrentMediaTime())
 
         // Debug: one line per emit
         dbgEmitCount &+= 1

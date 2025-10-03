@@ -131,11 +131,11 @@ private struct UtilityBar: View {
  struct GlassToolbarBackground: ViewModifier {
     func body(content: Content) -> some View {
         if #available(iOS 26, *) {
-            content.glassEffect(.regular, in: Rectangle())
+            content.glassEffect(.regular, in: Capsule())
         } else {
             content
                 .background(.ultraThinMaterial)
-                .overlay { Rectangle().strokeBorder(TenneyTokens.Color.glassBorder, lineWidth: 0.5) }
+                .overlay { Capsule().strokeBorder(TenneyTokens.Color.glassBorder, lineWidth: 0.5) }
         }
     }
 }

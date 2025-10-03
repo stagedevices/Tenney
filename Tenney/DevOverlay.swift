@@ -67,6 +67,7 @@ struct DevOverlay: ViewModifier {
                 .padding(8)
                 .modifier(GlassToolbarBackground())     // Apple glass background on bars/sheets
                 .padding(10)
+                .allowsHitTesting(false)
             }
 
     }
