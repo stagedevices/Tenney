@@ -12,18 +12,20 @@ public struct RatioResult: Hashable {
     public let num: Int
     public let den: Int
     public let octave: Int
+    public let centsError: Int
 
     public init(num: Int, den: Int, octave: Int) {
         self.num = max(1, num)
         self.den = max(1, den)
         self.octave = octave
+        self.centsError = 0
     }
 
     /// Unit-octave ratio string (octave is intentionally separate).
     public var ratioString: String { "\(num)/\(den)" }
 
     public func targetHz(rootHz: Double) -> Double {
-        RatioMath.ratioToHz(p: num, q: den, octave: octave, rootHz: rootHz)
+        RatioMath.ratioToHz(p: num, q: den, octave: octave, rootHz: rootHz, centsError: centsError)
     }
 }
 
@@ -34,6 +36,8 @@ public struct RatioNeighborPack: Hashable {
 }
 
 public final class RatioSolver {
+    
+    
     public struct Config: Sendable {
         /// Max denominator considered when generating unit-octave ratios (1 ≤ num/den < 2).
         public var maxDen: Int = 256

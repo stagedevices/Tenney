@@ -93,7 +93,6 @@ extension SettingsKeys {
 
 extension SettingsKeys {
     // Routing prefs
-    static let audioPreferSpeaker = "audio.prefer.speaker"
     static let audioOutputUID     = "audio.output.uid"
 
     // Pro-audio tuning

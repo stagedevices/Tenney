@@ -24,8 +24,15 @@ struct LatticeLayout: Sendable {
 
     /// Convert a plane coord (e3,e5) to world position.
     func position(for c: LatticeCoord) -> CGPoint {
-        position(monzo: [3: c.e3, 5: c.e5])
-    }
+            let e3 = c.e3
+            let e5 = c.e5
+    
+            // Base 3×5 plane (FLIPPED vertically)
+            let x0 = CGFloat(e3) * step
+            let x1 = CGFloat(e5) * step * cos(e5Angle)
+            let y1 = CGFloat(e5) * step * sin(e5Angle)
+            return CGPoint(x: x0 + x1, y: -(y1))
+        }
 
     /// Convert an arbitrary monzo (at least including 3/5) into world position.
     /// We only use 3 and 5 for the 2D basis; higher primes project along additional axes
@@ -45,6 +52,7 @@ struct LatticeLayout: Sendable {
 
         var x = x0 + x1
         var y = y0 + y1
+        
 
         // Higher primes: add a small orthogonal-ish projection so overlays are spatially distinct.
         // Deterministic rotation per prime for stable placement.
@@ -90,7 +98,7 @@ struct LatticeLayout: Sendable {
                 let den = (e3s <  0 ? ipow(3, -e3s) : 1) * (e5s <  0 ? ipow(5, -e5s) : 1)
                 let th = max(1, max(num, den))
 
-                let pos = position(monzo: [3: e3, 5: e5])
+                let pos = position(for: c)
                 // Cull nodes far outside view (cheap)
                 let sp = camera.worldToScreen(pos)
                 if sp.x < viewRect.minX - 120 || sp.x > viewRect.maxX + 120 || sp.y < viewRect.minY - 120 || sp.y > viewRect.maxY + 120 {

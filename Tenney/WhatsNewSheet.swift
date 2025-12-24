@@ -327,36 +327,43 @@ private struct WhatsNewGlass: ViewModifier {
 @available(iOS 26.0, *)
 private struct HeroGradient: View {
     @State private var t: CGFloat = 0
+
     var body: some View {
         TimelineView(.animation) { _ in
             Canvas { ctx, size in
-                let colors = [UIColor.systemRed, UIColor.systemOrange].map { Color($0) }
+                // Red → Orange palette
+                let colors = [UIColor.systemRed, UIColor.systemOrange].map { Color(uiColor: $0) }
                 let g = Gradient(colors: [
                     colors[0],
                     colors[0].opacity(0.8),
                     colors[1].opacity(0.9),
                     colors[1]
                 ])
-                let center = CGPoint(x: size.width/2, y: size.height/2)
+
+                let center = CGPoint(x: size.width / 2, y: size.height / 2)
                 let r1 = min(size.width, size.height) * (0.45 + 0.05 * sin(t))
                 let r2 = r1 * 0.66
 
-                ctx.fill(Path(ellipseIn: CGRect(x: center.x - r1, y: center.y - r1, width: r1*2, height: r1*2)),
-                         with: .radialGradient(g, center: center, startRadius: r2, endRadius: r1))
+                // ✅ Use GraphicsContext.Shading.radialGradient(_:center:startRadius:endRadius:)
+                let bubble = Path(ellipseIn: CGRect(x: center.x - r1, y: center.y - r1,
+                                                    width: r1 * 2, height: r1 * 2))
+                ctx.fill(bubble, with: .radialGradient(g, center: center, startRadius: r2, endRadius: r1))
 
-                // spark specks
+                // tiny spark specks
                 let specks = 18
                 for i in 0..<specks {
-                    let a = (CGFloat(i)/CGFloat(specks)) * .pi * 2 + t*0.6
+                    let a = (CGFloat(i) / CGFloat(specks)) * .pi * 2 + t * 0.6
                     let p = CGPoint(x: center.x + cos(a) * (r1 * 0.7),
                                     y: center.y + sin(a) * (r1 * 0.35))
-                    let dot = Path(ellipseIn: CGRect(x: p.x-2, y: p.y-2, width: 4, height: 4))
+                    let dot = Path(ellipseIn: CGRect(x: p.x - 2, y: p.y - 2, width: 4, height: 4))
                     ctx.fill(dot, with: .color(.white.opacity(0.25)))
                 }
             }
         }
         .onAppear {
-            withAnimation(.linear(duration: 6).repeatForever(autoreverses: true)) { t = 2 * .pi }
+            withAnimation(.linear(duration: 6).repeatForever(autoreverses: true)) {
+                t = 2 * .pi
+            }
         }
     }
 }

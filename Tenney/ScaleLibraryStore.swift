@@ -88,7 +88,8 @@ final class ScaleLibraryStore: ObservableObject {
     }
 
     func upsert(_ scale: TenneyScale) { updateScale(scale) }
-
+    // Newer UI calls this name.
+    func addScale(_ scale: TenneyScale) { updateScale(scale) }
     // MARK: - Load / Save
 
     func load() {

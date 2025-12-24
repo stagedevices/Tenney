@@ -7,6 +7,7 @@
 
 import Foundation
 import SwiftUI
+import UIKit
 
 
 extension LatticeCamera {
@@ -15,6 +16,123 @@ extension LatticeCamera {
         if let s = scale { self.scale = max(12, min(240, s)) }
     }
 }
+
+struct NodeInfoCard: View {
+    let rootHz: Double
+    let selectedNode: RatioRef?
+    let onAddToBuilder: (RatioRef) -> Void
+
+    /// Use parent’s “info voice” pipeline (pauses selection sustain, swaps voice ID, etc.)
+    let onAuditionHz: (Double, Int) -> Void   // (audibleHz, newOctaveOffset)
+    let onStopAudition: () -> Void
+
+    @State var octaveOffset: Int = 0
+
+    private var effective: RatioRef? {
+        selectedNode.map { $0.withOctaveOffset(octaveOffset) }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Text(primaryLabel())
+                    .font(.headline.monospaced())
+
+                if octaveOffset != 0 {
+                    Text("(\(octaveOffset > 0 ? "+\(octaveOffset)" : "\(octaveOffset)") oct)")
+                        .font(.caption2.weight(.semibold))
+                        .padding(.horizontal, 6).padding(.vertical, 3)
+                        .background(.thinMaterial, in: Capsule())
+                        .accessibilityHidden(true)
+                }
+
+                Spacer()
+
+                if let base = selectedNode {
+                    OctaveNudger(
+                        canDown: canStep(.down, base),
+                        canUp: canStep(.up, base),
+                        stepDown: { step(.down, base) },
+                        stepUp: { step(.up, base) },
+                        compact: false
+                    )
+                }
+            }
+
+            if let e = effective {
+                let fAud = frequencyHz(rootHz: rootHz, ratio: e, foldToAudible: true)
+                let (name, oct, cents) = hejiDisplay(freqHz: fAud)
+                Text("\(name)\(oct)  \(String(format: "%+.2f¢", cents))  •  \(Int(round(fAud))) Hz")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack {
+                Button("Add to Builder") {
+                    guard let adjusted = effective else { return }
+                    onAddToBuilder(adjusted)
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(effective == nil)
+
+                Spacer()
+            }
+        }
+        .padding(14)
+        .background {
+             if #available(iOS 26.0, *) {
+                 RoundedRectangle(cornerRadius: 16, style: .continuous)
+                     .glassEffect(.regular)
+             } else {
+                 RoundedRectangle(cornerRadius: 16, style: .continuous)
+                     .fill(.ultraThinMaterial)
+                     .overlay(
+                         RoundedRectangle(cornerRadius: 16, style: .continuous)
+                             .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                     )
+             }
+         }
+        .onChange(of: selectedNode?.p) { _ in reset() }
+        .onChange(of: selectedNode?.q) { _ in reset() }
+        .onChange(of: selectedNode?.octave) { _ in reset() }
+        .accessibilityElement(children: .contain)
+    }
+
+    // MARK: helpers
+    private func reset() {
+        octaveOffset = 0
+        onStopAudition()
+    }
+
+    private func primaryLabel() -> String {
+        guard let e = effective else { return "—" }
+        return ratioDisplayString(e)
+    }
+
+    private func canStep(_ dir: OctaveStepDirection, _ base: RatioRef) -> Bool {
+        canStepOctave(rootHz: rootHz, ratio: base.withOctaveOffset(octaveOffset), direction: dir)
+    }
+
+    private func step(_ dir: OctaveStepDirection, _ base: RatioRef) {
+        let delta = (dir == .up ? 1 : -1)
+        let nextOffset = octaveOffset + delta
+        let next = base.withOctaveOffset(nextOffset)
+
+        // keep your existing can-step logic
+        guard canStepOctave(rootHz: rootHz, ratio: next, direction: .up)
+           || canStepOctave(rootHz: rootHz, ratio: next, direction: .down)
+        else { return }
+
+        octaveOffset = nextOffset
+
+        // audition via parent pipeline (folded)
+        let fAud = frequencyHz(rootHz: rootHz, ratio: next, foldToAudible: true)
+        onAuditionHz(fAud, nextOffset)
+    }
+}
+
+
 
 
 struct LatticeView: View {
@@ -193,86 +311,284 @@ struct LatticeView: View {
 
 
 
-    
-    
-    // Bottom ribbon: between Utility Bar (below) and Selection Tray (above, if present)
-    private var axisShiftRibbon: some View {
-        HStack(spacing: 8) {
-            shiftChip(prime: 3)
-            shiftChip(prime: 5)
-            shiftChip(prime: 7)
-            shiftChip(prime: 11)
-            Spacer(minLength: 8)
-            // Hint: only shows when any shift ≠ 0
-            let anyShift = [3,5,7,11].contains { (store.axisShift[$0] ?? 0) != 0 }
-            if anyShift {
-                Text("Shift active")
-                    .font(.caption2).foregroundStyle(.secondary)
-                    .transition(.opacity)
+    // MARK: - Shift Tile (used inside AxisShiftRibbon)
+    private struct ShiftTile: View {
+        let prime: Int
+        let value: Int
+        let color: Color
+        let minus: () -> Void
+        let plus:  () -> Void
+        let reset: () -> Void
+
+        var body: some View {
+            HStack(spacing: 8) {
+                Text("±\(prime)")
+                    .font(.caption2)
+                    .foregroundStyle(color)
+                    .frame(minWidth: 26)
+
+                Button(action: minus) {
+                    Image(systemName: "minus.circle.fill")
+                        .imageScale(.medium)
+                }
+                .buttonStyle(.plain)
+                .contentShape(Circle())
+
+                Text(verbatim: "\(value)")
+                    .font(.system(.callout, design: .monospaced).weight(.semibold))
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(value == 0 ? .clear : color.opacity(0.22))
+                    .clipShape(Capsule())
+                    .contentTransition(.numericText())
+                    .sensoryFeedback(.selection, trigger: value)
+
+                Button(action: plus) {
+                    Image(systemName: "plus.circle.fill")
+                        .imageScale(.medium)
+                }
+                .buttonStyle(.plain)
+                .contentShape(Circle())
             }
+            .padding(.horizontal, 8).padding(.vertical, 6)
+            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .contextMenu {
+                Button("Reset ±\(prime) axis", role: .destructive, action: reset)
+            }
+            .onTapGesture(count: 2, perform: reset) // double-tap quick reset
+            .modifier(ShiftChipGlass(color: color, active: value != 0))
         }
-        .accessibilityElement(children: .contain)
-        .modifier(ShiftRibbonGlass())
     }
 
-    
-    private func shiftChip(prime p: Int) -> some View {
-        let color = activeTheme.primeTint(p)
-        let value = store.axisShift[p, default: 0]
-        let disabled = p > app.primeLimit
+    // MARK: - Selection Tray (v0.2)
+    private struct SelectionTray: View {
+        @ObservedObject var store: LatticeStore
+        @ObservedObject var app: AppModel
+        // ADD inside SelectionTray (above var body)
+        private var trayRow: some View {
+            HStack(spacing: 10) {
+                HStack(spacing: 6) {
+                    Text("Selected")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
 
-        return HStack(spacing: 6) {
-            Text("±\(p)")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(color)
-                .frame(minWidth: 26, alignment: .leading)
+                    Text("\(store.selectedCount)")
+                        .font(.system(.callout, design: .monospaced).weight(.semibold))
+                        .contentTransition(.numericText())
 
-            Button {
-                guard !disabled else { return }
-                withAnimation(.snappy) { store.axisShift[p, default: 0] -= 1 }
-            } label: {
-                Image(systemName: "chevron.down")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.primary)
+                    if store.additionsSinceBaseline > 0 {
+                        Text("Δ+\(store.additionsSinceBaseline)")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.red)
+                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .background(Color.red.opacity(0.12))
+                            .clipShape(Capsule())
+                            .transition(.opacity.combined(with: .scale))
+                    }
+                }
+
+                Divider().opacity(0.2)
+
+                Button { store.undo() } label: { Image(systemName: "arrow.uturn.left") }
+                    .buttonStyle(.plain)
+
+                Button { store.redo() } label: { Image(systemName: "arrow.uturn.right") }
+                    .buttonStyle(.plain)
+
+                Divider().opacity(0.2)
+
+                Button("Clear") {
+                    withAnimation(.snappy) { store.clearSelection() }
+                }
+                .disabled(store.selectedCount == 0)
+
+                Spacer(minLength: 8)
+
+                Button {
+                    let refs = store.selectionRefs(pivot: store.pivot, axisShift: store.axisShift)
+                    let payload = ScaleBuilderPayload(
+                        rootHz: app.rootHz,
+                        primeLimit: app.primeLimit,
+                        refs: refs
+                    )
+                    store.beginStaging()
+                    app.builderPayload = payload
+                } label: {
+                    Text("Add")
+                        .fontWeight(.semibold)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.9)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(store.selectedCount == 0)
+
+                Button("Library") {
+                    store.beginStaging()
+                    app.showScaleLibraryDetent = true
+                }
+                .buttonStyle(.bordered)
+                .lineLimit(1)
             }
-            .buttonStyle(.plain)
-            .opacity(disabled ? 0.35 : 1)
-
-            Text("\(value)")
-                .font(.caption2.monospacedDigit())
-                .foregroundStyle(.primary)
-                .padding(.horizontal, 6).padding(.vertical, 2)
-                .background(value == 0 ? .clear : color.opacity(0.22))
-                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-
-            Button {
-                guard !disabled else { return }
-                withAnimation(.snappy) { store.axisShift[p, default: 0] += 1 }
-            } label: {
-                Image(systemName: "chevron.up")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.primary)
-            }
-            .buttonStyle(.plain)
-            .opacity(disabled ? 0.35 : 1)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 12)
+            .font(.footnote)
+            .controlSize(.small)
         }
-        .padding(.horizontal, 8).padding(.vertical, 6)
-        .modifier(ShiftChipGlass(color: color, active: value != 0))
-        .opacity(disabled ? 0.45 : 1.0)
-        .disabled(disabled)
+
+        var body: some View {
+            Group {
+                if #available(iOS 26.0, *) {
+                    trayRow
+                        .frame(maxWidth: .infinity) // ensures rounded-rect container, not pill-fit
+                        .glassEffect(.regular, in: .rect(cornerRadius: 12))
+                } else {
+                    // Keep your existing pre-26 appearance (fallback)
+                    GlassCard {
+                        trayRow
+                    }
+                }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            .background(
+                GeometryReader { proxy in
+                    Color.clear.preference(key: SelectionTrayHeightKey.self, value: proxy.size.height)
+                }
+            )
+        }
+
+
     }
 
+    // MARK: - Audition (sound on/off) pill (v0.2)
+    private struct AuditionPill: View {
+        @ObservedObject var store: LatticeStore
+
+        var body: some View {
+            GlassCard {
+                HStack(spacing: 8) {
+                    Button {
+                        withAnimation(.snappy) { store.auditionEnabled.toggle() }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: store.auditionEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
+                                .imageScale(.medium)
+                                .symbolRenderingMode(.hierarchical)
+
+                            Text(store.auditionEnabled ? "Sound On" : "Sound Off")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                    }
+                    .buttonStyle(.plain)
+                    .sensoryFeedback(.selection, trigger: store.auditionEnabled)
+                    .accessibilityLabel(store.auditionEnabled ? "Audition on" : "Audition off")
+                }
+            }
+            .controlSize(.small)
+        }
+    }
+
+    // MARK: - Axis Shift Ribbon (v0.2)
+    private struct AxisShiftRibbon: View {
+        @ObservedObject var store: LatticeStore
+        @ObservedObject var app: AppModel
+
+        /// Provide tint from the caller so we don’t couple this to a specific color system.
+        let tint: (Int) -> Color
+
+        @State private var expanded = false
+        private let allPrimes = [3,5,7,11,13,17,19,23,29,31]
+
+        // Collapsed shows ALL primes up to the current limit (so extended limits don’t disappear)
+        private var visiblePrimesCollapsed: [Int] { allPrimes.filter { $0 <= app.primeLimit } }
+        private var visiblePrimesExpanded:  [Int] { allPrimes }
+
+        var body: some View {
+            GlassCard {
+                VStack(spacing: 6) {
+                    // Handle / grabber (detent-style)
+                    HStack {
+                        Spacer()
+                        Capsule()
+                            .frame(width: 28, height: 4)
+                            .foregroundStyle(.secondary.opacity(0.7))
+                            .padding(.vertical, 6)
+                            .contentShape(Rectangle())
+                            .onTapGesture { withAnimation(.snappy) { expanded.toggle() } }
+                            .gesture(
+                                DragGesture(minimumDistance: 5)
+                                    .onEnded { value in
+                                        if value.translation.height < -8 { withAnimation(.snappy) { expanded = true } }
+                                        if value.translation.height >  8 { withAnimation(.snappy) { expanded = false } }
+                                    }
+                            )
+                        Spacer()
+                    }
+
+                    // Content (scrolls horizontally)
+                    if expanded {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 10) {
+                                ForEach(visiblePrimesExpanded, id: \.self) { p in shiftTile(for: p) }
+                                resetAllButton
+                            }
+                            .padding(.horizontal, 2) // inner balance
+                        }
+                    } else {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 10) {
+                                ForEach(visiblePrimesCollapsed, id: \.self) { p in shiftTile(for: p) }
+                                resetAllButton
+                            }
+                            .padding(.horizontal, 2) // inner balance
+                        }
+                    }
+                }
+            }
+        }
+
+        // MARK: Helpers
+        @ViewBuilder
+        private func shiftTile(for p: Int) -> some View {
+            let disabled = p > app.primeLimit
+            ShiftTile(
+                prime: p,
+                value: store.axisShift[p, default: 0],
+                color: tint(p),
+                minus: {
+                    if !disabled { withAnimation(.snappy) { store.shift(prime: p, delta: -1) } }
+                },
+                plus: {
+                    if !disabled { withAnimation(.snappy) { store.shift(prime: p, delta: +1) } }
+                },
+                reset: {
+                    if !disabled { withAnimation(.snappy) { store.resetShift(prime: p) } }
+                }
+            )
+            .opacity(disabled ? 0.45 : 1.0)
+            .disabled(disabled)
+        }
+
+        @ViewBuilder
+        private var resetAllButton: some View {
+            if store.axisShift.values.contains(where: { $0 != 0 }) {
+                Button("Reset All") { withAnimation(.snappy) { store.resetShift() } }
+                    .buttonStyle(.borderedProminent)
+            }
+        }
+    }
 
     private struct ShiftRibbonGlass: ViewModifier {
         func body(content: Content) -> some View {
             if #available(iOS 26.0, *) {
                 content
-                    .glassEffect(.regular, in: .rect(cornerRadius: 14))
+                    .glassEffect(.regular, in: .rect(cornerRadius: 12))
                     .padding(.bottom, 4) // gap above the Utility Bar
             } else {
                 content
                     .background(.ultraThinMaterial)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
         }
     }
@@ -360,7 +676,7 @@ struct LatticeView: View {
                                     for c in store.selected {
                                         let e3 = c.e3 + store.pivot.e3 + (store.axisShift[3] ?? 0)
                                         let e5 = c.e5 + store.pivot.e5 + (store.axisShift[5] ?? 0)
-                                        let wp = layout.position(monzo: [3: e3, 5: e5])
+                                        let wp = layout.position(for: LatticeCoord(e3: e3, e5: e5))
                                         pts.append(store.camera.worldToScreen(wp))
                                     }
                                     // ghost selections (7/11/…)
@@ -389,7 +705,7 @@ struct LatticeView: View {
                     // plane position with pivot + 3/5 shifts (no overlayExtras here)
                     let e3 = coord.e3 + pivotSnapshot.e3 + (shiftSnapshot[3] ?? 0)
                     let e5 = coord.e5 + pivotSnapshot.e5 + (shiftSnapshot[5] ?? 0)
-                    let pos = layout.position(monzo: [3: e3, 5: e5])
+                    let pos = layout.position(for: LatticeCoord(e3: e3, e5: e5))
 
                     let sp  = cameraSnapshot.worldToScreen(pos)
                     let r: CGFloat = 22
@@ -433,6 +749,11 @@ struct LatticeView: View {
 
             infoOverlayLayer
                 .zIndex(3)
+            
+            bottomHUDLayer
+                .zIndex(4)
+
+            
         }
         .onAppear { store.camera.center(in: geo.size, scale: 72) }
     }
@@ -458,10 +779,13 @@ struct LatticeView: View {
         VStack {
             HStack {
                 if !latticePreviewMode && !latticePreviewHideChips {
-                    overlayChips
-                        .padding(8)
-                        .allowsHitTesting(true)
+                    VStack(alignment: .leading, spacing: 8) {
+                        overlayChips
+                    }
+                    .padding(8)
+                    .allowsHitTesting(true)
                 }
+
                 Spacer()
             }
             Spacer()
@@ -482,6 +806,29 @@ struct LatticeView: View {
             }
             Spacer()
         }
+    }
+    
+    private var bottomHUDLayer: some View {
+        VStack {
+            Spacer()
+            VStack(spacing: 8) {
+                if !latticePreviewMode {
+                    if store.selectedCount > 0 || store.additionsSinceBaseline > 0 {
+                        SelectionTray(store: store, app: app)
+                            .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    }
+
+                    AxisShiftRibbon(
+                        store: store,
+                        app: app,
+                        tint: { activeTheme.primeTint($0) }   // keeps ribbon colors consistent with your theme
+                    )
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.bottom, 8)
+        }
+        .allowsHitTesting(true)
     }
 
     @ToolbarContentBuilder
@@ -544,7 +891,7 @@ struct LatticeView: View {
         // e5 axis (60°)
         path = Path()
         let angle = Double.pi / 3
-        let e5End = CGPoint(x: CGFloat(cos(angle) * 1000), y: CGFloat(sin(angle) * 1000))
+        let e5End = CGPoint(x: CGFloat(cos(angle) * 1000), y: -CGFloat(sin(angle) * 1000))
         path.move(to: origin); path.addLine(to: store.camera.worldToScreen(e5End))
         ctx.stroke(path, with: .color(.secondary.opacity(0.25)), lineWidth: 1)
     }
@@ -679,36 +1026,37 @@ struct LatticeView: View {
 
     @AppStorage("Tenney.SoundOn") private var soundOn: Bool = true
     private func postStep(idx: Int, delta: Int) {
-        NotificationCenter.default.post(name: .tenneyStepPadOctave,
-                                        object: nil,
-                                        userInfo: ["idx": idx, "delta": delta])
+    //    NotificationCenter.default.post(name: Notification.Name.tenneyStepPadOctave,
+    //                                    object: nil,
+  //                                      userInfo: ["idx": idx, "delta": delta])
     }
 
     private var infoCard: some View {
         Group {
             if let f = focusedPoint {
-                let hzAdj = f.hz * pow(2.0, Double(infoOctaveOffset))
-                let staff = NotationFormatter.staffNoteName(freqHz: hzAdj)
-                let (adjP, adjQ) = ratioWithOctaveOffsetNoFold(num: f.num, den: f.den, offset: infoOctaveOffset)
-                let jiText: String = (store.labelMode == .ratio)
-                    ? "\(adjP)/\(adjQ)"
-                    : NotationFormatter.hejiLabel(p: f.num, q: f.den, freqHz: hzAdj, rootHz: app.rootHz)
-                let primes = NotationFormatter.primeBadges(p: f.num, q: f.den)
-
-                GlassCard {
-                    VStack(alignment: .leading, spacing: 6) {
-                        // remove the inner duplicated hzAdj/staff/adjP/adjQ/jiText/primes lets;
-                        // use the constants above instead
+                NodeInfoCard(
+                    rootHz: app.rootHz,
+                    selectedNode: RatioRef(p: f.num, q: f.den, octave: 0),
+                    onAddToBuilder: { ref in
+                        let payload = ScaleBuilderPayload(
+                            rootHz: app.rootHz,
+                            primeLimit: app.primeLimit,
+                            refs: [ref]
+                        )
+                        store.beginStaging()
+                        app.builderPayload = payload
+                    },
+                    onAuditionHz: { hz, newOffset in
+                        switchInfoTone(toHz: hz, newOffset: newOffset)
+                    },
+                    onStopAudition: {
+                        releaseInfoVoice()
                     }
-                    .padding(8)
-                    .frame(maxWidth: 320, alignment: .leading)
-                }
+                )
                 .padding(.horizontal, 8)
             }
-
         }
     }
-        
 
     // MARK: - HEJI minimal staff row (clef + staff + notehead; Bravura/Bravura Text)
     // MARK: - HEJI staff row (Bravura/Bravura Text)

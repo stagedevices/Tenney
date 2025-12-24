@@ -10,6 +10,19 @@ import AVFAudio
 
 @main
 struct TenneyApp: App {
+    
+    
+    @AppStorage(SettingsKeys.latticeThemeStyle)
+    private var themeStyleRaw: String = ThemeStyleChoice.system.rawValue
+
+    private var appScheme: ColorScheme? {
+        switch ThemeStyleChoice(rawValue: themeStyleRaw) ?? .system {
+        case .system: return nil
+        case .light:  return .light
+        case .dark:   return .dark
+        }
+    }
+
     @StateObject private var latticeStore = LatticeStore()
     @StateObject private var appModel = AppModel()
 
@@ -22,7 +35,9 @@ struct TenneyApp: App {
             ContentView()
                 .environmentObject(latticeStore)
                 .environmentObject(appModel)
-                    .onAppear { appModel.configureAndStart() }
+                .preferredColorScheme(appScheme)   // ← global scheme driven by Settings
+                .onAppear { appModel.configureAndStart() }
+
         }
     }
 

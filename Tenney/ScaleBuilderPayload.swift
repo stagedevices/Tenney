@@ -30,11 +30,9 @@ struct ScaleBuilderPayload: Identifiable, Codable, Equatable, Sendable {
     var id: UUID = UUID()
     var source: Source = .manual
 
-    /// User-facing title shown in Builder.
-    var title: String
-
-    /// Optional description/notes.
-    var notes: String
+    // Legacy naming (keep)
+        var title: String
+        var notes: String
 
     /// The reference root for interpreting ratios (does not force tuning system,
     /// but is required for frequency previews).
@@ -44,7 +42,13 @@ struct ScaleBuilderPayload: Identifiable, Codable, Equatable, Sendable {
     var primeLimit: Int
 
     /// Ordered list of ratio refs that constitute the scale/collection.
-    var refs: [RatioRef]
+        var refs: [RatioRef]
+    
+        // --- Newer UI surface area (Builder/Library expects these names) ---
+        var axisShift: [Int:Int] = [:]
+        var autoplayAll: Bool = false
+        var startInLibrary: Bool = false
+        var existing: TenneyScale? = nil
 
     /// When adding from lattice, we often want to show “new additions since baseline”.
     /// This is a UI helper that can be persisted in the payload (optional).
@@ -72,6 +76,36 @@ struct ScaleBuilderPayload: Identifiable, Codable, Equatable, Sendable {
         self.stagingBaseCount = stagingBaseCount
     }
 
+    
+    // Newer call-sites initializer (used in ScaleLibrarySheet.openInBuilder/addToBuilder)
+        init(
+            rootHz: Double,
+            primeLimit: Int,
+            axisShift: [Int:Int] = [:],
+            items: [RatioRef],
+            autoplayAll: Bool = false,
+            startInLibrary: Bool = false,
+            existing: TenneyScale? = nil
+        ) {
+            self.source = .manual
+            self.title = existing?.name ?? "Untitled"
+            self.notes = existing?.descriptionText ?? ""
+            self.rootHz = rootHz
+            self.primeLimit = primeLimit
+            self.refs = items
+            self.stagingBaseCount = nil
+            self.axisShift = axisShift
+            self.autoplayAll = autoplayAll
+            self.startInLibrary = startInLibrary
+            self.existing = existing
+        }
+    
+        // Newer UI expects payload.items (alias of refs).
+        var items: [RatioRef] {
+            get { refs }
+            set { refs = newValue; touch() }
+        }
+    
     // MARK: - Derived helpers
 
     var count: Int { refs.count }

@@ -507,6 +507,7 @@ private struct LiquidGlassCard: ViewModifier {
 
 
 extension Notification.Name {
+        static let tenneyStepPadOctave = Notification.Name("tenney.stepPadOctave")
     static let tenneyOpenLibraryInBuilder = Notification.Name("tenney.open.library.in.builder")
 }
 private struct LiquidGlassArrival: ViewModifier {
@@ -527,13 +528,15 @@ private struct LiquidGlassArrival: ViewModifier {
 
 extension Notification.Name {
     static let venueCalibrated = Notification.Name("tenney.venue.calibrated")
+    
+    static let tenneyOpenBuilderFromLatticeSelection =
+        Notification.Name("tenney.openBuilder.fromLatticeSelection")
 
     /// Broadcast when SettingsView commits changes that other views should react to.
     static let settingsChanged = Notification.Name("tenney.settingsChanged")
 
     /// Step a pad's octave (or related "octave stepper" UI) by delta.
     /// userInfo: ["idx": Int, "delta": Int]
-    static let tenneyStepPadOctave = Notification.Name("tenney.stepPadOctave")
     
     static let tenneyOpenBuilderFromScaleLibrary = Notification.Name("tenney.openBuilder.fromScaleLibrary")
         static let tenneyAddScaleToBuilderFromLibrary = Notification.Name("tenney.addToBuilder.fromScaleLibrary")
@@ -759,8 +762,9 @@ private struct UtilityBar: View {
                                 showRootStudio = true
                             } label: {
                                 HStack(spacing: 6) {
+                                    // ROOT PICKER IN FOOTER BAR
                                     Image(systemName: "tuningfork").imageScale(.medium)
-                                    Text(String(format: "Root %.1f Hz", app.rootHz))
+                                    Text(String(format: "%.1f Hz", app.rootHz))
                                         .matchedGeometryEffect(id: "rootValue", in: rootNS)
                                         .font(.footnote.monospacedDigit())
                                 }
@@ -771,7 +775,7 @@ private struct UtilityBar: View {
                         } else {
                             HStack(spacing: 6) {
                                 Image(systemName: "tuningfork").imageScale(.medium)
-                                Text(String(format: "Root %.1f Hz", app.rootHz))
+                                Text(String(format: "%.1f Hz", app.rootHz))
                                     .font(.footnote.monospacedDigit())
                             }
                             .padding(.horizontal, 8).padding(.vertical, 6)
@@ -791,7 +795,7 @@ private struct UtilityBar: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Settings")
         }
-        .frame(height: 44)  // slimmer bar
+        .frame(height: 38)  // slimmer bar
         .font(.footnote)
         .padding(.horizontal, 12).padding(.vertical, 6)
         .background(.ultraThinMaterial)
@@ -1661,7 +1665,4 @@ private struct VenueBanner: View {
             .accessibilityLabel("Venue standard applied")
             .accessibilityValue(Text(text))
     }
-}
-fileprivate extension ScaleBuilderPayload {
-    var startInLibrary: Bool { false }
 }

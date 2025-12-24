@@ -38,20 +38,22 @@ private struct StageOptionChip: View {
     let title: String
     let systemImage: String
     @Binding var isOn: Bool
+    var invertVisual: Bool = false
     var body: some View {
         Button {
             withAnimation(.snappy) { isOn.toggle() }
         } label: {
-            HStack(spacing: 6) {
+            let on = invertVisual ? !isOn : isOn
+            HStack(spacing: 8) {
                 Image(systemName: systemImage)
-                    .imageScale(.medium)
-                Text(title).font(.footnote.weight(.semibold))
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(on ? Color.accentColor : Color.secondary, .clear)
+                    .frame(width: 18)
+                Text(title)
+                    .font(.footnote.weight(on ? .semibold : .regular))
             }
-            .padding(.horizontal, 10).padding(.vertical, 8)
-            .background(isOn ? .thinMaterial : .ultraThinMaterial, in: Capsule())
-            .overlay(
-                Capsule().stroke(isOn ? Color.accentColor.opacity(0.8) : .clear, lineWidth: 1)
-            )
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            .background(on ? .thinMaterial : .ultraThinMaterial, in: Capsule())
         }
         .buttonStyle(.plain)
     }
@@ -99,20 +101,22 @@ private struct StageToggleChip: View {
     let systemNameOn: String
     let systemNameOff: String
     @Binding var isOn: Bool
+    var invertVisual: Bool = false
     var body: some View {
         Button {
             withAnimation(.snappy) { isOn.toggle() }
         } label: {
+            let on = invertVisual ? !isOn : isOn
             HStack(spacing: 8) {
-                Image(systemName: isOn ? systemNameOn : systemNameOff)
+                Image(systemName: on ? systemNameOn : systemNameOff)
                     .symbolRenderingMode(.palette)
-                    .foregroundStyle(isOn ? Color.accentColor : Color.secondary, .clear)
+                    .foregroundStyle(on ? Color.accentColor : Color.secondary, .clear)
                     .frame(width: 18)
                 Text(title)
-                    .font(.footnote.weight(isOn ? .semibold : .regular))
-            }
+                    .font(.footnote.weight(on ? .semibold : .regular))
+        }
             .padding(.horizontal, 12).padding(.vertical, 8)
-            .background(isOn ? .thinMaterial : .ultraThinMaterial, in: Capsule())
+            .background(on ? .thinMaterial : .ultraThinMaterial, in: Capsule())
         }
         .buttonStyle(.plain)
         .contentTransition(.symbolEffect(.replace))
@@ -137,23 +141,11 @@ func deltaLabel(_ p: Int, _ e: Int) -> String {
 // Persist the selected input device (AVAudioSessionPortDescription.uid)
 extension SettingsKeys {
     static let audioInputUID = "audio.input.uid"
+    static let audioPreferSpeaker = "audio.prefer.speaker"
 }
 
 
 struct StudioConsoleView: View {
-    // Inside StudioConsoleView (top near other @AppStorage)
-    @State private var showWhatsNew = false
-    @AppStorage(SettingsKeys.lastSeenBuild) private var lastSeenBuild: String = ""
-
-    // Helpers
-    private var currentBuild: String {
-        (Bundle.main.infoDictionary?["CFBundleVersion"] as? String) ?? "0"
-    }
-    private var currentVersion: String {
-        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "0.0"
-    }
-    private var whatsNewIsUnread: Bool { lastSeenBuild != currentBuild }
-
     @AppStorage(SettingsKeys.defaultView) private var defaultView: String = "tuner" // "lattice" | "tuner"
 
     @EnvironmentObject private var model: AppModel   // ⬅️ bring AppModel into scope
@@ -201,7 +193,6 @@ struct StudioConsoleView: View {
     @AppStorage(SettingsKeys.releaseSec) private var releaseSec: Double = 0.5
     @AppStorage(SettingsKeys.safeAmp)    private var safeAmp: Double = 0.18
     @State private var showSetupWizard: Bool = false
-    @AppStorage(SettingsKeys.tunerStageMode) private var stageActive: Bool = false   // ← add
 
     // Grid: 1 column on phones, 2 on iPad
     private var columns: [GridItem] {
@@ -223,32 +214,13 @@ struct StudioConsoleView: View {
     var body: some View {
         NavigationStack {
             contentStack
-                .navigationTitle("Settings")                // ← attach to destination
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {                                   // ← attach to destination
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button("Done") { dismiss() }
-                    }
-                }
         }
-        
-        .sheet(isPresented: $showWhatsNew, onDismiss: {
-            // Mark seen when the sheet closes (via button swipe, or drag-to-dismiss)
-            lastSeenBuild = AppInfo.build
-        }) {
-            WhatsNewSheet(items: WhatsNewContent.v0_2Items) {
-                // Primary CTA: just close; marking happens in onDismiss
-                showWhatsNew = false
-            }
-            .presentationDetents([.medium, .large])
-            .presentationDragIndicator(.visible)
-            .presentationBackground(.ultraThinMaterial)
-        }
-
-        .statusBar(hidden: stageHideStatus && stageActive)
+        // Apply the hidden flag to this stack so the chip has visible effect here
+        .statusBar(hidden: stageHideStatus)
         .preferredColorScheme(settingsScheme)
-        // No .toolbar modifiers out here
-        // No .navigationTitle out here
+        .toolbar { doneToolbar }
+        .navigationBarTitleDisplayMode(.inline)
+        // Move all listeners off the main expression tree
         .background(
             SettingsChangeSinks(
                 defaultView: $defaultView,
@@ -266,7 +238,6 @@ struct StudioConsoleView: View {
                 safeAmp: $safeAmp,
                 latticeThemeID: $latticeThemeID,
                 themeStyleRaw: $themeStyleRaw,
-                tenneyDistanceModeRaw: $tenneyDistanceModeRaw,
                 stageDimLevel: $stageDimLevel,
                 stageAccent: $stageAccent,
                 stageHideStatus: $stageHideStatus,
@@ -279,7 +250,6 @@ struct StudioConsoleView: View {
             )
         )
     }
-
 
     // MARK: - Split content
     private var contentStack: some View {
@@ -321,10 +291,6 @@ struct StudioConsoleView: View {
             tuningSection
             quickSetupCard
             aboutSection
-            // wherever convenient (e.g. in StudioConsoleView or a debug-only section)
-            whatsNewCard
-
-
             // ⚠️ Avoid Spacer() inside grid – it confuses layout and adds type load
         }
         .padding(.vertical, 14)
@@ -370,6 +336,15 @@ struct StudioConsoleView: View {
             .foregroundStyle(.white, .secondary)
         }
     }
+    
+    private static func forceStatusBarUpdate() {
+        DispatchQueue.main.async {
+            guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene else { return }
+            for window in scene.windows {
+                window.rootViewController?.setNeedsStatusBarAppearanceUpdate()
+            }
+        }
+    }
 
     // MARK: - Lightweight sink view holds all listeners
     private struct SettingsChangeSinks: View {
@@ -388,7 +363,6 @@ struct StudioConsoleView: View {
         @Binding var safeAmp: Double
         @Binding var latticeThemeID: String
         @Binding var themeStyleRaw: String
-        @Binding var tenneyDistanceModeRaw: String
         @Binding var stageDimLevel: Double
         @Binding var stageAccent: String
         @Binding var stageHideStatus: Bool
@@ -425,7 +399,12 @@ struct StudioConsoleView: View {
                 .onChange(of: themeStyleRaw) { postSetting(SettingsKeys.latticeThemeStyle, $0) }
                 .onChange(of: stageDimLevel) { postSetting(SettingsKeys.stageDimLevel, $0) }
                 .onChange(of: stageAccent)   { postSetting(SettingsKeys.stageAccent, $0) }
-                .onChange(of: stageHideStatus){ postSetting(SettingsKeys.stageHideStatus, $0) }
+
+                .onChange(of: stageHideStatus){ v in
+                    postSetting(SettingsKeys.stageHideStatus, v)
+                    StudioConsoleView.forceStatusBarUpdate()
+                }
+
                 .onChange(of: stageKeepAwake){ postSetting(SettingsKeys.stageKeepAwake, $0) }
                 .onChange(of: stageMinimalUI){ postSetting(SettingsKeys.stageMinimalUI, $0) }
                 .onChange(of: effectiveIsDark) { newVal in
@@ -437,10 +416,7 @@ struct StudioConsoleView: View {
                         withAnimation(.easeOut(duration: 0.15)) { localInkVisible = false }
                     }
                 }
-                .onChange(of: tenneyDistanceModeRaw) { postSetting(SettingsKeys.tenneyDistanceMode, $0) }
-
         }
-        
     }
 
 
@@ -493,13 +469,12 @@ struct StudioConsoleView: View {
                         DimPresetChip(title: "25%", value: 0.25, current: $stageDimLevel)
                         DimPresetChip(title: "50%", value: 0.50, current: $stageDimLevel)
                         DimPresetChip(title: "75%", value: 0.75, current: $stageDimLevel)
-                        DimPresetChip(title: "100%", value: 1.0, current: $stageDimLevel)
                     }
                     .disabled(dimLocked)
                     .opacity(dimLocked ? 0.5 : 1)
 
                     // Fine-tune
-                    Slider(value: $stageDimLevel, in: 0.0...1.0, step: 0.01)
+                    Slider(value: $stageDimLevel, in: 0.0...0.75, step: 0.01)
                         .disabled(dimLocked)
                         .opacity(dimLocked ? 0.5 : 1)
 
@@ -562,15 +537,17 @@ struct StudioConsoleView: View {
                     Text("Behavior")
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 10) {
-                            StageToggleChip(
-                                title: "Status Bar",
-                                systemNameOn: "rectangle.topthird.inset",          // ON = visible
-                                systemNameOff: "rectangle.topthird.inset.filled",  // OFF = hidden
-                                isOn: Binding(
-                                    get: { !stageHideStatus },            // ON means show
-                                    set: { stageHideStatus = !$0 }        // store inverted
-                                )
-                            )
+                            // "Status Bar" — ON = visible, OFF = hidden (storage remains: stageHideStatus == hidden)
+                            // "Status Bar" — ON = visible, OFF = hidden
+                                                        StageToggleChip(
+                                                            title: "Status Bar",
+                                                            systemNameOn: "rectangle.topthird.inset",          // ON (visible)
+                                                            systemNameOff: "rectangle.topthird.inset.filled",   // OFF (hidden)
+                                                            isOn: Binding(
+                                                                get: { !stageHideStatus },       // show = true
+                                                                set: { stageHideStatus = !$0 }   // stored flag is 'hidden'
+                                                            )
+                                                        )
                             StageToggleChip(
                                 title: "Keep Awake",
                                 systemNameOn: "moon.zzz.fill",
@@ -640,7 +617,7 @@ struct StudioConsoleView: View {
 
 
     @ViewBuilder private var tuningSection: some View {
-            glassCard("Equal-Temperament Reference Pitch") {
+            glassCard("Equal-Temperament Reference (A4)") {
                 SettingsA4PickerView()
             }
         }
@@ -1062,48 +1039,7 @@ struct StudioConsoleView: View {
         ToneOutputEngine.shared.config = cfg
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
-// MARK: – Whats new section
-    private struct NewPill: View {
-        var body: some View {
-            Text("NEW")
-                .font(.caption2.weight(.black))
-                .padding(.horizontal, 6).padding(.vertical, 2)
-                .background(.thinMaterial, in: Capsule())
-                .overlay(Capsule().stroke(Color.accentColor.opacity(0.35), lineWidth: 1))
-        }
-    }
 
-    @ViewBuilder
-    private var whatsNewCard: some View {
-        glassCard("What’s New") {
-            HStack(spacing: 12) {
-                // Left: version info + tiny blurb
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 8) {
-                        Label("Tenney \(currentVersion)", systemImage: "sparkles")
-                            .labelStyle(.titleAndIcon)
-                            .font(.subheadline.weight(.semibold))
-                        if whatsNewIsUnread { NewPill() }
-                    }
-                    Text("Highlights for this update, release notes, and tips.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer(minLength: 12)
-
-                // Right: call to action
-                Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    showWhatsNew = true
-                } label: {
-                    Text(whatsNewIsUnread ? "View (New)" : "View")
-                }
-                .buttonStyle(.borderedProminent)
-            }
-            .accessibilityElement(children: .combine)
-        }
-    }
 
     // MARK: - About
         @ViewBuilder private var aboutSection: some View {
@@ -1142,8 +1078,6 @@ struct StudioConsoleView: View {
         private func updateA4() { /* legacy no-op; A4 now managed by SettingsA4PickerView */ }
 
     private func broadcastAll() {
-        postSetting(SettingsKeys.tenneyDistanceMode, tenneyDistanceModeRaw)
-
         postSetting(SettingsKeys.labelDefault, labelDefault)
         postSetting(SettingsKeys.showRatioAlongHeji, showRatioAlong)
         postSetting(SettingsKeys.latticeThemeID, latticeThemeID)
