@@ -1,0 +1,374 @@
+//  ToneOutputEngine.swift
+//  Tenney
+//
+//  Created by Sebastian Suarez-Solis on 10/3/25.
+//
+
+import Foundation
+import AVFoundation
+import Accelerate
+
+
+// MARK: - ENTRY POINT: One engine to run them all (MONO out; stereo only for scope)
+final class ToneOutputEngine {
+
+    // MARK: Singleton
+    static let shared = ToneOutputEngine()
+
+    // MARK: Public config (global, affects all voices)
+    enum GlobalWave: String, CaseIterable, Codable { case foldedSine, triangle, saw }
+    struct Config: Codable, Equatable {
+        var wave: GlobalWave = .foldedSine                // (1) folded sine (Buchla-style mirror folds)
+        var foldAmount: Float = 1.25                      // folds, ~0.0 … 5.0
+        var drive_dB: Float = 6.0                         // pre-gain into folder, dB
+        var attackMs: Double = 500.0                        // global AR
+        var releaseMs: Double = 1000.0
+        var outputGain_dB: Float = -6.0                   // final gain before soft limiter
+        var limiterOn: Bool = true                        // soft clip safety
+    }
+    // You can bind this from Settings via AppStorage externally.
+    // Do NOT mutate from render thread.
+    var config = Config()
+
+    // MARK: Public API (robust)
+    // Voice handle typealias for clarity
+    typealias VoiceID = Int
+
+    /// Start a sustained tone; returns VoiceID.
+    @discardableResult
+    func start(frequency: Double) -> VoiceID {
+        if !isRunning { startEngineIfNeeded() }
+        let id = sustain(freq: frequency, amp: 0.18)
+        testToneID = id
+        return id
+    }
+    /// Stop the dedicated test tone (and all voices).
+    func stop() { stopAll(); testToneID = nil }
+
+    /// Back-compat helper for AppModel: retune or start the dedicated test tone.
+    func setFrequency(_ f: Double) {
+        if let id = testToneID {
+            retune(id: id, to: f, hardSync: false)
+        } else {
+            testToneID = sustain(freq: f, amp: 0.18)
+        }
+    }
+
+    /// Low-level voice control
+    @discardableResult
+    func sustain(freq: Double, amp: Float) -> VoiceID {
+        if !isRunning { startEngineIfNeeded() }
+        // allocate: first inactive else slot 0
+        let slot = voices.firstIndex(where: { !$0.active }) ?? 0
+        var v = voices[slot]
+        let id = nextID; nextID &+= 1
+
+        v.id = id
+        v.active = true
+        v.gain = amp
+        v.env = 0; v.envState = +1
+        v.attackSamps  = max(1, Int((config.attackMs/1000.0)  * sampleRate))
+        v.releaseSamps = max(1, Int((config.releaseMs/1000.0) * sampleRate))
+        v.sr = Float(sampleRate)
+        v.setFreq(Float(freq))
+        voices[slot] = v
+        return id
+    }
+
+    func retune(id: VoiceID, to freq: Double, hardSync: Bool = false) {
+        guard let i = voices.firstIndex(where: { $0.id == id && $0.active }) else { return }
+        var v = voices[i]
+        v.setFreq(Float(freq))
+        if hardSync { v.phase = 0 }
+        voices[i] = v
+    }
+
+    func release(id: VoiceID, seconds: Double) {
+        guard let i = voices.firstIndex(where: { $0.id == id && $0.active }) else { return }
+        var v = voices[i]
+        v.envState = -1
+        v.releaseSamps = max(1, Int(seconds * sampleRate))
+        voices[i] = v
+    }
+
+    func stopAll() {
+        if engine.isRunning { engine.pause() }
+        for i in voices.indices {
+            voices[i].active = false
+            voices[i].env = 0
+            voices[i].envState = 0
+        }
+        isRunning = false
+    }
+
+    // MARK: Optional: stereo scope tap (not audible)
+    // Called once per render with two read-only buffers for X/Y display (length = frames).
+    // Hardware output remains MONO.
+    var scopeTap: ((_ x: UnsafePointer<Float>, _ y: UnsafePointer<Float>, _ count: Int) -> Void)?
+
+    // MARK: Internals
+
+    private let engine = AVAudioEngine()
+    private var sourceNode: AVAudioSourceNode!
+    private var isRunning = false
+    private var sampleRate: Double = 48_000
+    private var token: NSObjectProtocol?
+    private var firstRenderLogged = false
+    private var testToneID: VoiceID? = nil
+
+    // Voice
+    private struct Voice {
+        var id: Int = 0
+        var active: Bool = false
+
+        // synth state
+        var sr: Float = 48_000
+        var freq: Float = 440
+        var phase: Float = 0                 // [0,1)
+        var phaseInc: Float = 440/48_000     // cycles/sample
+
+        // envelope
+        var gain: Float = 0.18
+        var env: Float = 0
+        var envState: Int = 0                // +1 A, 0 hold, -1 R
+        var attackSamps: Int = 480
+        var releaseSamps: Int = 4800
+
+        mutating func setFreq(_ f: Float) {
+            freq = max(0, f)
+            phaseInc = freq / sr
+        }
+    }
+
+    private var voices: [Voice] = Array(repeating: Voice(), count: 16) // polyphony=16
+    private var nextID: Int = 1
+
+    // MARK: Engine boot (mono out; robust session/route handling)
+    private func startEngineIfNeeded() {
+        guard !isRunning else { return }
+
+        // Use hardware format
+        let out = engine.outputNode
+        let hwFmt = out.inputFormat(forBus: 0) // what output node expects from mixer
+        sampleRate = hwFmt.sampleRate > 0 ? hwFmt.sampleRate : 48_000
+
+        sourceNode = AVAudioSourceNode { [weak self] _, _, frameCount, ablPtr -> OSStatus in
+            guard let self = self else { return noErr }
+            let n = Int(frameCount)
+            let abl = UnsafeMutableAudioBufferListPointer(ablPtr)
+            guard abl.count >= 1,
+                  let L = abl[0].mData?.assumingMemoryBound(to: Float.self) else { return noErr }
+            // MONO: zero L, mirror to R later if needed
+            vDSP_vclr(L, 1, vDSP_Length(n))
+            var R: UnsafeMutablePointer<Float>? = nil
+            if abl.count >= 2 { R = abl[1].mData?.assumingMemoryBound(to: Float.self); if let R { vDSP_vclr(R, 1, vDSP_Length(n)) } }
+
+            // scratch for scope X/Y (not audible)
+            var scopeX = [Float](repeating: 0, count: n)
+            var scopeY = [Float](repeating: 0, count: n)
+
+            if !self.firstRenderLogged {
+                self.firstRenderLogged = true
+                print("[ToneOutput] render pull: frames=\(n) ch=\(abl.count) sr=\(Int(self.sampleRate))")
+            }
+            if self.voices.allSatisfy({ !$0.active }) {
+                // still provide blank scope
+                if let tap = self.scopeTap { scopeX.withUnsafeBufferPointer { x in scopeY.withUnsafeBufferPointer { y in tap(x.baseAddress!, y.baseAddress!, n) } } }
+                // duplicate mono to R if present
+                if let R { cblas_scopy(Int32(n), L, 1, R, 1) }
+                return noErr
+            }
+
+            // Precompute globals
+            let cfg = self.config
+            let outGain = powf(10.0, cfg.outputGain_dB / 20.0)
+            let drive  = powf(10.0, cfg.drive_dB / 20.0)
+            let foldA  = max(0.0, cfg.foldAmount)
+
+            // Render per sample (simple, branchless enough; 16 voices is fine @ 48k)
+            for s in 0..<n {
+                var mix: Float = 0
+                var xForScope: Float = 0
+                var yForScope: Float = 0
+
+                for i in self.voices.indices {
+                    if !self.voices[i].active { continue }
+                    var v = self.voices[i]
+
+                    // AR env
+                    let aInc: Float = (v.attackSamps > 0) ? 1.0 / Float(v.attackSamps)  : 1.0
+                    let rDec: Float = (v.releaseSamps > 0) ? 1.0 / Float(v.releaseSamps) : 1.0
+                    switch v.envState {
+                    case +1: v.env += aInc; if v.env >= 1 { v.env = 1; v.envState = 0 }
+                    case -1: v.env -= rDec; if v.env <= 0 { v.env = 0; v.active = false; self.voices[i] = v; continue }
+                    default: break
+                    }
+
+                    // Oscillator core: foldedSine / triangle (BLAMP) / saw (BLEP)
+                    var y: Float = 0
+                    switch cfg.wave {
+                    case .foldedSine:
+                        // Buchla-style mirror folder: pre-drive, mirror wrap (periodic sawtooth reflect)
+                        // 1) drive into sine
+                        let sPhase = v.phase
+                        let raw = sinf(2.0 * Float.pi * sPhase) * drive
+                        // 2) mirror fold around ±1 with repeated reflections
+                        y = mirrorFold(raw, folds: foldA)
+                    case .triangle:
+                        y = triBLAMP(phase: v.phase, dphi: v.phaseInc)
+                    case .saw:
+                        y = sawBLEP(phase: v.phase, dphi: v.phaseInc)
+                    }
+
+                    // advance phase
+                    var ph = v.phase + v.phaseInc
+                    if ph >= 1 { ph -= 1 }
+                    v.phase = ph
+
+                    // accumulate
+                    let samp = y * v.gain * v.env
+                    mix += samp    // ← replace mix &+= samp
+
+                    // scope pair: simple quadrature from same phase (nice lissajous)
+                    // X = cos, Y = sin (of the current voice’s phase)
+                    if xForScope == 0 && yForScope == 0 {
+                        let ang = 2.0 * Float.pi * v.phase
+                        xForScope = cosf(ang)
+                        yForScope = sinf(ang)
+                    }
+
+                    self.voices[i] = v
+                }
+
+                // Mono out gain
+                var out = mix * outGain
+
+                // Soft limiter (symmetric tanh-ish) if enabled
+                if cfg.limiterOn {
+                    // Fast cubic soft clip
+                    let absx = fabsf(out)
+                    if absx > 0.95 {
+                        let sign: Float = (out >= 0) ? 1 : -1
+                        let t = min(1.0, (absx - 0.95) * 20.0)
+                        out = sign * (0.95 + (1 - (1 - t)*(1 - t)) * 0.05)
+                    }
+                }
+
+                L[s] += out
+                // keep hardware output mono: copy L to R if present
+                if let R { R[s] += out }
+
+                scopeX[s] = xForScope
+                scopeY[s] = yForScope
+            }
+
+            // push scope buffers
+            if let tap = self.scopeTap {
+                scopeX.withUnsafeBufferPointer { xb in
+                    scopeY.withUnsafeBufferPointer { yb in
+                        tap(xb.baseAddress!, yb.baseAddress!, n)
+                    }
+                }
+            }
+
+            return noErr
+        }
+
+        // Connect: source → mainMixer → output
+        let fmt = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: max(hwFmt.channelCount, 2))!
+        engine.attach(sourceNode)
+        engine.disconnectNodeInput(engine.mainMixerNode)
+        engine.connect(sourceNode, to: engine.mainMixerNode, format: fmt)
+        engine.connect(engine.mainMixerNode, to: out, format: hwFmt)
+
+        engine.prepare()
+        do {
+            try engine.start()
+            isRunning = true
+            token = NotificationCenter.default.addObserver(
+                forName: AVAudioSession.routeChangeNotification,
+                object: AVAudioSession.sharedInstance(),
+                queue: .main
+            ) { [weak self] _ in self?.handleRouteChange() }
+        } catch {
+            print("[ToneOutput] start error: \(error)")
+        }
+    }
+
+    private func handleRouteChange() {
+        // Update sample rate into live voices
+        let hw = engine.outputNode.inputFormat(forBus: 0)
+        sampleRate = hw.sampleRate > 0 ? hw.sampleRate : 48_000
+        let srF = Float(sampleRate)
+        for i in voices.indices {
+            voices[i].sr = srF
+            voices[i].phaseInc = voices[i].freq / srF
+        }
+    }
+
+    // MARK: - DSP helpers (polyBLEP/BLAMP + mirror folder)
+
+    // polyBLEP step correction for saw (phase in [0,1))
+    @inline(__always) private func polyBLEP(_ t: Float, _ dt: Float) -> Float {
+        var x = t
+        if x < dt {
+            x /= dt
+            return (x + x) - (x * x) - 1.0
+        } else if x > 1.0 - dt {
+            x = (x - 1.0) / dt
+            return (x * x) + (x + x) + 1.0
+        }
+        return 0.0
+    }
+
+    // polyBLAMP corner correction (integrated BLEP) for triangle corners
+    @inline(__always) private func polyBLAMP(_ t: Float, _ dt: Float) -> Float {
+        var x = t
+        let half: Float = 0.5
+        let oneThird: Float = 1.0 / 3.0
+        if x < dt {
+            x /= dt
+            return (half * x * x) - (oneThird * x * x * x)
+        } else if x > 1.0 - dt {
+            x = (x - 1.0) / dt
+            return (half * x * x) + (oneThird * x * x * x)
+        }
+        return 0.0
+    }
+
+    // Bandlimited SAW using BLEP
+    @inline(__always) private func sawBLEP(phase: Float, dphi: Float) -> Float {
+        let t = phase
+        let dt = dphi
+        var y = (2.0 * t - 1.0)             // naive saw
+        y -= polyBLEP(t, dt)                // correct discontinuity
+        return y
+    }
+
+    // BLAMP triangle
+    @inline(__always) private func triBLAMP(phase: Float, dphi: Float) -> Float {
+        let t = phase
+        let dt = dphi
+        // naive tri from saw integral shape: 2*|2t-1|-1
+        let s = 2.0 * t - 1.0
+        var tri = 2.0 * fabsf(s) - 1.0
+        tri -= polyBLAMP(t, dt)
+        tri += polyBLAMP(fmodf(t + 0.5, 1.0), dt)
+        return tri
+    }
+
+    // Buchla-style mirror folder: repeatedly reflect beyond [-1, +1]
+    // folds ~ number/strength control; drive applied before entering
+    @inline(__always) private func mirrorFold(_ x: Float, folds: Float) -> Float {
+        // Map folds into an effective reflection range (more folds = more reflections opportunity)
+        // Keep it stable and cheap on device.
+        var y = x
+        let maxIter = min(12, Int(2 + folds * 4)) // up to ~12 reflections
+        for _ in 0..<maxIter {
+            if y > 1.0 { y = 2.0 - y }
+            else if y < -1.0 { y = -2.0 - y }
+            else { break }
+        }
+        return y
+    }
+}
