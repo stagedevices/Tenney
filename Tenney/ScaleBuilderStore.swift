@@ -84,7 +84,6 @@ final class ScaleBuilderStore: ObservableObject {
                 rootLabel: existing.rootLabel,
                 detectedLimit: TenneyScale.detectedLimit(for: payload.items),
                 periodRatio: existing.periodRatio,
-    //            size: payload.items.count,
                 maxTenneyHeight: TenneyScale.maxTenneyHeight(for: payload.items),
                 author: existing.author
             )
@@ -101,7 +100,6 @@ final class ScaleBuilderStore: ObservableObject {
             rootLabel: nil,
             detectedLimit: TenneyScale.detectedLimit(for: payload.items),
             periodRatio: 2.0,
-       //     size: payload.items.count,
             maxTenneyHeight: TenneyScale.maxTenneyHeight(for: payload.items),
             author: nil,
         )

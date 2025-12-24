@@ -189,7 +189,6 @@ struct ScaleBuilderScreen: View {
                                 referenceHz: snap.referenceHz,
                                 detectedLimit: TenneyScale.detectedLimit(for: snap.degrees),
                                 periodRatio: 2.0,
-                 //               size: snap.degrees.count,
                                 maxTenneyHeight: TenneyScale.maxTenneyHeight(for: snap.degrees),
                                 author: existing.author
                             )
@@ -388,7 +387,6 @@ struct ScaleBuilderScreen: View {
                     referenceHz: base.referenceHz,
                     detectedLimit: TenneyScale.detectedLimit(for: adj),
                     periodRatio: 2.0,
-                 //   size: adj.count,
                     maxTenneyHeight: TenneyScale.maxTenneyHeight(for: adj),
                     author: existing.author
                 )
@@ -405,7 +403,6 @@ struct ScaleBuilderScreen: View {
                     referenceHz: base.referenceHz,
                     detectedLimit: TenneyScale.detectedLimit(for: adj),
                     periodRatio: 2.0,
-          //          size: adj.count,
                     maxTenneyHeight: TenneyScale.maxTenneyHeight(for: adj),
                     author: base.author
                 )

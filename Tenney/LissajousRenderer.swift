@@ -47,14 +47,21 @@ final class LissajousRenderer: NSObject, MTKViewDelegate {
     var rootHz: Double = 415.0
     var theme: LatticeTheme = ThemeRegistry.theme(.classicBO, dark: false)
     var config = Config()
+    
+    private var needsClearPersistence = false
+
 
     // MTK
     private let device: MTLDevice
     private let queue: MTLCommandQueue
-    private var linePSO: MTLRenderPipelineState!
-    private var gridPSO: MTLRenderPipelineState!
-    private var quadDecayPSO: MTLRenderPipelineState!
-    private var quadBlitPSO: MTLRenderPipelineState!
+    private var linePSO_MSAA: MTLRenderPipelineState!
+    private var linePSO_NoMSAA: MTLRenderPipelineState!
+    private var gridPSO_MSAA: MTLRenderPipelineState!
+    private var gridPSO_NoMSAA: MTLRenderPipelineState!
+
+    private var quadDecayPSO_NoMSAA: MTLRenderPipelineState!
+    private var quadBlitPSO_MSAA: MTLRenderPipelineState!
+
     private var depth: MTLDepthStencilState!
     private var vbuf: MTLBuffer?
     private var gridBuf: MTLBuffer?
@@ -96,7 +103,7 @@ final class LissajousRenderer: NSObject, MTKViewDelegate {
         let vfn = lib.makeFunction(name: "lissa_vtx")!
         let ffn = lib.makeFunction(name: "lissa_frag")!
 
-        func makePSO(sampleCount: Int) -> MTLRenderPipelineState {
+        func makeLinePSO(sampleCount: Int) -> MTLRenderPipelineState {
             let d = MTLRenderPipelineDescriptor()
             d.vertexFunction = vfn
             d.fragmentFunction = ffn
@@ -111,25 +118,30 @@ final class LissajousRenderer: NSObject, MTKViewDelegate {
             d.colorAttachments[0].destinationAlphaBlendFactor = .oneMinusSourceAlpha
             return try! device.makeRenderPipelineState(descriptor: d)
         }
-        linePSO = makePSO(sampleCount: view.sampleCount)
-        gridPSO = linePSO // identical shader with different vertex data
+
+        linePSO_MSAA   = makeLinePSO(sampleCount: view.sampleCount)
+        linePSO_NoMSAA = makeLinePSO(sampleCount: 1)
+        gridPSO_MSAA   = linePSO_MSAA
+        gridPSO_NoMSAA = linePSO_NoMSAA
 
         // Quad pipelines (no MSAA)
         let qv = lib.makeFunction(name: "quad_vtx")!
         let qDecay = lib.makeFunction(name: "decay_frag")!
         let qBlit  = lib.makeFunction(name: "blit_frag")!
 
-        func makeQuadPSO(_ frag: MTLFunction) -> MTLRenderPipelineState {
+        func makeQuadPSO(_ frag: MTLFunction, sampleCount: Int) -> MTLRenderPipelineState {
             let d = MTLRenderPipelineDescriptor()
             d.vertexFunction = qv
             d.fragmentFunction = frag
             d.colorAttachments[0].pixelFormat = view.colorPixelFormat
-            d.sampleCount = 1
+            d.sampleCount = sampleCount
             d.colorAttachments[0].isBlendingEnabled = false
             return try! device.makeRenderPipelineState(descriptor: d)
         }
-        quadDecayPSO = makeQuadPSO(qDecay)
-        quadBlitPSO  = makeQuadPSO(qBlit)
+
+        quadDecayPSO_NoMSAA = makeQuadPSO(qDecay, sampleCount: 1)
+        quadBlitPSO_MSAA    = makeQuadPSO(qBlit,  sampleCount: view.sampleCount)
+
     }
 
     private func buildDepth() {
@@ -264,20 +276,25 @@ final class LissajousRenderer: NSObject, MTKViewDelegate {
         let h = max(1, Int(size.height))
         func makeTex() -> MTLTexture {
             let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: pixelFormat, width: w, height: h, mipmapped: false)
-            d.usage = [.renderTarget, .shaderRead, .shaderWrite]
+            d.usage = [.renderTarget, .shaderRead]
             d.storageMode = .private
             return device.makeTexture(descriptor: d)!
         }
+
         if accumTex == nil || accumTex!.width != w || accumTex!.height != h {
             accumTex = makeTex()
             scratchTex = makeTex()
-            // clear once
-            clearTexture(accumTex!)
+            needsClearPersistence = true
         }
+
     }
-    private func clearTexture(_ tex: MTLTexture) {
-        // One-time clear to transparent via a throwaway pass
-        // (Handled implicitly first decay if you prefer.)
+    private func clearTexture(_ tex: MTLTexture, in cmd: MTLCommandBuffer) {
+        let rpd = MTLRenderPassDescriptor()
+        rpd.colorAttachments[0].texture = tex
+        rpd.colorAttachments[0].loadAction = .clear
+        rpd.colorAttachments[0].storeAction = .store
+        rpd.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 0)
+        cmd.makeRenderCommandEncoder(descriptor: rpd)?.endEncoding()
     }
 
     // MARK: - MTKViewDelegate
@@ -299,6 +316,11 @@ final class LissajousRenderer: NSObject, MTKViewDelegate {
         // -------- OFFSCREEN (single-sample) --------
         if config.persistenceEnabled {
             ensurePersistenceTargets(for: view.drawableSize, pixelFormat: view.colorPixelFormat)
+            if needsClearPersistence, let a = accumTex, let s = scratchTex {
+                clearTexture(a, in: cmd)
+                clearTexture(s, in: cmd)
+                needsClearPersistence = false
+            }
 
             // (1) decay: accumTex -> scratchTex
             if let prev = accumTex, let out = scratchTex {
@@ -308,7 +330,7 @@ final class LissajousRenderer: NSObject, MTKViewDelegate {
                 rpd.colorAttachments[0].storeAction = .store
 
                 let enc = cmd.makeRenderCommandEncoder(descriptor: rpd)!
-         //       enc.setRenderPipelineState(quadDecayPSO_NoMSAA)       // <— NO MSAA
+                enc.setRenderPipelineState(quadDecayPSO_NoMSAA)       // <— NO MSAA
                 let decay = powf(0.5, Float(dt) / max(0.001, config.halfLifeSeconds))
                 enc.setFragmentTexture(prev, index: 0)
                 enc.setFragmentBytes([decay], length: MemoryLayout<Float>.stride, index: 0)
@@ -327,7 +349,7 @@ final class LissajousRenderer: NSObject, MTKViewDelegate {
 
                 let enc = cmd.makeRenderCommandEncoder(descriptor: rpd)!
                 enc.setDepthStencilState(depth)
-          //      enc.setRenderPipelineState(linePSO_NoMSAA)            // <— NO MSAA
+                enc.setRenderPipelineState(linePSO_NoMSAA)            // <— NO MSAA
                 writeUniforms()
                 enc.setVertexBuffer(uniformBuf, offset: 0, index: 1)
                 enc.setVertexBuffer(vb, offset: 0, index: 0)
@@ -352,7 +374,7 @@ final class LissajousRenderer: NSObject, MTKViewDelegate {
 
         if config.persistenceEnabled, let src = accumTex {
             // (A) blit accumulated texture to screen (MSAA)
-      //      enc.setRenderPipelineState(quadBlitPSO_MSAA)             // <— MSAA
+            enc.setRenderPipelineState(quadBlitPSO_MSAA)             // <— MSAA
             enc.setFragmentTexture(src, index: 0)
             enc.setFragmentSamplerState(linearSampler, index: 0)
             enc.setVertexBuffer(quadVBuf, offset: 0, index: 0)
@@ -360,7 +382,7 @@ final class LissajousRenderer: NSObject, MTKViewDelegate {
         } else if let vb = vbuf {
             // (A) direct draw to screen when persistence is off (MSAA)
             enc.setDepthStencilState(depth)
-     //       enc.setRenderPipelineState(linePSO_MSAA)                 // <— MSAA
+            enc.setRenderPipelineState(linePSO_MSAA)                 // <— MSAA
             writeUniforms()
             enc.setVertexBuffer(uniformBuf, offset: 0, index: 1)
             enc.setVertexBuffer(vb, offset: 0, index: 0)
@@ -371,7 +393,7 @@ final class LissajousRenderer: NSObject, MTKViewDelegate {
 
         // (B) grid/axes on top (MSAA)
         if let gb = gridBuf {
-     //       enc.setRenderPipelineState(gridPSO_MSAA)                 // <— MSAA
+            enc.setRenderPipelineState(gridPSO_MSAA)                 // <— MSAA
             enc.setVertexBuffer(uniformBuf, offset: 0, index: 1)
             enc.setVertexBuffer(gb, offset: 0, index: 0)
             let gcount = gb.length / MemoryLayout<VSIn>.stride
