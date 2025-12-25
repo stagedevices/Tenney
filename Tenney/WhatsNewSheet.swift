@@ -36,7 +36,7 @@ enum WhatsNewContent {
     // “Big three” are rendered as custom cards below. Keep the rest here.
     static let v0_2Items: [WhatsNewItem] = [
         .init(
-            symbol: "hexagon.grid",
+            symbol: "square.grid.3x3.fill",
             title: "More Nodes & Pads",
             summary: "Scale up to 13–31 nodes with larger pads. Faster layout, smoother guides."
         ),
@@ -56,7 +56,7 @@ enum WhatsNewContent {
             summary: "Glass cards, live previews, clearer controls, and theme polish."
         ),
         .init(
-            symbol: "shield.leadinghalf.filled",
+            symbol: "checkmark.shield.fill",
             title: "Stability & Polish",
             summary: "Crash fixes, quicker launches, and snappier interactions."
         )
@@ -114,12 +114,24 @@ struct WhatsNewSheet: View {
                 // Red→Orange animated gradient blobs (iOS 26)
                 if #available(iOS 26.0, *) {
                     HeroGradient()
-                        .frame(height: 140)
+                    .frame(height: 280)
                         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                         .overlay(
                             RoundedRectangle(cornerRadius: 18, style: .continuous)
                                 .stroke(Color.white.opacity(0.12), lineWidth: 1)
                         )
+                        .mask(
+                            LinearGradient(
+                                stops: [
+                                    .init(color: .white,            location: 0.00),
+                                    .init(color: .white,            location: 0.65),
+                                    .init(color: .white.opacity(0.6), location: 0.85),
+                                    .init(color: .clear,            location: 1.00),
+                                ],
+                                startPoint: .top, endPoint: .bottom
+                            )
+                        )
+                        .padding(.bottom, -48)
                         .accessibilityHidden(true)
                 }
 
@@ -200,6 +212,7 @@ struct WhatsNewSheet: View {
                 HStack(alignment: .top, spacing: 12) {
                     Image(systemName: item.symbol)
                         .imageScale(.large)
+                        .foregroundStyle(.primary)
                         .frame(width: 28, height: 28)
                         .padding(10)
                         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -279,6 +292,7 @@ struct WhatsNewSheet: View {
                 HStack(spacing: 8) {
                     Image(systemName: symbol)
                         .imageScale(.large)
+                        .foregroundStyle(.primary)
                         .symbolEffect(.pulse, options: .repeating, value: true)
                     Text(title).font(.headline)
                 }
@@ -331,42 +345,64 @@ private struct HeroGradient: View {
     var body: some View {
         TimelineView(.animation) { _ in
             Canvas { ctx, size in
-                // Red → Orange palette
-                let colors = [UIColor.systemRed, UIColor.systemOrange].map { Color(uiColor: $0) }
-                let g = Gradient(colors: [
-                    colors[0],
-                    colors[0].opacity(0.8),
-                    colors[1].opacity(0.9),
-                    colors[1]
-                ])
+// Meshy, moving blobs (red → orange), plus grain
+                ctx.blendMode = .plusLighter
+                let red   = Color(uiColor: .systemRed)
+                let org   = Color(uiColor: .systemOrange)
+                let ylw   = Color(uiColor: .systemYellow)
+                let w = size.width, h = size.height * 1.35   // overfill into body
+                let rBase = min(w, h) * 0.52
 
-                let center = CGPoint(x: size.width / 2, y: size.height / 2)
-                let r1 = min(size.width, size.height) * (0.45 + 0.05 * sin(t))
-                let r2 = r1 * 0.66
+                // Control centers drift at different phases/speeds
+                let c1 = CGPoint(x: w*0.25 + cos(t*0.60+0.00)*w*0.08, y: h*0.35 + sin(t*0.70+0.30)*h*0.06)
+                let c2 = CGPoint(x: w*0.75 + cos(t*0.55+1.70)*w*0.09, y: h*0.32 + sin(t*0.60+0.90)*h*0.07)
+                let c3 = CGPoint(x: w*0.52 + cos(t*0.45+2.40)*w*0.07, y: h*0.78 + sin(t*1.00+1.20)*h*0.05)
+                let c4 = CGPoint(x: w*0.10 + cos(t*0.80+0.50)*w*0.10, y: h*0.62 + sin(t*0.85+0.20)*h*0.05)
+                let c5 = CGPoint(x: w*0.92 + cos(t*0.75+2.10)*w*0.06, y: h*0.58 + sin(t*0.95+1.50)*h*0.05)
+                let r1 = rBase * (0.95 + 0.06 * sin(t*0.80))
+                let r2 = rBase * (0.85 + 0.06 * sin(t*0.90+1.10))
+                let r3 = rBase * (0.72 + 0.08 * sin(t*1.10+2.00))
+                let r4 = rBase * (0.60 + 0.08 * sin(t*0.70+0.60))
+                let r5 = rBase * (0.55 + 0.07 * sin(t*0.65+1.30))
 
-                // ✅ Use GraphicsContext.Shading.radialGradient(_:center:startRadius:endRadius:)
-                let bubble = Path(ellipseIn: CGRect(x: center.x - r1, y: center.y - r1,
-                                                    width: r1 * 2, height: r1 * 2))
-                ctx.fill(bubble, with: .radialGradient(g, center: center, startRadius: r2, endRadius: r1))
+                // Five overlapping radial shadings to mimic a mesh
+                let g1 = Gradient(colors: [red.opacity(0.80), red.opacity(0.35), .clear])
+                let g2 = Gradient(colors: [org.opacity(0.75), org.opacity(0.35), .clear])
+                let g3 = Gradient(colors: [red.opacity(0.55), org.opacity(0.30), .clear])
+                let g4 = Gradient(colors: [ylw.opacity(0.45), org.opacity(0.28), .clear])
+                let g5 = Gradient(colors: [red.opacity(0.45), ylw.opacity(0.25), .clear])
 
-                // tiny spark specks
-                let specks = 18
-                for i in 0..<specks {
-                    let a = (CGFloat(i) / CGFloat(specks)) * .pi * 2 + t * 0.6
-                    let p = CGPoint(x: center.x + cos(a) * (r1 * 0.7),
-                                    y: center.y + sin(a) * (r1 * 0.35))
-                    let dot = Path(ellipseIn: CGRect(x: p.x - 2, y: p.y - 2, width: 4, height: 4))
-                    ctx.fill(dot, with: .color(.white.opacity(0.25)))
+                ctx.fill(Path(ellipseIn: .init(x: c1.x - r1, y: c1.y - r1, width: r1*2, height: r1*2)),
+                         with: .radialGradient(g1, center: c1, startRadius: 0, endRadius: r1))
+                ctx.fill(Path(ellipseIn: .init(x: c2.x - r2, y: c2.y - r2, width: r2*2, height: r2*2)),
+                         with: .radialGradient(g2, center: c2, startRadius: 0, endRadius: r2))
+                ctx.fill(Path(ellipseIn: .init(x: c3.x - r3, y: c3.y - r3, width: r3*2, height: r3*2)),
+                         with: .radialGradient(g3, center: c3, startRadius: 0, endRadius: r3))
+                ctx.fill(Path(ellipseIn: .init(x: c4.x - r4, y: c4.y - r4, width: r4*2, height: r4*2)),
+                         with: .radialGradient(g4, center: c4, startRadius: 0, endRadius: r4))
+                ctx.fill(Path(ellipseIn: .init(x: c5.x - r5, y: c5.y - r5, width: r5*2, height: r5*2)),
+                         with: .radialGradient(g5, center: c5, startRadius: 0, endRadius: r5))
+
+                // Pointillist grain (denser, larger)
+                let dots = 1200
+                for i in 0..<dots {
+                    let fx = sin((CGFloat(i)*12.9898) + t*0.35)
+                    let fy = sin((CGFloat(i)*78.233)  + t*0.33 + 1.1)
+                    let px = (fx*0.5+0.5) * w
+                    let py = (fy*0.5+0.5) * h
+                    let s  = 1.0 + 1.2 * abs(sin(CGFloat(i)*3.1 + t))
+                    let a  = 0.06 + 0.06 * abs(cos(CGFloat(i)*1.7 + t*0.6))
+                    let rect = CGRect(x: px, y: py, width: s, height: s).insetBy(dx: -0.5, dy: -0.5)
+                    ctx.fill(Path(ellipseIn: rect), with: .color(.white.opacity(a)))
                 }
             }
         }
         .onAppear {
-            withAnimation(.linear(duration: 6).repeatForever(autoreverses: true)) {
-                t = 2 * .pi
-            }
+            withAnimation(.linear(duration: 12).repeatForever(autoreverses: false)) { t = 2 * .pi }
         }
     }
 }
+
 
 // MARK: - Tenney mini preview (animated chips)
 private struct TenneyPreview: View {
@@ -411,36 +447,44 @@ private struct TenneyPreview: View {
 
 // MARK: - Hold-to-select preview (animated pills + long-press ripple)
 private struct HoldSelectPreview: View {
-    @State private var pressed = false
-    private let labels = ["13","17","19","23","29","31"]
+    // Show 7–31 (real chips); we’ll render as many as fit
+private let labels = Array(7...31).map { "\($0)" }
 
     var body: some View {
-        ZStack {
-            HStack(spacing: 6) {
-                ForEach(labels, id:\.self) { t in
-                    Text(t)
-                        .font(.footnote.weight(.semibold))
-                        .padding(.horizontal, 10).padding(.vertical, 6)
-                        .background(pressed ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.10), in: Capsule())
+        GeometryReader { geo in
+            let maxW = geo.size.width
+            let maxH = geo.size.height
+            // Realistic pill sizing to match .footnote.semibold
+            let uiFont = UIFont.systemFont(ofSize: 12, weight: .semibold) // GlassChip uses .caption.semibold
+            let hPad: CGFloat = 10, vPad: CGFloat = 6, spacing: CGFloat = 6
+            let pillH = ceil(uiFont.lineHeight) + vPad * 2
+
+// Compute how many pills fit (flow layout; may early-exit)
+            let placed: [(text: String, frame: CGRect)] = {
+                var arr: [(text: String, frame: CGRect)] = []
+                var x: CGFloat = 0, y: CGFloat = 0
+                for t in labels {
+                    let textW = ceil((t as NSString).size(withAttributes: [.font: uiFont]).width)
+                    let pillW = textW + hPad * 2
+                    if x + pillW > maxW { x = 0; y += (pillH + spacing) }
+                    if y + pillH > maxH { break }
+                    arr.append((t, CGRect(x: x, y: y, width: pillW, height: pillH)))
+                    x += pillW + spacing
+                }
+                return arr
+            }()
+
+            ZStack(alignment: .topLeading) {
+                ForEach(placed.indices, id: \.self) { i in
+                    let item = placed[i]
+                    GlassChip(title: item.text, active: false, color: .accentColor, action: {})
+                                            .frame(width: item.frame.width, height: item.frame.height, alignment: .center)
+                                            .position(x: item.frame.midX, y: item.frame.midY)
+                                            .allowsHitTesting(false)
                 }
             }
-            .padding(8)
-
-            if pressed {
-                Circle()
-                    .strokeBorder(Color.accentColor.opacity(0.6), lineWidth: 2)
-                    .scaleEffect(pressed ? 1.1 : 0.9)
-                    .opacity(pressed ? 0.0 : 1.0)
-                    .animation(.easeOut(duration: 0.8), value: pressed)
-            }
         }
-        .onAppear {
-            // auto “demo” pulse
-            withAnimation(.easeInOut(duration: 1.0)) { pressed = true }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
-                withAnimation(.easeOut(duration: 0.4)) { pressed = false }
-            }
-        }
+        .padding(6)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }

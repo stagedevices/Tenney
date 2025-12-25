@@ -94,8 +94,13 @@ struct LatticeLayout: Sendable {
                 let e3s = e3 + (shift[3] ?? 0)
                 let e5s = e5 + (shift[5] ?? 0)
 
-                let num = (e3s >= 0 ? ipow(3, e3s) : 1) * (e5s >= 0 ? ipow(5, e5s) : 1)
-                let den = (e3s <  0 ? ipow(3, -e3s) : 1) * (e5s <  0 ? ipow(5, -e5s) : 1)
+                let n3  = (e3s >= 0 ? ipow(3,  e3s) : 1)
+                                let n5  = (e5s >= 0 ? ipow(5,  e5s) : 1)
+                                let d3  = (e3s <  0 ? ipow(3, -e3s) : 1)
+                                let d5  = (e5s <  0 ? ipow(5, -e5s) : 1)
+                
+                                let num = mulCap(n3, n5)
+                                let den = mulCap(d3, d5)
                 let th = max(1, max(num, den))
 
                 let pos = position(for: c)
@@ -113,18 +118,31 @@ struct LatticeLayout: Sendable {
 
     // MARK: - Helpers
 
-    private func ipow(_ base: Int, _ exp: Int) -> Int {
-        guard exp > 0 else { return 1 }
-        var result = 1
-        var b = base
-        var e = exp
-        while e > 0 {
-            if (e & 1) == 1 { result &*= b }
-            e >>= 1
-            if e > 0 { b &*= b }
+    private func mulCap(_ a: Int, _ b: Int, cap: Int = Int.max) -> Int {
+            guard a != 0, b != 0 else { return 0 }
+            let (p, ov) = a.multipliedReportingOverflow(by: b)
+            if ov || p < 0 || p > cap { return cap }
+            return p
         }
-        return max(1, result)
-    }
+    
+        private func ipow(_ base: Int, _ exp: Int, cap: Int = Int.max) -> Int {
+            guard exp > 0 else { return 1 }
+            var result = 1
+            var b = base
+            var e = exp
+            while e > 0 {
+                if (e & 1) == 1 {
+                    result = mulCap(result, b, cap: cap)
+                    if result == cap { return cap }
+                }
+                e >>= 1
+                if e > 0 {
+                    b = mulCap(b, b, cap: cap)
+                    if b == cap { /* keep going; result may still be < cap */ }
+                }
+            }
+            return max(1, result)
+        }
 
     /// Deterministic "spread" for overlay axes by prime.
     private func primeAngle(_ p: Int) -> CGFloat {

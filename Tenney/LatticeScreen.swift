@@ -39,12 +39,12 @@ struct LatticeScreen: View {
                 if phase != .active {
                     // Kill sustained tones when the app backgrounds or goes inactive.
                     store.stopSelectionAudio(hard: true)
-                    LatticeTone.shared.stopAll()
+                   store.stopAllLatticeVoices(hard: true)
                 }
             }
             .onDisappear {
                 store.stopSelectionAudio(hard: true)
-                LatticeTone.shared.stopAll()
+               store.stopAllLatticeVoices(hard: true)
             }
             .navigationTitle("Lattice")
             .navigationBarTitleDisplayMode(.inline)

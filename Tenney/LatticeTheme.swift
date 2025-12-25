@@ -51,8 +51,8 @@ extension LatticeTheme {
     /// Theme-aware tint for any prime.
     func primeTint(_ p: Int) -> Color {
         switch p {
-        case 3: return axisE3
-        case 5: return axisE5
+        case 3: return e3
+        case 5: return e5
         default: return overlayPrime[p] ?? .gray
         }
     }

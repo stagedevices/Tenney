@@ -142,10 +142,40 @@ func deltaLabel(_ p: Int, _ e: Int) -> String {
 extension SettingsKeys {
     static let audioInputUID = "audio.input.uid"
     static let audioPreferSpeaker = "audio.prefer.speaker"
+    static let toneConfigJSON = "tone.config.json"
+    static let whatsNewLastSeenBuild = "whatsnew.lastSeen.build"
+    static let whatsNewLastSeenMajorMinor = "whatsnew.lastSeen.majorMinor"
 }
 
 
 struct StudioConsoleView: View {
+    
+    
+    @AppStorage(SettingsKeys.whatsNewLastSeenBuild)
+    private var whatsNewLastSeenBuild: String = ""
+
+    @AppStorage(SettingsKeys.whatsNewLastSeenMajorMinor)
+    private var whatsNewLastSeenMajorMinor: String = ""
+
+    @State private var showWhatsNewSheet: Bool = false
+    
+    private var whatsNewIsUnread: Bool {
+    // “new” if either changes
+    (whatsNewLastSeenBuild != AppInfo.build) || (whatsNewLastSeenMajorMinor != AppInfo.majorMinor)
+    }
+
+    private func markWhatsNewSeen() {
+        whatsNewLastSeenBuild = AppInfo.build
+        whatsNewLastSeenMajorMinor = AppInfo.majorMinor
+    }
+    
+    @AppStorage(SettingsKeys.latticeDefaultZoomPreset)
+    private var latticeDefaultZoomPresetRaw: String = LatticeZoomPreset.close.rawValue
+
+    @AppStorage(SettingsKeys.latticeRememberLastView)
+    private var latticeRememberLastView: Bool = true
+
+    
     @AppStorage(SettingsKeys.defaultView) private var defaultView: String = "tuner" // "lattice" | "tuner"
 
     @EnvironmentObject private var model: AppModel   // ⬅️ bring AppModel into scope
@@ -189,8 +219,7 @@ struct StudioConsoleView: View {
             }
         }
     // Sound
-    @AppStorage(SettingsKeys.attackMs)   private var attackMs: Double = 10
-    @AppStorage(SettingsKeys.releaseSec) private var releaseSec: Double = 0.5
+    
     @AppStorage(SettingsKeys.safeAmp)    private var safeAmp: Double = 0.18
     @State private var showSetupWizard: Bool = false
 
@@ -220,6 +249,17 @@ struct StudioConsoleView: View {
         .preferredColorScheme(settingsScheme)
         .toolbar { doneToolbar }
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showWhatsNewSheet, onDismiss: {
+        markWhatsNewSeen()
+        }) {
+        WhatsNewSheet(
+        items: WhatsNewContent.v0_2Items,
+        primaryAction: {
+        showWhatsNewSheet = false
+        markWhatsNewSeen()
+        }
+        )
+        }
         // Move all listeners off the main expression tree
         .background(
             SettingsChangeSinks(
@@ -233,8 +273,6 @@ struct StudioConsoleView: View {
                 overlay7: $overlay7,
                 overlay11: $overlay11,
                 foldAudible: $foldAudible,
-                attackMs: $attackMs,
-                releaseSec: $releaseSec,
                 safeAmp: $safeAmp,
                 latticeThemeID: $latticeThemeID,
                 themeStyleRaw: $themeStyleRaw,
@@ -246,10 +284,50 @@ struct StudioConsoleView: View {
                 effectiveIsDark: effectiveIsDark,
                 localInkVisible: $localInkVisible,
                 localInkIsDark: $localInkIsDark,
-                broadcastAll: broadcastAll
+                broadcastAll: broadcastAll,
+                latticeDefaultZoomPresetRaw: $latticeDefaultZoomPresetRaw,
+                latticeRememberLastView: $latticeRememberLastView
             )
         )
     }
+    
+    @ViewBuilder private var whatsNewSection: some View {
+        glassCard("What’s New") {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 8) {
+                        Text("Tenney \(AppInfo.majorMinor)")
+                            .font(.subheadline.weight(.semibold))
+
+                        if whatsNewIsUnread {
+                            Text("NEW")
+                                .font(.caption2.weight(.black))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(.thinMaterial, in: Capsule())
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    Text("Release highlights, new features, and fixes.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer()
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    showWhatsNewSheet = true
+                } label: {
+                    Label("View", systemImage: "sparkles")
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+    }
+
 
     // MARK: - Split content
     private var contentStack: some View {
@@ -279,6 +357,7 @@ struct StudioConsoleView: View {
 
     private var gridView: some View {
         LazyVGrid(columns: columns, spacing: 14) {
+            whatsNewSection
             latticeUISection
             themeSection
             tenneyDistanceSection
@@ -358,8 +437,6 @@ struct StudioConsoleView: View {
         @Binding var overlay7: Bool
         @Binding var overlay11: Bool
         @Binding var foldAudible: Bool
-        @Binding var attackMs: Double
-        @Binding var releaseSec: Double
         @Binding var safeAmp: Double
         @Binding var latticeThemeID: String
         @Binding var themeStyleRaw: String
@@ -368,11 +445,13 @@ struct StudioConsoleView: View {
         @Binding var stageHideStatus: Bool
         @Binding var stageKeepAwake: Bool
         @Binding var stageMinimalUI: Bool
-
         let effectiveIsDark: Bool
         @Binding var localInkVisible: Bool
         @Binding var localInkIsDark: Bool
         let broadcastAll: () -> Void
+        @Binding var latticeDefaultZoomPresetRaw: String
+        @Binding var latticeRememberLastView: Bool
+
 
         @State private var lastEffectiveIsDark: Bool = false
 
@@ -392,8 +471,6 @@ struct StudioConsoleView: View {
                 .onChange(of: overlay7)      { postSetting(SettingsKeys.overlay7, $0) }
                 .onChange(of: overlay11)     { postSetting(SettingsKeys.overlay11, $0) }
                 .onChange(of: foldAudible)   { postSetting(SettingsKeys.foldAudible, $0) }
-                .onChange(of: attackMs)      { postSetting(SettingsKeys.attackMs, $0) }
-                .onChange(of: releaseSec)    { postSetting(SettingsKeys.releaseSec, $0) }
                 .onChange(of: safeAmp)       { postSetting(SettingsKeys.safeAmp, $0) }
                 .onChange(of: latticeThemeID){ postSetting(SettingsKeys.latticeThemeID, $0) }
                 .onChange(of: themeStyleRaw) { postSetting(SettingsKeys.latticeThemeStyle, $0) }
@@ -407,15 +484,17 @@ struct StudioConsoleView: View {
 
                 .onChange(of: stageKeepAwake){ postSetting(SettingsKeys.stageKeepAwake, $0) }
                 .onChange(of: stageMinimalUI){ postSetting(SettingsKeys.stageMinimalUI, $0) }
-                .onChange(of: effectiveIsDark) { newVal in
-                    guard newVal != lastEffectiveIsDark else { return }
-                    lastEffectiveIsDark = newVal
-                    localInkIsDark = newVal
-                    withAnimation(.easeInOut(duration: 0.25)) { localInkVisible = true }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) {
-                        withAnimation(.easeOut(duration: 0.15)) { localInkVisible = false }
-                    }
-                }
+                .onChange(of: latticeDefaultZoomPresetRaw) { postSetting(SettingsKeys.latticeDefaultZoomPreset, $0) }
+                                .onChange(of: latticeRememberLastView)     { postSetting(SettingsKeys.latticeRememberLastView, $0) }
+                                .onChange(of: effectiveIsDark) { newVal in
+                                    guard newVal != lastEffectiveIsDark else { return }
+                                    lastEffectiveIsDark = newVal
+                                    localInkIsDark = newVal
+                                    withAnimation(.easeInOut(duration: 0.25)) { localInkVisible = true }
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) {
+                                        withAnimation(.easeOut(duration: 0.15)) { localInkVisible = false }
+                                    }
+                                }
         }
     }
 
@@ -699,6 +778,20 @@ struct StudioConsoleView: View {
                     )
                 )
 
+                ZoomPresetStepperControl(
+                    preset: Binding(
+                        get: { LatticeZoomPreset(rawValue: latticeDefaultZoomPresetRaw) ?? .standard },
+                        set: { latticeDefaultZoomPresetRaw = $0.rawValue }
+                    )
+                )
+
+                Toggle("Remember last view", isOn: $latticeRememberLastView)
+
+                Text("Default zoom affects Reset View and the initial view when not restoring last view.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+
+                
                 // Live controls (update preview instantly)
                 HStack(spacing: 12) {
                     Text("Label density")
@@ -1087,8 +1180,6 @@ struct StudioConsoleView: View {
         postSetting(SettingsKeys.overlay7, overlay7)
         postSetting(SettingsKeys.overlay11, overlay11)
         postSetting(SettingsKeys.foldAudible, foldAudible)
-        postSetting(SettingsKeys.attackMs, attackMs)
-        postSetting(SettingsKeys.releaseSec, releaseSec)
         postSetting(SettingsKeys.safeAmp, safeAmp)
         postSetting(SettingsKeys.staffA4Hz, a4Staff)
         postSetting(SettingsKeys.stageDimLevel, stageDimLevel)
@@ -1096,6 +1187,8 @@ struct StudioConsoleView: View {
         postSetting(SettingsKeys.stageHideStatus, stageHideStatus)
         postSetting(SettingsKeys.stageKeepAwake, stageKeepAwake)
         postSetting(SettingsKeys.stageMinimalUI, stageMinimalUI)
+        postSetting(SettingsKeys.latticeDefaultZoomPreset, latticeDefaultZoomPresetRaw)
+        postSetting(SettingsKeys.latticeRememberLastView, latticeRememberLastView)
 
     }
 
@@ -1234,7 +1327,7 @@ private struct NodeSizeStepperControl: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Button { withAnimation(.snappy) { step(-1) } } label: {
+            Button { withAnimation(.snappy) { step(+1) } } label: {
                 Image(systemName: "chevron.left")
                     .frame(width: 36, height: 36)
                     .background(.ultraThinMaterial, in: Circle())
@@ -1246,11 +1339,46 @@ private struct NodeSizeStepperControl: View {
             }
             .frame(maxWidth: .infinity)
 
-            Button { withAnimation(.snappy) { step(+1) } } label: {
+            Button { withAnimation(.snappy) { step(-1) } } label: {
                 Image(systemName: "chevron.right")
                     .frame(width: 36, height: 36)
                     .background(.ultraThinMaterial, in: Circle())
             }.buttonStyle(.plain)
+        }
+    }
+}
+
+private struct ZoomPresetStepperControl: View {
+    @Binding var preset: LatticeZoomPreset
+
+    private func step(_ dir: Int) {
+        let next = LatticeZoomPreset.step(from: preset, dir: dir)
+        guard next != preset else { return }
+        preset = next
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Button { withAnimation(.snappy) { step(-1) } } label: {
+                Image(systemName: "chevron.left")
+                    .frame(width: 36, height: 36)
+                    .background(.ultraThinMaterial, in: Circle())
+            }
+            .buttonStyle(.plain)
+
+            VStack(spacing: 2) {
+                Text(preset.title).font(.headline)
+                Text("Default zoom").font(.caption).foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity)
+
+            Button { withAnimation(.snappy) { step(+1) } } label: {
+                Image(systemName: "chevron.right")
+                    .frame(width: 36, height: 36)
+                    .background(.ultraThinMaterial, in: Circle())
+            }
+            .buttonStyle(.plain)
         }
     }
 }

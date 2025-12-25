@@ -13,6 +13,11 @@ enum SettingsKeys {
 
     static let tenneyDistanceMode = "tenney.distance.mode"
     
+    // Lattice View State
+    static let latticeDefaultZoomPreset = "tenney.lattice.defaultZoomPreset" // String ("close"|"standard"|"wide"|"overview")
+    static let latticeRememberLastView  = "tenney.lattice.rememberLastView"  // Bool (default true)
+
+    
     // Tuning
     static let a4Choice      = "tenney.tuner.a4Choice"     // "440" | "442" | "custom"
     static let a4CustomHz    = "tenney.tuner.a4CustomHz"   // Double

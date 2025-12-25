@@ -65,8 +65,8 @@ final class AppModel: ObservableObject {
     // Scene activity + desired mic state
         @Published private(set) var sceneIsActive: Bool = true
         private var desiredMicActive: Bool = true
-    private let toneOutput = ToneOutputEngine()
-        // New DSP stack
+    private let toneOutput = ToneOutputEngine.shared
+    // New DSP stack
         private var fft: PitchFFT?
         private var phaseRefiner: PhaseRefiner?
         private var pll: DigitalPLL?

@@ -7,6 +7,7 @@
 import Foundation
 import AVFoundation
 import Accelerate
+import os
 
 
 // MARK: - ENTRY POINT: One engine to run them all (MONO out; stereo only for scope)
@@ -14,7 +15,9 @@ final class ToneOutputEngine {
 
     // MARK: Singleton
     static let shared = ToneOutputEngine()
-
+    private init() {
+            loadPersistedConfigIfPresent()
+        }
     // MARK: Public config (global, affects all voices)
     enum GlobalWave: String, CaseIterable, Codable { case foldedSine, triangle, saw }
     struct Config: Codable, Equatable {
@@ -26,13 +29,51 @@ final class ToneOutputEngine {
         var outputGain_dB: Float = -6.0                   // final gain before soft limiter
         var limiterOn: Bool = true                        // soft clip safety
     }
-    // You can bind this from Settings via AppStorage externally.
     // Do NOT mutate from render thread.
-    var config = Config()
+        // Backed by a tiny lock to avoid tearing while the render thread snapshots config.
+        var config: Config {
+            get {
+                os_unfair_lock_lock(&configLock); defer { os_unfair_lock_unlock(&configLock) }
+                return _config
+            }
+            set {
+                os_unfair_lock_lock(&configLock)
+                _config = newValue
+                os_unfair_lock_unlock(&configLock)
+                schedulePersistConfig()
+            }
+        }
+    
+        private var _config = Config()
+        private var configLock = os_unfair_lock_s()
+        private var persistWork: DispatchWorkItem?
 
     // MARK: Public API (robust)
     // Voice handle typealias for clarity
     typealias VoiceID = Int
+
+        private func loadPersistedConfigIfPresent() {
+            guard let data = UserDefaults.standard.data(forKey: SettingsKeys.toneConfigJSON),
+                  let decoded = try? JSONDecoder().decode(Config.self, from: data)
+            else { return }
+    
+            os_unfair_lock_lock(&configLock)
+            _config = decoded
+            os_unfair_lock_unlock(&configLock)
+        }
+    
+        private func schedulePersistConfig() {
+            // Debounce to avoid hammering UserDefaults while sliders move.
+            persistWork?.cancel()
+            let work = DispatchWorkItem { [weak self] in
+                guard let self else { return }
+                let snapshot = self.config
+                guard let data = try? JSONEncoder().encode(snapshot) else { return }
+                UserDefaults.standard.set(data, forKey: SettingsKeys.toneConfigJSON)
+            }
+            persistWork = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.20, execute: work)
+        }
 
     /// Start a sustained tone; returns VoiceID.
     @discardableResult
