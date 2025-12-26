@@ -63,23 +63,40 @@ enum LatticeGridWeight: String, CaseIterable, Identifiable {
         }
     }
 
-    // Keep renderer changes low-risk: map weights -> legacy-ish “strength” numbers (0...1).
-    // Tune later if needed; preview validates.
-    var legacyStrength: CGFloat {
+    // Renderer-facing mapping: stored strength is 0...1, but visual output can be much stronger.
+    var index: Int {
         switch self {
-        case .thin:   return 0.16
-        case .light:  return 0.24
-        case .medium: return 0.32
-        case .bold:   return 0.40
-        case .heavy:  return 0.48
+        case .thin:   return 0
+        case .light:  return 1
+        case .medium: return 2
+        case .bold:   return 3
+        case .heavy:  return 4
         }
     }
 
-    static func nearestForLegacyStrength(_ s: Double) -> LatticeGridWeight {
+    static func fromStrength01(_ s: Double) -> LatticeGridWeight {
         let v = max(0.0, min(1.0, s))
-        let all = LatticeGridWeight.allCases
-        return all.min { abs(Double($0.legacyStrength) - v) < abs(Double($1.legacyStrength) - v) } ?? .medium
+        let i = Int((v * 4.0).rounded()) // 0...4
+        return LatticeGridWeight.allCases[max(0, min(4, i))]
     }
+
+    // These are intentionally aggressive so 1.0 actually reads as "Heavy".
+    var strokeAlpha: CGFloat {
+        [0.14, 0.24, 0.40, 0.72, 0.88][index]
+    }
+
+    var strokeWidth: CGFloat {
+        [0.65, 1.10, 1.35, 1.60, 2.10][index]
+    }
+
+    var majorStrokeAlpha: CGFloat {
+        min(0.12, strokeAlpha * 0.8)
+    }
+
+    var majorStrokeWidth: CGFloat {
+        strokeWidth * 1.1
+    }
+
 }
 
 // 5 fixed options for “Major every …” (chips)

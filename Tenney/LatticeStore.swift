@@ -258,13 +258,107 @@ final class LatticeStore: ObservableObject {
             }
     }
     
+    // MARK: - Selection Animations
 
+    enum SelectionKey: Hashable {
+        case plane(LatticeCoord)
+        case ghost(GhostMonzo)
+    }
+
+    struct SelectionAnim: Hashable {
+        let startTime: Double
+        let targetOn: Bool
+        let duration: Double
+        let seed: UInt64        // stable per-key jitter phase
+    }
+
+    @Published private var selectionAnims: [SelectionKey: SelectionAnim] = [:]
+
+    
+    func selectionPhase(for key: SelectionKey, now: Double) -> (targetOn: Bool, t: CGFloat, duration: Double, seed: UInt64)? {
+        guard let a = selectionAnims[key] else { return nil }
+        let dt = max(0, now - a.startTime)
+        let t = min(1.0, dt / max(0.0001, a.duration))
+        return (a.targetOn, CGFloat(t), a.duration, a.seed)
+    }
+
+    /// Keys that should be rendered (selected + animating-off).
+    func selectionKeysToDraw() -> [SelectionKey] {
+        var out: [SelectionKey] = []
+        out.reserveCapacity(selected.count + selectedGhosts.count + selectionAnims.count)
+
+        for c in selected { out.append(.plane(c)) }
+        for g in selectedGhosts { out.append(.ghost(g)) }
+
+        // Include animating keys even if they are no longer selected
+        for k in selectionAnims.keys where !out.contains(k) { out.append(k) }
+        return out
+    }
+
+    private func selectionDuration(targetOn: Bool) -> Double {
+        // Match the user-configured envelope times (visual ring draw-in/out)
+        targetOn ? configuredAttackSec() : configuredReleaseSec()
+    }
+    private func configuredAttackSec() -> Double {
+            // Prefer explicit UI setting if present; otherwise fall back to the old default.
+            let ud = UserDefaults.standard
+            if ud.object(forKey: SettingsKeys.attackMs) != nil {
+                return max(0.05, ud.double(forKey: SettingsKeys.attackMs))
+            }
+            return 0.22
+        }
+    
+        private func configuredReleaseSec() -> Double {
+            // Prefer explicit UI setting if present; otherwise fall back to engine config (already used elsewhere).
+            let ud = UserDefaults.standard
+            if ud.object(forKey: SettingsKeys.releaseSec) != nil {
+                return max(0.05, ud.double(forKey: SettingsKeys.releaseSec))
+            }
+            return max(0.05, ToneOutputEngine.shared.config.releaseMs / 1000.0)
+        }
+
+    private func selectionSeed(for key: SelectionKey) -> UInt64 {
+        // deterministic hash (stable per node)
+        var x: UInt64 = 0x9E3779B97F4A7C15
+        func mix(_ v: Int) {
+            x &+= UInt64(truncatingIfNeeded: v) &* 0xBF58476D1CE4E5B9
+            x ^= x >> 27
+            x &*= 0x94D049BB133111EB
+            x ^= x >> 31
+        }
+        switch key {
+        case .plane(let c):
+            mix(3); mix(c.e3); mix(c.e5)
+        case .ghost(let g):
+            mix(g.p); mix(g.e3); mix(g.e5); mix(g.eP)
+        }
+        return x
+    }
+
+    private func startSelectionAnim(_ key: SelectionKey, targetOn: Bool) {
+        let a = SelectionAnim(
+            startTime: CACurrentMediaTime(),
+            targetOn: targetOn,
+            duration: selectionDuration(targetOn: targetOn),
+            seed: selectionSeed(for: key)
+        )
+        selectionAnims[key] = a
+
+        let work = DispatchWorkItem { [weak self] in self?.selectionAnims[key] = nil }
+        DispatchQueue.main.asyncAfter(deadline: .now() + a.duration + 0.06, execute: work)
+    }
+
+    
     // MARK: - Selection (plane)
     func toggleSelection(_ c: LatticeCoord, pushUndo: Bool = true) {
+        let key: SelectionKey = .plane(c)
+
         if selected.contains(c) {
             selected.remove(c)
             pendingPlaneAudition[c]?.cancel()
             pendingPlaneAudition.removeValue(forKey: c)
+            startSelectionAnim(key, targetOn: false)
+               selected.remove(c)
             if let i = selectionOrder.firstIndex(of: c) { selectionOrder.remove(at: i) }
             if let vid = voiceForCoord[c] {
                 let rel = max(0.05, ToneOutputEngine.shared.config.releaseMs / 1000.0)
@@ -274,6 +368,7 @@ final class LatticeStore: ObservableObject {
         } else {
             selected.insert(c)
             selectionOrder.append(c)
+            startSelectionAnim(key, targetOn: true)
             if auditionEnabled {
                 pendingPlaneAudition[c]?.cancel()
 
@@ -363,8 +458,10 @@ final class LatticeStore: ObservableObject {
     /// Toggle selection for an overlay node identified by absolute monzo {3:e3,5:e5,p:eP}.
     func toggleOverlay(prime p: Int, e3: Int, e5: Int, eP: Int, pushUndo: Bool = true) {
         let g = GhostMonzo(e3: e3, e5: e5, p: p, eP: eP)
+        let key: SelectionKey = .ghost(g)
         if selectedGhosts.contains(g) {
-            selectedGhosts.remove(g)
+            startSelectionAnim(key, targetOn: false)
+                selectedGhosts.remove(g)
             pendingGhostAudition[g]?.cancel()
             pendingGhostAudition.removeValue(forKey: g)
             if let i = selectionOrderGhosts.firstIndex(of: g) { selectionOrderGhosts.remove(at: i) }
@@ -376,6 +473,8 @@ final class LatticeStore: ObservableObject {
         } else {
             selectedGhosts.insert(g)
             selectionOrderGhosts.append(g)
+            startSelectionAnim(key, targetOn: true)
+
             if auditionEnabled {
                 pendingGhostAudition[g]?.cancel()
 
@@ -424,6 +523,8 @@ final class LatticeStore: ObservableObject {
 
     /// Clear all selections and fade out any sustaining tones.
     func clearSelection() {
+        for c in selected { startSelectionAnim(.plane(c), targetOn: false) }
+            for g in selectedGhosts { startSelectionAnim(.ghost(g), targetOn: false) }
         selected.removeAll()
         selectionOrder.removeAll()
         selectedGhosts.removeAll()

@@ -101,6 +101,44 @@ struct LatticeView: View {
         return ThemeRegistry.theme(id, dark: effectiveIsDark)
     }
     
+    
+    private struct TenneyDistanceNode: Hashable {
+        let screen: CGPoint
+        let exps: [Int:Int]   // prime -> exponent (absolute, includes axisShift where appropriate)
+    }
+
+    private func tenneyDistanceNodes() -> [TenneyDistanceNode] {
+        var out: [TenneyDistanceNode] = []
+
+        // Plane selections (3×5 plane)
+        for c in store.selected {
+            let e3 = c.e3 + store.pivot.e3 + (store.axisShift[3] ?? 0)
+            let e5 = c.e5 + store.pivot.e5 + (store.axisShift[5] ?? 0)
+
+            let world = layout.position(for: LatticeCoord(e3: e3, e5: e5))
+            let screen = store.camera.worldToScreen(world)
+
+            out.append(.init(screen: screen, exps: [3: e3, 5: e5]))
+        }
+
+        // Ghost selections (7+ etc.) — `selectedGhosts` already stores absolute exps from hitTestCandidate
+        for g in store.selectedGhosts {
+            let exps: [Int:Int] = [3: g.e3, 5: g.e5, g.p: g.eP]
+            let world = layout.position(monzo: exps)
+            let screen = store.camera.worldToScreen(world)
+
+            out.append(.init(screen: screen, exps: exps))
+        }
+
+        // Stable ordering (selection sets are unordered)
+        out.sort { (lhs, rhs) in
+            if lhs.screen.x != rhs.screen.x { return lhs.screen.x < rhs.screen.x }
+            return lhs.screen.y < rhs.screen.y
+        }
+
+        return out
+    }
+
     // MARK: - Overlay-node labels (7+ primes)
 
     private func overlayPQ(e3: Int, e5: Int, prime: Int, eP: Int) -> (Int, Int)? {
@@ -172,6 +210,386 @@ struct LatticeView: View {
     
     // LatticeView.swift
     @State private var reenableAuditionWorkItem: DispatchWorkItem?
+    
+    @State private var selectionHapticTick: Int = 0
+    @State private var focusHapticTick: Int = 0
+
+    private struct SelectionRimMetrics {
+        let pad: CGFloat
+        let outerWidth: CGFloat
+        let bevelWidth: CGFloat
+        let innerInset: CGFloat
+    }
+
+    private func selectionRimMetrics(zoom: CGFloat, focused: Bool) -> SelectionRimMetrics {
+        // below mid zoom: present but not dominant
+        // high zoom: slightly thinner relative
+        let t = smoothstep(clamp01((zoom - 60) / 120))
+        let baseOuter = lerp(2.4, 1.8, t)
+        let baseBevel = lerp(1.4, 1.1, t)
+        let pad = lerp(4.0, 2.5, t)
+
+        let bump: CGFloat = focused ? 1.18 : 1.0
+        return .init(
+            pad: pad,
+            outerWidth: baseOuter * bump,
+            bevelWidth: baseBevel * bump,
+            innerInset: lerp(2.0, 1.4, t)
+        )
+    }
+
+    private func breathScale(now: Double, seed: UInt64) -> CGFloat {
+        // ~6s shared breath, tiny phase offset
+        let period = 6.2
+        let u = Double(seed % 10_000) / 10_000.0
+        let phase = u * 0.65  // small offset only
+        let s = sin((now / period + phase) * 2 * .pi)
+        let amp: Double = 0.015 // 1.5%
+        return CGFloat(1.0 + amp * s)
+    }
+
+    private func breathAlpha(now: Double, seed: UInt64) -> CGFloat {
+        let period = 6.2
+        let u = Double((seed >> 12) % 10_000) / 10_000.0
+        let phase = u * 0.65
+        let s = sin((now / period + phase) * 2 * .pi)
+        let amp: Double = 0.05 // subtle opacity modulation
+        return CGFloat(1.0 + amp * s)
+    }
+
+    private func selectionTint(for key: LatticeStore.SelectionKey, pivot: LatticeCoord, shift: [Int:Int]) -> Color {
+        switch key {
+        case .plane(let c):
+            let e3 = c.e3 + pivot.e3 + (shift[3] ?? 0)
+            let e5 = c.e5 + pivot.e5 + (shift[5] ?? 0)
+            return activeTheme.nodeColor(e3: e3, e5: e5)
+        case .ghost(let g):
+            return overlayColor(forPrime: g.p)
+        }
+    }
+
+    private func selectionScreenPoint(for key: LatticeStore.SelectionKey, pivot: LatticeCoord, shift: [Int:Int], camera: LatticeCamera) -> CGPoint {
+        switch key {
+        case .plane(let c):
+            let e3 = c.e3 + pivot.e3 + (shift[3] ?? 0)
+            let e5 = c.e5 + pivot.e5 + (shift[5] ?? 0)
+            let wp = layout.position(for: LatticeCoord(e3: e3, e5: e5))
+            return camera.worldToScreen(wp)
+        case .ghost(let g):
+            let wp = layout.position(monzo: [3: g.e3, 5: g.e5, g.p: g.eP])
+            return camera.worldToScreen(wp)
+        }
+    }
+
+    /// Matches your node sizing logic enough to make the rim hug the node.
+    private func selectionNodeRadius(for key: LatticeStore.SelectionKey, pivot: LatticeCoord, shift: [Int:Int]) -> CGFloat {
+        let base = nodeBaseSize()
+
+        func lift(tenney: Int) -> CGFloat {
+            let t = max(1, tenney)
+            return CGFloat(18.0 * (1.0 / sqrt(Double(t))))
+        }
+
+        switch key {
+        case .plane(let c):
+            // meaning uses axisShift; geometry uses pivot+shift (as you already do elsewhere)
+            let e3m = (c.e3 + (shift[3] ?? 0))
+            let e5m = (c.e5 + (shift[5] ?? 0))
+            let (p, q) = planePQ(e3: e3m, e5: e5m) ?? (1,1)
+            let tenney = max(p, q)
+            let sz = max(8, base + lift(tenney: tenney))
+            return sz * 0.5
+        case .ghost(let g):
+            let (p, q) = overlayPQ(e3: g.e3, e5: g.e5, prime: g.p, eP: g.eP) ?? (1,1)
+            let tenney = max(p, q)
+            let sz = max(8, base + lift(tenney: tenney))
+            return sz * 0.5
+        }
+    }
+
+    private func primeExponentMap(num: Int, den: Int, primes: [Int]) -> [Int:Int] {
+        func factor(_ n: Int, primes: [Int]) -> [Int:Int] {
+            var x = abs(n)
+            var out: [Int:Int] = [:]
+            for p in primes where p >= 2 {
+                if x < p*p { break }
+                while x % p == 0 { out[p, default: 0] += 1; x /= p }
+            }
+            if x > 1 { out[x, default: 0] += 1 } // remainder prime
+            return out
+        }
+
+        let ps = primes
+        let fn = factor(num, primes: ps)
+        let fd = factor(den, primes: ps)
+
+        var out: [Int:Int] = [:]
+        for p in Set(fn.keys).union(fd.keys) {
+            let e = (fn[p] ?? 0) - (fd[p] ?? 0)
+            if e != 0 { out[p] = e }
+        }
+        return out
+    }
+
+    private func drawSelectionRim(
+        ctx: inout GraphicsContext,
+        center: CGPoint,
+        nodeR: CGFloat,
+        tint: Color,
+        focused: Bool,
+        phase: (targetOn: Bool, t: CGFloat, duration: Double, seed: UInt64)?,
+        now: Double,
+        zoom: CGFloat,
+        scheme: ColorScheme,
+        primeTicks: [(prime: Int, exp: Int)] = []
+    ) {
+        let m = selectionRimMetrics(zoom: zoom, focused: focused)
+
+        // OFF anims still draw while phase exists
+        let targetOn = phase?.targetOn ?? true
+        let t = phase?.t ?? 1.0
+        let seed = phase?.seed ?? 0
+
+        // tasteful “shock” on toggle
+        let shockT: CGFloat = targetOn ? smoothstep(t) : smoothstep(1 - t)
+            // ✅ kill “breathing” (this was the jitter)
+            let bS: CGFloat = 1.0
+            let bA: CGFloat = 1.0
+        
+            // ✅ uniform ring color (use scheme for contrast)
+            let ringColor: Color = (scheme == .dark ? .white : .black)
+
+        // rim radius
+        let rimR = (nodeR + m.pad) * bS
+        let rect = CGRect(x: center.x - rimR, y: center.y - rimR, width: rimR * 2, height: rimR * 2)
+        let circle = Circle().path(in: rect)
+
+        // shock wash (radial pressure wave), clipped inside rim
+        if phase != nil {
+            var g = ctx
+            g.clip(to: circle)
+
+            let washEnd = rimR * (0.25 + 0.85 * shockT)
+            let wash = Gradient(stops: [
+                .init(color: tint.opacity(0.00), location: 0.00),
+                .init(color: tint.opacity(0.22 * bA), location: 0.18),
+                .init(color: tint.opacity(0.00), location: 0.55),
+            ])
+
+            g.fill(circle, with: .radialGradient(
+                wash,
+                center: center,
+                startRadius: 0,
+                endRadius: washEnd
+            ))
+        }
+
+        // ✅ draw-on reveal (trim) when animating
+            let reveal: CGFloat = {
+                guard phase != nil else { return 1.0 }
+                let tt = smoothstep(t)
+                return targetOn ? tt : (1.0 - tt)
+            }()
+
+            // rotate so trim “starts” at 12 o’clock
+            let rot: CGFloat = -.pi / 2
+            var xf = CGAffineTransform(translationX: center.x, y: center.y)
+            xf = xf.rotated(by: rot)
+            xf = xf.translatedBy(x: -center.x, y: -center.y)
+
+            let basePath = circle.applying(xf)
+            let rimPath  = (phase != nil) ? basePath.trimmedPath(from: 0, to: reveal) : basePath
+
+            // base rim (uniform color)
+            ctx.stroke(rimPath, with: .color(ringColor.opacity(0.85 * bA)), lineWidth: m.outerWidth)
+
+            // bevel (still neutral, not tint-colored)
+            let bevelLight: Color = .white.opacity((scheme == .dark ? 0.16 : 0.12) * bA)
+            let bevelDark:  Color = .black.opacity((scheme == .dark ? 0.10 : 0.18) * bA)
+
+            let inner1 = Circle().path(in: rect.insetBy(dx: m.innerInset, dy: m.innerInset)).applying(xf)
+            let inner2 = Circle().path(in: rect.insetBy(dx: m.innerInset + 0.8, dy: m.innerInset + 0.8)).applying(xf)
+            let inner1Path = (phase != nil) ? inner1.trimmedPath(from: 0, to: reveal) : inner1
+            let inner2Path = (phase != nil) ? inner2.trimmedPath(from: 0, to: reveal) : inner2
+
+            ctx.stroke(inner1Path, with: .color(bevelLight), lineWidth: m.bevelWidth)
+            ctx.stroke(inner2Path, with: .color(bevelDark),  lineWidth: max(0.8, m.bevelWidth * 0.75))
+
+        // focused hierarchy: secondary inner reticle
+        if focused {
+            ctx.stroke(Circle().path(in: rect.insetBy(dx: m.innerInset + 3.2, dy: m.innerInset + 3.2)),
+                       with: .color(tint.opacity(0.25 * bA)),
+                       lineWidth: 1.0)
+        }
+
+        // focused prime ticks (subtle, capped)
+        if focused, !primeTicks.isEmpty {
+            let maxTicks = 6
+            let chosen = Array(primeTicks.prefix(maxTicks))
+            let n = max(1, chosen.count)
+
+            for (i, item) in chosen.enumerated() {
+                let p = item.prime
+                let exp = item.exp
+                let mag = min(3, max(1, abs(exp)))
+
+                let angle = (Double(i) / Double(n)) * 2 * .pi - (.pi / 2)
+                let ux = CGFloat(cos(angle))
+                let uy = CGFloat(sin(angle))
+
+                let inner = rimR - 2.2
+                let lenBase: CGFloat = 4.0
+                let len = lenBase + CGFloat(mag - 1) * 2.2
+
+                let a = CGPoint(x: center.x + ux * inner, y: center.y + uy * inner)
+                let b = CGPoint(x: center.x + ux * (inner + len), y: center.y + uy * (inner + len))
+
+                var tick = Path()
+                tick.move(to: a)
+                tick.addLine(to: b)
+
+                let c = activeTheme.primeTint(p).opacity(0.70)
+                ctx.stroke(tick, with: .color(c), lineWidth: 1.2)
+
+                // “double tick” for magnitude >= 2 (still subtle)
+                if mag >= 2 {
+                    let off: CGFloat = 2.0
+                    let a2 = CGPoint(x: a.x + -uy * off, y: a.y + ux * off)
+                    let b2 = CGPoint(x: b.x + -uy * off, y: b.y + ux * off)
+                    var tick2 = Path()
+                    tick2.move(to: a2)
+                    tick2.addLine(to: b2)
+                    ctx.stroke(tick2, with: .color(c.opacity(0.75)), lineWidth: 1.0)
+                }
+            }
+        }
+    }
+
+    private func orderedSelectionKeysForPath() -> [LatticeStore.SelectionKey] {
+        var out: [LatticeStore.SelectionKey] = []
+        out.reserveCapacity(store.selectionOrder.count + store.selectionOrderGhosts.count)
+        out += store.selectionOrder.map { .plane($0) }
+        out += store.selectionOrderGhosts.map { .ghost($0) }
+        return out
+    }
+
+    private func drawSelectionPath(
+        ctx: inout GraphicsContext,
+        keys: [LatticeStore.SelectionKey],
+        now: Double,
+        pivot: LatticeCoord,
+        shift: [Int:Int],
+        camera: LatticeCamera,
+        zoom: CGFloat,
+        gridStrokeWidth: CGFloat
+    ) {
+        guard keys.count >= 2 else { return }
+
+        // Build points + tints in screen space
+        var pts: [CGPoint] = []
+        var cols: [Color] = []
+        pts.reserveCapacity(keys.count)
+        cols.reserveCapacity(keys.count)
+
+        for k in keys {
+            pts.append(selectionScreenPoint(for: k, pivot: pivot, shift: shift, camera: camera))
+            cols.append(selectionTint(for: k, pivot: pivot, shift: shift))
+        }
+
+        // Base path: quiet, per-segment gradient
+        // ✅ always thicker than grid
+        let baseWidth: CGFloat = max(gridStrokeWidth + 0.60, (zoom < 70) ? 1.70 : 1.45)
+
+        for i in 0..<(pts.count - 1) {
+            var seg = Path()
+            seg.move(to: pts[i])
+            seg.addLine(to: pts[i + 1])
+            
+            // ✅ halo underlay so it stays visible even when aligned with grid
+            ctx.stroke(seg, with: .color(Color.black.opacity(0.28)), lineWidth: baseWidth + 1.30)
+            ctx.stroke(seg, with: .color(Color.white.opacity(0.18)), lineWidth: baseWidth + 0.70)
+
+            let shade = GraphicsContext.Shading.linearGradient(
+                Gradient(colors: [cols[i].opacity(0.45), cols[i + 1].opacity(0.45)]),
+                startPoint: pts[i],
+                endPoint: pts[i + 1]
+            )
+            ctx.stroke(seg, with: shade, lineWidth: baseWidth)
+        }
+
+        // Traveling highlight: “specular glint” head (slower when many nodes)
+        var lengths: [CGFloat] = []
+        lengths.reserveCapacity(pts.count - 1)
+        var total: CGFloat = 0
+        for i in 0..<(pts.count - 1) {
+            let d = hypot(pts[i+1].x - pts[i].x, pts[i+1].y - pts[i].y)
+            lengths.append(d)
+            total += d
+        }
+        guard total > 1 else { return }
+
+        let count = pts.count
+        let speedBase: CGFloat = 140 // px/s
+        let speed = speedBase * (count >= 10 ? 0.65 : (count >= 6 ? 0.80 : 1.0))
+        let headLen: CGFloat = (count >= 10 ? 42 : 52)
+
+        let dist = CGFloat(now) * speed
+        let head = dist.truncatingRemainder(dividingBy: total)
+
+        func pointAt(_ s: CGFloat) -> (idx: Int, t: CGFloat) {
+            var acc: CGFloat = 0
+            for (i, L) in lengths.enumerated() {
+                if s <= acc + L {
+                    let tt = (L <= 0.0001) ? 0 : (s - acc) / L
+                    return (i, tt)
+                }
+                acc += L
+            }
+            return (max(0, lengths.count - 1), 1)
+        }
+
+        let tailS = max(0, head - headLen)
+        let (hi, ht) = pointAt(head)
+        let (ti, tt) = pointAt(tailS)
+
+        // Draw highlight possibly spanning multiple segments
+        let hlWidth: CGFloat = max(1.1, baseWidth * 0.80)
+        let highlightColor = Color.white.opacity(effectiveIsDark ? 0.55 : 0.35)
+
+        func lerpPoint(_ a: CGPoint, _ b: CGPoint, _ t: CGFloat) -> CGPoint {
+            CGPoint(x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t)
+        }
+
+        if ti == hi {
+            let a = lerpPoint(pts[ti], pts[ti+1], tt)
+            let b = lerpPoint(pts[hi], pts[hi+1], ht)
+            var seg = Path(); seg.move(to: a); seg.addLine(to: b)
+            ctx.stroke(seg, with: .color(highlightColor), lineWidth: hlWidth)
+        } else {
+            // tail partial
+            do {
+                let a = lerpPoint(pts[ti], pts[ti+1], tt)
+                let b = pts[ti+1]
+                var seg = Path(); seg.move(to: a); seg.addLine(to: b)
+                ctx.stroke(seg, with: .color(highlightColor.opacity(0.80)), lineWidth: hlWidth)
+            }
+            // full middles
+            if hi > ti + 1 {
+                for i in (ti+1)..<hi {
+                    var seg = Path(); seg.move(to: pts[i]); seg.addLine(to: pts[i+1])
+                    ctx.stroke(seg, with: .color(highlightColor.opacity(0.55)), lineWidth: hlWidth)
+                }
+            }
+            // head partial
+            do {
+                let a = pts[hi]
+                let b = lerpPoint(pts[hi], pts[hi+1], ht)
+                var seg = Path(); seg.move(to: a); seg.addLine(to: b)
+                ctx.stroke(seg, with: .color(highlightColor), lineWidth: hlWidth)
+            }
+        }
+    }
+
     
     private func clamp01(_ x: CGFloat) -> CGFloat { max(0, min(1, x)) }
     // MARK: - Plane-node labels (ratio / HEJI)
@@ -389,6 +807,9 @@ struct LatticeView: View {
                 let loc = v.location
                 lastTapPoint = loc
                 
+                // capture BEFORE we mutate focus (used for haptic + focus tick)
+                let prevFocusCoord = focusedPoint?.coord
+
                 guard let cand = hitTestCandidate(at: loc, viewRect: viewRect) else {
                     releaseInfoVoice()
                     focusedPoint = nil
@@ -410,12 +831,28 @@ struct LatticeView: View {
                     num: cn,
                     den: cd
                 )
-                
+                let newFocusCoord = focusedPoint?.coord
+                if prevFocusCoord != newFocusCoord {
+                    focusHapticTick &+= 1
+                #if canImport(UIKit)
+                    UIImpactFeedbackGenerator(style: .rigid).impactOccurred(intensity: 0.35)
+                #endif
+                }
+
                 if cand.isPlane, let c = cand.coord {
+                    // if this tap will deselect the currently focused plane node, add a touch more punch
+                    if let fp = focusedPoint?.coord, fp == c, store.selected.contains(c) {
+                #if canImport(UIKit)
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred(intensity: 1.0)
+                #endif
+                    }
                     store.toggleSelection(c)
+                    selectionHapticTick &+= 1
                 } else if let g = cand.ghost {
                     store.toggleOverlay(prime: g.prime, e3: g.e3, e5: g.e5, eP: g.eP)
+                    selectionHapticTick &+= 1
                 }
+
             }
     }
     
@@ -1180,17 +1617,16 @@ struct LatticeView: View {
         let zoom = store.camera.scale
         guard zoom >= gridMinZoom else { return }
 
-        let strength = gridStrength
-
-        let strengthEff = strength * 0.75 // cap: 1.00 UI -> 0.75 effective
-
-        guard strengthEff > 0.001 else { return }
-
         let isDark = effectiveIsDark
-        let minorBaseAlpha: CGFloat = isDark ? 0.16 : 0.11
-        let majorAlphaMul: CGFloat = 1.35
-        let minorLine: CGFloat = 0.85
-        let majorLine: CGFloat = 1.25
+
+        let w = LatticeGridWeight.fromStrength01(gridStrength)
+        let baseAlpha = w.strokeAlpha
+        let baseWidth = w.strokeWidth
+
+        guard baseAlpha > 0.001 else { return }
+
+        let majorAlpha = w.majorStrokeAlpha
+        let majorWidth = w.majorStrokeWidth
 
         let tintA = activeTheme.primeTint(3)
         let tintB = activeTheme.primeTint(5)
@@ -1260,7 +1696,7 @@ struct LatticeView: View {
             sp.y <= viewRect.maxY + pad
         }
         
-        func drawHexCellsPass(step: Int, alphaMul: CGFloat, lineWidth: CGFloat, emphasizePivot: Bool) {
+        func drawHexCellsPass(step: Int, alphaBase: CGFloat, lineWidth: CGFloat, emphasizePivot: Bool) {
             let u = mul(u0, CGFloat(step))
             let v = mul(v0, CGFloat(step))
 
@@ -1277,7 +1713,7 @@ struct LatticeView: View {
                        cs.y < viewRect.minY - pad || cs.y > viewRect.maxY + pad { continue }
 
                     let f = fade(at: cs)
-                    var a = minorBaseAlpha * strengthEff * f * alphaMul
+                    var a = alphaBase * f
                     if a < 0.003 { continue }
 
                     let isPivotCell = (de3 == 0 && de5 == 0)
@@ -1301,7 +1737,7 @@ struct LatticeView: View {
         }
 
 
-        func drawHexPass(step: Int, alphaMul: CGFloat, lineWidth: CGFloat, emphasizePivot: Bool) {
+        func drawHexPass(step: Int, alphaBase: CGFloat, lineWidth: CGFloat, emphasizePivot: Bool) {
             let u = mul(u0, CGFloat(step))
             let v = mul(v0, CGFloat(step))
 
@@ -1316,7 +1752,7 @@ struct LatticeView: View {
                     if !shouldDraw(cs) { continue }
 
                     let f = fade(at: cs)
-                    var a = minorBaseAlpha * strengthEff * f * alphaMul
+                    var a = alphaBase * f
                     if a < 0.003 { continue }
 
                     let isPivotCell = (de3 == 0 && de5 == 0)
@@ -1340,7 +1776,7 @@ struct LatticeView: View {
             }
         }
 
-        func drawTriMeshPass(step: Int, alphaMul: CGFloat, lineWidth: CGFloat, emphasizePivot: Bool) {
+        func drawTriMeshPass(step: Int, alphaBase: CGFloat, lineWidth: CGFloat, emphasizePivot: Bool) {
             let u = mul(u0, CGFloat(step))
             let v = mul(v0, CGFloat(step))
 
@@ -1355,7 +1791,7 @@ struct LatticeView: View {
                     if !shouldDraw(cs) { continue }
 
                     let f = fade(at: cs)
-                    var a = minorBaseAlpha * strengthEff * f * alphaMul
+                    var a = alphaBase * f
                     if a < 0.003 { continue }
 
                     let isPivotCell = (de3 == 0 && de5 == 0)
@@ -1394,22 +1830,21 @@ struct LatticeView: View {
             return
 
         case .outlines:
-            drawHexPass(step: step, alphaMul: 1.0, lineWidth: minorLine, emphasizePivot: true)
+            drawHexPass(step: step, alphaBase: baseAlpha, lineWidth: baseWidth, emphasizePivot: true)
             if gridMajorEnabled {
-                drawHexPass(step: step * gridMajorEveryClamped, alphaMul: majorAlphaMul, lineWidth: majorLine, emphasizePivot: true)
+                drawHexPass(step: step * gridMajorEveryClamped, alphaBase: majorAlpha, lineWidth: majorWidth, emphasizePivot: true)
             }
 
         case .cells:
-            drawHexCellsPass(step: step, alphaMul: 1.0, lineWidth: minorLine, emphasizePivot: true)
+            drawHexCellsPass(step: step, alphaBase: baseAlpha, lineWidth: baseWidth, emphasizePivot: true)
             if gridMajorEnabled {
-                // keep majors as crisp outlines so “cells” don’t get muddy
-                drawHexPass(step: step * gridMajorEveryClamped, alphaMul: majorAlphaMul, lineWidth: majorLine, emphasizePivot: true)
+                drawHexPass(step: step * gridMajorEveryClamped, alphaBase: majorAlpha, lineWidth: majorWidth, emphasizePivot: true)
             }
 
         case .triMesh:
-            drawTriMeshPass(step: step, alphaMul: 1.0, lineWidth: minorLine, emphasizePivot: true)
+            drawTriMeshPass(step: step, alphaBase: baseAlpha, lineWidth: baseWidth, emphasizePivot: true)
             if gridMajorEnabled {
-                drawTriMeshPass(step: step * gridMajorEveryClamped, alphaMul: majorAlphaMul, lineWidth: majorLine, emphasizePivot: true)
+                drawTriMeshPass(step: step * gridMajorEveryClamped, alphaBase: majorAlpha, lineWidth: majorWidth, emphasizePivot: true)
             }
         }
 
@@ -1475,7 +1910,6 @@ struct LatticeView: View {
                             let sp = store.camera.worldToScreen(wp)
                             if i == 0 { path.move(to: sp) } else { path.addLine(to: sp) }
                         }
-                        ctx.stroke(path, with: .color(.accentColor.opacity(0.55)), lineWidth: 1.5)
                     }
                     // NEW: show a guide when the selection pair includes ghosts (7+ etc.)
                     let planeCount  = store.selected.count
@@ -1503,41 +1937,75 @@ struct LatticeView: View {
                     }
                 }
                 
-                // Selection halos on top
-                if !store.selected.isEmpty {
-                    // snapshot the few values we actually need to avoid heavy type-checking
-                    let shiftSnapshot  = store.axisShift
-                    let pivotSnapshot  = store.pivot
+                // grid width baseline (0 if grid is off / below threshold)
+                let gridW: CGFloat = {
+                    guard gridMode != .off else { return 0 }
+                    guard store.camera.scale >= gridMinZoom else { return 0 }
+                    return LatticeGridWeight.fromStrength01(gridStrength).strokeWidth
+                }()
+
+                // Selection path (always, when 2+ selections)
+                let pathKeys = orderedSelectionKeysForPath()
+                drawSelectionPath(
+                    ctx: &ctx,
+                    keys: pathKeys,
+                    now: now,
+                    pivot: store.pivot,
+                    shift: store.axisShift,
+                    camera: store.camera,
+                    zoom: store.camera.scale,
+                    gridStrokeWidth: gridW
+                )
+
+                // Selection rims on top (selected + animating-off)
+                do {
+                    let pivotSnapshot = store.pivot
+                    let shiftSnapshot = store.axisShift
                     let cameraSnapshot = store.camera
-                    let selectedSnapshot = store.selected
-                    
-                    for coord in selectedSnapshot {
-                        // plane position with pivot + 3/5 shifts (no overlayExtras here)
-                        let e3 = coord.e3 + pivotSnapshot.e3 + (shiftSnapshot[3] ?? 0)
-                        let e5 = coord.e5 + pivotSnapshot.e5 + (shiftSnapshot[5] ?? 0)
-                        let pos = layout.position(for: LatticeCoord(e3: e3, e5: e5))
-                        
-                        let sp  = cameraSnapshot.worldToScreen(pos)
-                        let r: CGFloat = 22
-                        let rect = CGRect(x: sp.x - r, y: sp.y - r, width: 2*r, height: 2*r)
-                        ctx.stroke(Circle().path(in: rect), with: .color(.accentColor.opacity(0.9)), lineWidth: 2.0)
-                        ctx.stroke(Circle().path(in: rect.insetBy(dx: 2, dy: 2)), with: .color(.white.opacity(0.9)), lineWidth: 1.2)
+                    let zoom = store.camera.scale
+                    let keys = store.selectionKeysToDraw()
+
+                    // Focus info (plane only)
+                    let focusedPlane: LatticeCoord? = focusedPoint?.coord
+                    let scheme = systemScheme
+
+                    // Precompute focused prime ticks once (if available)
+                    var focusedTicks: [(prime: Int, exp: Int)] = []
+                    if let fp = focusedPoint {
+                        let prioritized = [3,5,7,11,13,17,19,23,29,31]
+                        let exps = primeExponentMap(num: fp.num, den: fp.den, primes: prioritized)
+                        focusedTicks = prioritized.compactMap { p in
+                            guard let e = exps[p], e != 0 else { return nil }
+                            return (p, e)
+                        }
+                    }
+
+                    for key in keys {
+                        let sp = selectionScreenPoint(for: key, pivot: pivotSnapshot, shift: shiftSnapshot, camera: cameraSnapshot)
+                        let nodeR = selectionNodeRadius(for: key, pivot: pivotSnapshot, shift: shiftSnapshot)
+                        let tint = selectionTint(for: key, pivot: pivotSnapshot, shift: shiftSnapshot)
+
+                        let phase = store.selectionPhase(for: key, now: now)
+                        let isFocused: Bool = {
+                            guard case .plane(let c) = key else { return false }
+                            return (focusedPlane == c)
+                        }()
+
+                        drawSelectionRim(
+                            ctx: &ctx,
+                            center: sp,
+                            nodeR: nodeR,
+                            tint: tint,
+                            focused: isFocused,
+                            phase: phase,
+                            now: now,
+                            zoom: zoom,
+                            scheme: scheme,
+                            primeTicks: isFocused ? focusedTicks : []
+                        )
                     }
                 }
-                
-                
-                
-                // Overlay selection halos (same style)
-                if !store.selectedGhosts.isEmpty {
-                    for g in store.selectedGhosts {
-                        let world = layout.position(monzo: [3: g.e3, 5: g.e5, g.p: g.eP])
-                        let sp = store.camera.worldToScreen(world)
-                        let r: CGFloat = 22
-                        let rect = CGRect(x: sp.x - r, y: sp.y - r, width: 2*r, height: 2*r)
-                        ctx.stroke(Circle().path(in: rect), with: .color(.accentColor.opacity(0.9)), lineWidth: 2.0)
-                        ctx.stroke(Circle().path(in: rect.insetBy(dx: 2, dy: 2)), with: .color(.white.opacity(0.9)), lineWidth: 1.2)
-                    }
-                }
+
             }
             .id(
                 "canvas-\(themeIDRaw)-\(themeStyleRaw)" +
@@ -1690,19 +2158,24 @@ struct LatticeView: View {
     
     @ViewBuilder
     private var tenneyOverlay: some View {
-        if !latticePreviewMode && !latticePreviewHideDistance,
-           store.tenneyDistanceMode != .off,
-           let pair = store.selectedPair() {   // if selectedPair is a var, remove the ()
-            let (a, b) = pair
-            TenneyDistanceOverlay(
-                a: a, b: b,
-                mode: store.tenneyDistanceMode,
-                layout: layout,
-                theme: activeTheme
-            )
-            .allowsHitTesting(false)
+        if !latticePreviewMode &&
+           !latticePreviewHideDistance &&
+           store.tenneyDistanceMode != .off {
+
+            let nodes = tenneyDistanceNodes()
+            if nodes.count == 2 {
+                TenneyDistanceOverlay(
+                    a: nodes[0],
+                    b: nodes[1],
+                    mode: store.tenneyDistanceMode,
+                    theme: activeTheme
+                )
+                .allowsHitTesting(false)
+            }
         }
     }
+    
+    
     
     private func applySettingsChanged(_ note: Notification) {
         if let v = note.userInfo?[SettingsKeys.latticeThemeID] as? String { themeIDRaw = v }
@@ -1726,6 +2199,8 @@ struct LatticeView: View {
                         )
             
                         latticeStack(in: geo)
+                            .sensoryFeedback(.selection, trigger: selectionHapticTick)
+                            .sensoryFeedback(.selection, trigger: focusHapticTick)
                             .navigationTitle("Lattice")
                             .toolbar { clearToolbar }
                             .onPreferenceChange(SelectionTrayHeightKey.self) { trayHeight = $0 }
@@ -2380,48 +2855,71 @@ struct LatticeView: View {
     }
     
     private struct TenneyDistanceOverlay: View {
-        let a: LatticeCoord
-        let b: LatticeCoord
+        let a: TenneyDistanceNode
+        let b: TenneyDistanceNode
         let mode: TenneyDistanceMode
-        let layout: LatticeLayout
         let theme: LatticeTheme
-        
-        
+
         var body: some View {
-            GeometryReader { geo in
-                let center = CGPoint(x: geo.size.width * 0.5, y: geo.size.height * 0.5)
-                let pa = layout.position(for: a)
-                let pb = layout.position(for: b)
-                let A = CGPoint(x: center.x + pa.x, y: center.y + pa.y)
-                let B = CGPoint(x: center.x + pb.x, y: center.y + pb.y)
-                let mid = CGPoint(x: (A.x + B.x) * 0.5, y: (A.y + B.y) * 0.5)
-                
-                let d3 = b.e3 - a.e3
-                let d5 = b.e5 - a.e5
-                let delta: [Int:Int] = [3: d3, 5: d5]
-                let H = tenneyHeightDelta(delta)
-                
-                ZStack {
-                    // Total (always when not .off)
-                    GlassChip(text: String(format: "H %.2f", H))
-                        .position(mid)
-                    
-                    // Breakdown chips
-                    if mode == .breakdown {
-                        if d3 != 0 {
-                            GlassChip(text: deltaLabel(3, d3), tint: theme.primeTint(3))
-                                .position(x: mid.x - 28, y: mid.y - 18)
-                        }
-                        if d5 != 0 {
-                            GlassChip(text: deltaLabel(5, d5), tint: theme.primeTint(5))
-                                .position(x: mid.x + 28, y: mid.y + 18)
+            let A = a.screen
+            let B = b.screen
+            let mid = CGPoint(x: (A.x + B.x) * 0.5, y: (A.y + B.y) * 0.5)
+
+            // Offset the label stack slightly off the segment so it doesn’t sit on top of nodes/line
+            let vx = B.x - A.x
+            let vy = B.y - A.y
+            let len = max(1, hypot(vx, vy))
+            let nx = -vy / len
+            let ny =  vx / len
+            let anchor = CGPoint(x: mid.x + nx * 16, y: mid.y + ny * 16)
+
+            let delta = tenneyDelta(a.exps, b.exps)
+            let H = tenneyHeightDelta(delta)
+
+            let parts: [(prime: Int, text: String)] =
+                delta.keys.sorted().compactMap { p in
+                    let d = delta[p, default: 0]
+                    guard d != 0 else { return nil }
+                    return (p, labelFor(prime: p, exp: d))
+                }
+
+            VStack(spacing: 6) {
+                // Total (always visible when not .off)
+                GlassChip(text: String(format: "H %.2f", H))
+
+                // Breakdown (only in .breakdown)
+                if mode == .breakdown, !parts.isEmpty {
+                    HStack(spacing: 6) {
+                        ForEach(parts, id: \.prime) { part in
+                            GlassChip(text: part.text, tint: theme.primeTint(part.prime))
                         }
                     }
                 }
             }
-            
+            .position(anchor)
+        }
+
+        private func tenneyDelta(_ a: [Int:Int], _ b: [Int:Int]) -> [Int:Int] {
+            var out: [Int:Int] = [:]
+            let keys = Set(a.keys).union(b.keys)
+            for p in keys {
+                let d = (b[p] ?? 0) - (a[p] ?? 0)
+                if d != 0 { out[p] = d }
+            }
+            return out
+        }
+
+        private func labelFor(prime: Int, exp: Int) -> String {
+            // Keep your existing 3/5 formatting if you already have deltaLabel(prime, exp)
+            if prime == 3 || prime == 5 {
+                return deltaLabel(prime, exp)
+            }
+            let sign = exp > 0 ? "+" : ""
+            return "\(prime)^\(sign)\(exp)"
         }
     }
+
+
     
     private func hitTestCandidate(
         at point: CGPoint,

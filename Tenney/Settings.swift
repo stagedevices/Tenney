@@ -328,13 +328,15 @@ struct StudioConsoleView: View {
         }
     }
 
-private enum LatticeUIPage: String, CaseIterable, Identifiable {
-        case view, grid
+    private enum LatticeUIPage: String, CaseIterable, Identifiable {
+        case view, grid, theme, distance
         var id: String { rawValue }
         var title: String {
             switch self {
             case .view: return "View"
             case .grid: return "Grid"
+            case .theme: return "Theme"
+            case .distance: return "Distance"
             }
         }
     }
@@ -383,8 +385,84 @@ private enum LatticeUIPage: String, CaseIterable, Identifiable {
         @Binding var gridStrength: Double
         @Binding var gridMajorEnabled: Bool
         @Binding var gridMajorEvery: Int
+        
+        //  moved in from standalone cards
+        @Binding var latticeThemeID: String
+        @Binding var tenneyDistanceModeRaw: String
 
         @State private var page: LatticeUIPage = .view
+                private let pageAnim = Animation.easeInOut(duration: 0.22)
+
+                // Smooth height animation so the surrounding LazyVGrid doesn't "jump" on page swaps.
+                @State private var panelHeights: [LatticeUIPage: CGFloat] = [:]
+                @State private var panelHeight: CGFloat = 0
+
+                private struct PanelHeightKey: PreferenceKey {
+                    static var defaultValue: CGFloat = 0
+                    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+                }
+
+                private struct MeasuredPage<Content: View>: View {
+                    let id: LatticeUIPage
+                    @Binding var active: LatticeUIPage
+                    @Binding var heights: [LatticeUIPage: CGFloat]
+                    @Binding var currentHeight: CGFloat
+                    let pageAnim: Animation
+                    @ViewBuilder var content: () -> Content
+
+                    var body: some View {
+                        content()
+                            .background(
+                                GeometryReader { geo in
+                                    Color.clear.preference(key: PanelHeightKey.self, value: geo.size.height)
+                                }
+                            )
+                            .onPreferenceChange(PanelHeightKey.self) { h in
+                                guard h > 0 else { return }
+                                heights[id] = h
+                                guard active == id else { return } // ignore outgoing page during transition
+                                if abs(currentHeight - h) > 0.5 {
+                                    withAnimation(pageAnim) { currentHeight = h }
+                                } else {
+                                    currentHeight = h
+                                }
+                            }
+                    }
+                }
+        
+        private func icon(for p: LatticeUIPage) -> String {
+                    switch p {
+                    case .view:     return "viewfinder.circle"
+                    case .grid:     return "square.grid.2x2"
+                    case .theme:    return "paintpalette"
+                    case .distance: return "ruler"
+                    }
+                }
+
+                private struct PageHeader: View {
+                    let title: String
+                    let systemImage: String
+                    var body: some View {
+                        HStack(spacing: 10) {
+                            Image(systemName: systemImage)
+                                .font(.title3.weight(.semibold))
+                                .symbolRenderingMode(.palette)
+                                .foregroundStyle(Color.accentColor, Color.accentColor.opacity(0.18))
+                                .frame(width: 22)
+
+                            Text(title)
+                                .font(.title3.weight(.bold))
+                                .foregroundStyle(
+                                    LinearGradient(
+                                        colors: [Color.primary, Color.accentColor.opacity(0.85)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                        }
+                        .padding(.bottom, 2)
+                    }
+                }
 
         private var nodeChoice: NodeSizeChoice {
             NodeSizeChoice(rawValue: nodeSizeRaw) ?? .m
@@ -423,8 +501,20 @@ private enum LatticeUIPage: String, CaseIterable, Identifiable {
         }
 
         private var viewSummary: String {
-            "Guides: \(onOff(guidesOn)) · Recenter: \(onOff(alwaysRecenter)) · Zoom: \(zoomPreset.title) · Size: \(nodeChoice.summaryCode) · Labels: \(labelDensityName(labelDensity))"
-        }
+                    "Axis: \(onOff(guidesOn)) · Recenter: \(onOff(alwaysRecenter)) · Zoom: \(zoomPreset.title) · Size: \(nodeChoice.summaryCode) · Labels: \(labelDensityName(labelDensity))"
+                }
+        
+        private var themeSummary: String {
+                    "Theme: \(latticeThemeID)"
+                }
+        
+                private var tenneyMode: TenneyDistanceMode {
+                    TenneyDistanceMode(rawValue: tenneyDistanceModeRaw) ?? .breakdown
+                }
+        
+                private var distanceSummary: String {
+                    "Distance: \(tenneyMode.title)"
+                }
 
         private var gridSummary: String {
             if gridMode == .off { return "Grid: Off" }
@@ -436,6 +526,8 @@ private enum LatticeUIPage: String, CaseIterable, Identifiable {
             switch p {
             case .view: return viewSummary
             case .grid: return gridSummary
+            case .theme: return themeSummary
+            case .distance: return distanceSummary
             }
         }
 
@@ -450,17 +542,18 @@ private enum LatticeUIPage: String, CaseIterable, Identifiable {
         }
 
         private func switchTo(_ p: LatticeUIPage) {
-            guard page != p else { return }
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            withAnimation(.easeOut(duration: 0.14)) { page = p }
-        }
+                    guard page != p else { return }
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    if let h = panelHeights[p], h > 0 { panelHeight = h } // preload target height
+                    withAnimation(pageAnim) { page = p }
+                }
 
 @ViewBuilder private func pageChip(_ p: LatticeUIPage) -> some View {
             let active = (page == p)
-            let icon = (p == .view) ? "viewfinder.circle" : "square.grid.2x2"
+    
             Button { switchTo(p) } label: {
                 HStack(spacing: 8) {
-                    Image(systemName: icon)
+                    Image(systemName: icon(for: p))
                         .symbolRenderingMode(.palette)
                         .foregroundStyle(active ? Color.accentColor : Color.secondary, .clear)
                         .frame(width: 18)
@@ -487,10 +580,18 @@ private enum LatticeUIPage: String, CaseIterable, Identifiable {
 
         private var pageSwitcher: some View {
             VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 10) {
-                    pageChip(.view)
-                    pageChip(.grid)
-                }
+                ViewThatFits(in: .horizontal) {
+                                    HStack(spacing: 10) {
+                                        pageChip(.view)
+                                        pageChip(.grid)
+                                        pageChip(.theme)
+                                        pageChip(.distance)
+                                    }
+                                    VStack(spacing: 10) {
+                                        HStack(spacing: 10) { pageChip(.view); pageChip(.grid) }
+                                        HStack(spacing: 10) { pageChip(.theme); pageChip(.distance) }
+                                    }
+                                }
 
                 Text(summary(for: page))
                     .font(.caption2)
@@ -511,9 +612,10 @@ private enum LatticeUIPage: String, CaseIterable, Identifiable {
 
         private var viewPage: some View {
             VStack(alignment: .leading, spacing: 12) {
+                PageHeader(title: "Grid", systemImage: icon(for: .grid))
                 HStack(spacing: 10) {
                     StageToggleChip(
-                        title: "Guides",
+                        title: "Axis",
                         systemNameOn: "ruler.fill",
                         systemNameOff: "ruler",
                         isOn: $guidesOn
@@ -568,6 +670,61 @@ private enum LatticeUIPage: String, CaseIterable, Identifiable {
                     .foregroundStyle(.secondary)
             }
         }
+        
+    private var themePage: some View {
+                VStack(alignment: .leading, spacing: 12) {
+                    PageHeader(title: "Theme", systemImage: icon(for: .theme))
+                    SettingsThemePickerView()
+                    Text("Themes change node colors (3- vs 5-limit) and high-prime overlays. Selection rims and the selection path inherit per-node tints.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            private var distancePage: some View {
+                VStack(alignment: .leading, spacing: 12) {
+                    PageHeader(title: "Distance", systemImage: icon(for: .distance))
+                    LazyVGrid(
+                        columns: [GridItem(.adaptive(minimum: 180, maximum: 240), spacing: 12)],
+                        spacing: 12
+                    ) {
+                        TenneyModeTile(mode: .off, selected: tenneyMode == .off) {
+                            withAnimation(.snappy) { tenneyDistanceModeRaw = TenneyDistanceMode.off.rawValue }
+                        }
+                        TenneyModeTile(mode: .total, selected: tenneyMode == .total) {
+                            withAnimation(.snappy) { tenneyDistanceModeRaw = TenneyDistanceMode.total.rawValue }
+                        }
+                        TenneyModeTile(mode: .breakdown, selected: tenneyMode == .breakdown) {
+                            withAnimation(.snappy) { tenneyDistanceModeRaw = TenneyDistanceMode.breakdown.rawValue }
+                        }
+                    }
+                    .animation(.snappy, value: tenneyMode)
+
+                    Text("Shows Tenney height between two selected ratios. “Total + Breakdown” places ±prime counts on each guide and the total at the midpoint. Hidden in the Settings preview.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            @ViewBuilder private var activePage: some View {
+                switch page {
+                case .view:     viewPage
+                case .grid:     gridPage
+                case .theme:    themePage
+                case .distance: distancePage
+                }
+            }
+
+            private func panelContainer<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+                content()
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
+                    )
+            }
 
         @ViewBuilder private var gridModePicker: some View {
             let setMode: (LatticeGridMode) -> Void = { m in
@@ -629,8 +786,7 @@ private enum LatticeUIPage: String, CaseIterable, Identifiable {
 
         private var gridPage: some View {
             VStack(alignment: .leading, spacing: 12) {
-                Text("Hex Grid")
-                    .font(.subheadline.weight(.semibold))
+                PageHeader(title: "View", systemImage: icon(for: .view))
 
                 gridModePicker
 
@@ -669,27 +825,48 @@ private enum LatticeUIPage: String, CaseIterable, Identifiable {
         }
 
         private var pagedPanel: some View {
-            ZStack(alignment: .topLeading) {
-                // Keep both pages alive (snappier switching). Fade only.
-            viewPage
-                .opacity(page == .view ? 1 : 0)
-                .allowsHitTesting(page == .view)
-                .accessibilityHidden(page != .view)
-
-            gridPage
-                .opacity(page == .grid ? 1 : 0)
-                .allowsHitTesting(page == .grid)
-                .accessibilityHidden(page != .grid)
-            }
-            .animation(.easeOut(duration: 0.14), value: page)
-            .padding(12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
-            )
-        }
+                    ZStack(alignment: .topLeading) {
+                        switch page {
+                        case .view:
+                            panelContainer {
+                                MeasuredPage(id: .view, active: $page, heights: $panelHeights, currentHeight: $panelHeight, pageAnim: pageAnim) {
+                                    viewPage
+                                }
+                            }
+                            .id("lattice.ui.panel.view")
+                            .transition(.opacity)
+                        case .grid:
+                            panelContainer {
+                                MeasuredPage(id: .grid, active: $page, heights: $panelHeights, currentHeight: $panelHeight, pageAnim: pageAnim) {
+                                    gridPage
+                                }
+                            }
+                            .id("lattice.ui.panel.grid")
+                            .transition(.opacity)
+                        case .theme:
+                            panelContainer {
+                                MeasuredPage(id: .theme, active: $page, heights: $panelHeights, currentHeight: $panelHeight, pageAnim: pageAnim) {
+                                    themePage
+                                }
+                            }
+                            .id("lattice.ui.panel.theme")
+                            .transition(.opacity)
+                        case .distance:
+                            panelContainer {
+                                MeasuredPage(id: .distance, active: $page, heights: $panelHeights, currentHeight: $panelHeight, pageAnim: pageAnim) {
+                                    distancePage
+                                }
+                            }
+                            .id("lattice.ui.panel.distance")
+                            .transition(.opacity)
+                        }
+                    }
+                    // Keep the panel's outer height stable + animated, so the rest of Settings doesn't jump around.
+                    .frame(height: panelHeight > 0 ? panelHeight : nil, alignment: .topLeading)
+                    .clipped()
+                    .animation(pageAnim, value: page)
+                    .animation(pageAnim, value: panelHeight)
+                }
 
         var body: some View {
             VStack(alignment: .leading, spacing: 12) {
@@ -738,6 +915,18 @@ private enum LatticeUIPage: String, CaseIterable, Identifiable {
         }
     }
     private struct GridStrengthStepperChip: View {
+        private let semanticNames = ["Thin", "Light", "Medium", "Bold", "Heavy"]
+
+        private var semanticName: String {
+            let n = detents.count
+            guard n > 1 else { return semanticNames.last! }
+
+            let idx = detents.firstIndex(of: snapped) ?? 0
+            let t = Double(idx) / Double(n - 1)               // 0…1 across detents
+            let j = Int((t * Double(semanticNames.count - 1)).rounded())
+            return semanticNames[max(0, min(semanticNames.count - 1, j))]
+        }
+
         @Binding var strength: Double
 
         private var detents: [Double] { StudioConsoleView.gridStrengthDetents.sorted() }
@@ -767,9 +956,15 @@ private enum LatticeUIPage: String, CaseIterable, Identifiable {
                     Image(systemName: "slider.horizontal.3")
                         .symbolRenderingMode(.hierarchical)
 
-                    ViewThatFits(in: .horizontal) {
-                        Text("Strength \(pct)%")
+                    VStack(spacing: 2) {
+                        ViewThatFits(in: .horizontal) {
+                            Text(semanticName)
+                            Text(String(semanticName.prefix(4)))
+                        }
                         Text("\(pct)%")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
                     }
                     .font(.footnote.weight(.semibold))
                     .monospacedDigit()
@@ -998,8 +1193,7 @@ private enum LatticeUIPage: String, CaseIterable, Identifiable {
         LazyVGrid(columns: columns, spacing: 14) {
             whatsNewSection
             latticeUISection
-            themeSection
-            tenneyDistanceSection
+            // theme + interval distance moved into Lattice UI chips
             stageSection
             defaultViewSection
             // labelingSection
@@ -1399,7 +1593,9 @@ private enum LatticeUIPage: String, CaseIterable, Identifiable {
                             gridModeRaw: $gridModeRaw,
                             gridStrength: $gridStrength,
                             gridMajorEnabled: $gridMajorEnabled,
-                            gridMajorEvery: $gridMajorEvery
+                            gridMajorEvery: $gridMajorEvery,
+                            latticeThemeID: $latticeThemeID,
+                            tenneyDistanceModeRaw: $tenneyDistanceModeRaw
                         )
             
         }
@@ -1410,7 +1606,7 @@ private enum LatticeUIPage: String, CaseIterable, Identifiable {
     @ViewBuilder private var themeSection: some View {
         glassCard("Appearance · Lattice Theme") {
             SettingsThemePickerView()
-            Text("Themes change node colors (3- vs 5-limit) and high-prime overlays. Guides and selection halos remain unchanged.")
+            Text("Themes change node colors (3- vs 5-limit) and high-prime overlays. Selection rims and the selection path inherit per-node tints.")
                 .font(.footnote).foregroundStyle(.secondary)
         }
     }
@@ -1942,24 +2138,44 @@ private struct NodeSizeStepperControl: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Button { withAnimation(.snappy) { step(+1) } } label: {
-                Image(systemName: "chevron.left")
-                    .frame(width: 36, height: 36)
-                    .background(.ultraThinMaterial, in: Circle())
-            }.buttonStyle(.plain)
-
-            VStack(spacing: 2) {
-                Text(choice.displayName).font(.headline)
-                Text("Tap arrows to change size").font(.caption).foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity)
-
-            Button { withAnimation(.snappy) { step(-1) } } label: {
-                Image(systemName: "chevron.right")
-                    .frame(width: 36, height: 36)
-                    .background(.ultraThinMaterial, in: Circle())
-            }.buttonStyle(.plain)
-        }
+                    Button { withAnimation(.snappy) { step(-1) } } label: {
+                        Image(systemName: "chevron.left")
+                            .frame(width: 34, height: 34)
+                            .background(.ultraThinMaterial, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+        
+                    HStack(spacing: 8) {
+                        Image(systemName: "circle.dotted")
+                            .symbolRenderingMode(.hierarchical)
+        
+                        VStack(spacing: 2) {
+                            ViewThatFits(in: .horizontal) {
+                                Text(choice.displayName)
+                                Text(choice.summaryCode)
+                            }
+                            Text("Ø \(Int(choice.nodeDiameter))")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+                        .font(.footnote.weight(.semibold))
+                        .lineLimit(1)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .layoutPriority(1)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .overlay(Capsule().stroke(Color.secondary.opacity(0.12), lineWidth: 1))
+        
+                    Button { withAnimation(.snappy) { step(+1) } } label: {
+                        Image(systemName: "chevron.right")
+                            .frame(width: 34, height: 34)
+                            .background(.ultraThinMaterial, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                }
     }
 }
 
@@ -1975,26 +2191,43 @@ private struct ZoomPresetStepperControl: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Button { withAnimation(.snappy) { step(-1) } } label: {
-                Image(systemName: "chevron.left")
-                    .frame(width: 36, height: 36)
-                    .background(.ultraThinMaterial, in: Circle())
-            }
-            .buttonStyle(.plain)
+                    Button { withAnimation(.snappy) { step(-1) } } label: {
+                        Image(systemName: "chevron.left")
+                            .frame(width: 34, height: 34)
+                            .background(.ultraThinMaterial, in: Circle())
+                    }
+                    .buttonStyle(.plain)
 
-            VStack(spacing: 2) {
-                Text(preset.title).font(.headline)
-                Text("Default zoom").font(.caption).foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity)
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass")
+                            .symbolRenderingMode(.hierarchical)
 
-            Button { withAnimation(.snappy) { step(+1) } } label: {
-                Image(systemName: "chevron.right")
-                    .frame(width: 36, height: 36)
-                    .background(.ultraThinMaterial, in: Circle())
-            }
-            .buttonStyle(.plain)
-        }
+                        VStack(spacing: 2) {
+                            ViewThatFits(in: .horizontal) {
+                                Text(preset.title)
+                                Text(String(preset.title.prefix(6)))
+                            }
+                            Text("Default zoom")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        .font(.footnote.weight(.semibold))
+                        .lineLimit(1)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .layoutPriority(1)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .overlay(Capsule().stroke(Color.secondary.opacity(0.12), lineWidth: 1))
+
+                    Button { withAnimation(.snappy) { step(+1) } } label: {
+                        Image(systemName: "chevron.right")
+                            .frame(width: 34, height: 34)
+                            .background(.ultraThinMaterial, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                }
     }
 }
 
@@ -2007,7 +2240,6 @@ private struct SettingsLatticePreview: View {
             LatticeScreen()
               .environment(\.latticePreviewMode, true)
               .environment(\.latticePreviewHideChips, true)
-              .environment(\.latticePreviewHideDistance, true) // ⬅️ hide distance overlay in preview
               .allowsHitTesting(false)
               .disabled(true)
 
