@@ -26,6 +26,12 @@ import CoreGraphics
 struct LatticeScreen: View {
     @StateObject private var store = LatticeStore()
     @Environment(\.scenePhase) private var scenePhase
+    
+    @AppStorage(SettingsKeys.latticeAlwaysRecenterOnQuit)
+        private var latticeAlwaysRecenterOnQuit: Bool = false
+    
+    @AppStorage(SettingsKeys.latticeRecenterPending)
+        private var latticeRecenterPending: Bool = false
 
     var body: some View {
         LatticeView()
@@ -40,6 +46,15 @@ struct LatticeScreen: View {
                     // Kill sustained tones when the app backgrounds or goes inactive.
                     store.stopSelectionAudio(hard: true)
                    store.stopAllLatticeVoices(hard: true)
+                }
+                // “Quit” proxy: set a pending recenter only when we actually go to background.
+                // If we come back active (not terminated), cancel the pending flag so it won’t surprise-recenter later.
+                if latticeAlwaysRecenterOnQuit {
+                    if phase == .background {
+                        latticeRecenterPending = true
+                    } else if phase == .active {
+                        latticeRecenterPending = false
+                    }
                 }
             }
             .onDisappear {

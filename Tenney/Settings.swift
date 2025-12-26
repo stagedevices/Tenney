@@ -113,6 +113,9 @@ private struct StageToggleChip: View {
                     .foregroundStyle(on ? Color.accentColor : Color.secondary, .clear)
                     .frame(width: 18)
                 Text(title)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                    .truncationMode(.tail)
                     .font(.footnote.weight(on ? .semibold : .regular))
         }
             .padding(.horizontal, 12).padding(.vertical, 8)
@@ -145,6 +148,8 @@ extension SettingsKeys {
     static let toneConfigJSON = "tone.config.json"
     static let whatsNewLastSeenBuild = "whatsnew.lastSeen.build"
     static let whatsNewLastSeenMajorMinor = "whatsnew.lastSeen.majorMinor"
+    static let latticeAlwaysRecenterOnQuit = "lattice.always.recenter.on.quit"
+    static let latticeRecenterPending = "lattice.recenter.pending"
 }
 
 
@@ -172,8 +177,8 @@ struct StudioConsoleView: View {
     @AppStorage(SettingsKeys.latticeDefaultZoomPreset)
     private var latticeDefaultZoomPresetRaw: String = LatticeZoomPreset.close.rawValue
 
-    @AppStorage(SettingsKeys.latticeRememberLastView)
-    private var latticeRememberLastView: Bool = true
+    @AppStorage(SettingsKeys.latticeAlwaysRecenterOnQuit)
+    private var latticeAlwaysRecenterOnQuit: Bool = false
 
     
     @AppStorage(SettingsKeys.defaultView) private var defaultView: String = "tuner" // "lattice" | "tuner"
@@ -209,6 +214,636 @@ struct StudioConsoleView: View {
     @AppStorage(SettingsKeys.foldAudible)  private var foldAudible: Bool = false
     @AppStorage(SettingsKeys.latticeThemeID) private var latticeThemeID: String = LatticeThemeID.classicBO.rawValue
     @AppStorage(SettingsKeys.latticeThemeStyle) private var themeStyleRaw: String = ThemeStyleChoice.system.rawValue
+    
+    // Hex grid (Lattice) — single value (no light/dark split)
+    @AppStorage(SettingsKeys.latticeHexGridMode)
+    private var gridModeRaw: String = LatticeGridMode.outlines.rawValue
+
+    @AppStorage(SettingsKeys.latticeHexGridStrength)
+    private var gridStrength: Double = 0.16
+
+    @AppStorage(SettingsKeys.latticeHexGridMajorEnabled)
+    private var gridMajorEnabled: Bool = true
+
+    @AppStorage(SettingsKeys.latticeHexGridMajorEvery)
+    private var gridMajorEvery: Int = 2
+
+    private var gridMode: LatticeGridMode {
+        LatticeGridMode(rawValue: gridModeRaw) ?? .outlines
+    }
+    
+    private static func migrateLegacyGridSettingsIfNeeded() {
+        let ud = UserDefaults.standard
+
+        // If the new single-value keys already exist, do nothing.
+        if ud.object(forKey: SettingsKeys.latticeHexGridStrength) != nil ||
+           ud.object(forKey: SettingsKeys.latticeHexGridMajorEvery) != nil ||
+           ud.object(forKey: SettingsKeys.latticeHexGridMajorEnabled) != nil {
+            return
+        }
+
+        // Pull "Light" as canonical legacy source; fall back to Dark if needed.
+        let legacyEnabledLight = ud.object(forKey: SettingsKeys.latticeHexGridEnabledLight) as? Bool
+        let legacyEnabledDark  = ud.object(forKey: SettingsKeys.latticeHexGridEnabledDark)  as? Bool
+        let legacyEnabled = legacyEnabledLight ?? legacyEnabledDark ?? true
+
+        // Old mode was hexOutlines/triMesh; map to outlines/triMesh.
+        if let raw = ud.string(forKey: SettingsKeys.latticeHexGridMode) {
+            // existing value; map if needed (only if it matches old names)
+            if raw == "hexOutlines" { ud.set(LatticeGridMode.outlines.rawValue, forKey: SettingsKeys.latticeHexGridMode) }
+            if raw == "triMesh"     { ud.set(LatticeGridMode.triMesh.rawValue,  forKey: SettingsKeys.latticeHexGridMode) }
+        }
+
+        // If legacy disabled, force Off.
+        if !legacyEnabled {
+            ud.set(LatticeGridMode.off.rawValue, forKey: SettingsKeys.latticeHexGridMode)
+        }
+
+        let strengthLight = ud.object(forKey: SettingsKeys.latticeHexGridStrengthLight) as? Double
+        let strengthDark  = ud.object(forKey: SettingsKeys.latticeHexGridStrengthDark)  as? Double
+        ud.set(strengthLight ?? strengthDark ?? 0.16, forKey: SettingsKeys.latticeHexGridStrength)
+
+        let majorEnabledLight = ud.object(forKey: SettingsKeys.latticeHexGridMajorEnabledLight) as? Bool
+        let majorEnabledDark  = ud.object(forKey: SettingsKeys.latticeHexGridMajorEnabledDark)  as? Bool
+        ud.set(majorEnabledLight ?? majorEnabledDark ?? true, forKey: SettingsKeys.latticeHexGridMajorEnabled)
+
+        let everyLight = ud.object(forKey: SettingsKeys.latticeHexGridMajorEveryLight) as? Int
+        let everyDark  = ud.object(forKey: SettingsKeys.latticeHexGridMajorEveryDark)  as? Int
+        ud.set(everyLight ?? everyDark ?? 2, forKey: SettingsKeys.latticeHexGridMajorEvery)
+    }
+
+    private static let labelDensityDetents: [Double] = [0.0, 0.35, 0.65, 0.85, 1.0]
+    private static let gridStrengthDetents: [Double] = [0.10, 0.25, 0.40, 0.65, 0.85, 1.0]
+
+    private static func nearestDetent(_ v: Double, in detents: [Double]) -> Double {
+        guard let best = detents.min(by: { abs($0 - v) < abs($1 - v) }) else { return v }
+        return best
+    }
+
+    private func snapLabelDensityIfNeeded() {
+        let snapped = Self.nearestDetent(labelDensity, in: Self.labelDensityDetents)
+        if snapped != labelDensity { labelDensity = snapped }
+    }
+
+    private func snapGridStrengthIfNeeded() {
+        let snapped = Self.nearestDetent(gridStrength, in: Self.gridStrengthDetents)
+        if snapped != gridStrength { gridStrength = snapped }
+    }
+
+// MARK: - Chip / Tile primitives (match Theme + Pro Audio visual language)
+    private struct DetentChip: View {
+        let title: String
+        let systemImage: String
+        let value: Double
+        @Binding var current: Double
+
+        private var selected: Bool { current == value }
+
+        var body: some View {
+            Button {
+                guard current != value else { return }
+                withAnimation(.snappy) { current = value }
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: systemImage)
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(selected ? Color.accentColor : Color.secondary, .clear)
+                        .frame(width: 18)
+                        .contentTransition(.symbolEffect(.replace))
+                    Text(title)
+                        .font(.footnote.weight(selected ? .semibold : .regular))
+                }
+                .padding(.horizontal, 12).padding(.vertical, 8)
+                .background(selected ? .thinMaterial : .ultraThinMaterial, in: Capsule())
+                .overlay(
+                    Capsule().stroke(
+                        selected ? Color.accentColor.opacity(0.35) : Color.secondary.opacity(0.12),
+                        lineWidth: 1
+                    )
+                )
+            }
+            .buttonStyle(.plain)
+            .symbolEffect(.bounce, value: selected)
+        }
+    }
+
+private enum LatticeUIPage: String, CaseIterable, Identifiable {
+        case view, grid
+        var id: String { rawValue }
+        var title: String {
+            switch self {
+            case .view: return "View"
+            case .grid: return "Grid"
+            }
+        }
+    }
+
+    private struct GridModeRadioChip: View {
+        let title: String
+        let systemNameOff: String
+        let systemNameOn: String
+        let selected: Bool
+        let tap: () -> Void
+
+        var body: some View {
+            Button(action: tap) {
+                HStack(spacing: 8) {
+                    Image(systemName: selected ? systemNameOn : systemNameOff)
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(selected ? Color.accentColor : Color.secondary, .clear)
+                        .frame(width: 18)
+                        .contentTransition(.symbolEffect(.replace))
+                    Text(title)
+                        .font(.footnote.weight(selected ? .semibold : .regular))
+                        .foregroundStyle(.primary)
+                }
+                .padding(.horizontal, 12).padding(.vertical, 8)
+                .background(selected ? .thinMaterial : .ultraThinMaterial, in: Capsule())
+                .overlay(
+                    Capsule().stroke(
+                        selected ? Color.accentColor.opacity(0.35) : Color.secondary.opacity(0.12),
+                        lineWidth: 1
+                    )
+                )
+            }
+            .buttonStyle(.plain)
+            .symbolEffect(.bounce, value: selected)
+        }
+    }
+
+    private struct LatticeUIControlsPager: View {
+        @Binding var nodeSizeRaw: String
+        @Binding var labelDensity: Double
+        @Binding var guidesOn: Bool
+        @Binding var alwaysRecenter: Bool
+        @Binding var zoomPresetRaw: String
+
+        @Binding var gridModeRaw: String
+        @Binding var gridStrength: Double
+        @Binding var gridMajorEnabled: Bool
+        @Binding var gridMajorEvery: Int
+
+        @State private var page: LatticeUIPage = .view
+
+        private var nodeChoice: NodeSizeChoice {
+            NodeSizeChoice(rawValue: nodeSizeRaw) ?? .m
+        }
+
+        private var zoomPreset: LatticeZoomPreset {
+            LatticeZoomPreset(rawValue: zoomPresetRaw) ?? .standard
+        }
+
+        private var gridMode: LatticeGridMode {
+            LatticeGridMode(rawValue: gridModeRaw) ?? .outlines
+        }
+
+        private func onOff(_ v: Bool) -> String { v ? "On" : "Off" }
+
+        private func labelDensityName(_ v: Double) -> String {
+            let snapped = StudioConsoleView.nearestDetent(v, in: StudioConsoleView.labelDensityDetents)
+            switch snapped {
+            case 0.0:  return "Off"
+            case 0.35: return "Low"
+            case 0.65: return "Med"
+            case 0.85: return "High"
+            case 1.0:  return "Max"
+            default:   return "Med"
+            }
+        }
+
+        private func gridModeName(_ m: LatticeGridMode) -> String {
+            switch m {
+            case .off:      return "Off"
+            case .outlines: return "Hex"
+            case .triMesh:  return "Triangle"
+            @unknown default:
+                return "Hex"
+            }
+        }
+
+        private var viewSummary: String {
+            "Guides: \(onOff(guidesOn)) · Recenter: \(onOff(alwaysRecenter)) · Zoom: \(zoomPreset.title) · Size: \(nodeChoice.summaryCode) · Labels: \(labelDensityName(labelDensity))"
+        }
+
+        private var gridSummary: String {
+            if gridMode == .off { return "Grid: Off" }
+            let pct = Int(StudioConsoleView.nearestDetent(gridStrength, in: StudioConsoleView.gridStrengthDetents) * 100)
+            return "Grid: \(gridModeName(gridMode)) · \(pct)% · Major: \(onOff(gridMajorEnabled)) · Every \(gridMajorEvery)"
+        }
+
+        private func summary(for p: LatticeUIPage) -> String {
+            switch p {
+            case .view: return viewSummary
+            case .grid: return gridSummary
+            }
+        }
+
+        private func snapLabelDensityIfNeeded() {
+            let snapped = StudioConsoleView.nearestDetent(labelDensity, in: StudioConsoleView.labelDensityDetents)
+            if snapped != labelDensity { labelDensity = snapped }
+        }
+
+        private func snapGridStrengthIfNeeded() {
+            let snapped = StudioConsoleView.nearestDetent(gridStrength, in: StudioConsoleView.gridStrengthDetents)
+            if snapped != gridStrength { gridStrength = snapped }
+        }
+
+        private func switchTo(_ p: LatticeUIPage) {
+            guard page != p else { return }
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            withAnimation(.easeOut(duration: 0.14)) { page = p }
+        }
+
+@ViewBuilder private func pageChip(_ p: LatticeUIPage) -> some View {
+            let active = (page == p)
+            let icon = (p == .view) ? "viewfinder.circle" : "square.grid.2x2"
+            Button { switchTo(p) } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: icon)
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(active ? Color.accentColor : Color.secondary, .clear)
+                        .frame(width: 18)
+                        .contentTransition(.symbolEffect(.replace))
+                    Text(p.title)
+                        .font(.footnote.weight(active ? .semibold : .regular))
+                        .foregroundStyle(active ? .primary : .secondary)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity)
+                .background(active ? .thinMaterial : .ultraThinMaterial, in: Capsule())
+                .overlay(
+                    Capsule().stroke(
+                        active ? Color.accentColor.opacity(0.35) : Color.secondary.opacity(0.12),
+                        lineWidth: 1
+                    )
+                )
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .symbolEffect(.bounce, value: active)
+        }
+
+        private var pageSwitcher: some View {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 10) {
+                    pageChip(.view)
+                    pageChip(.grid)
+                }
+
+                Text(summary(for: page))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .padding(.horizontal, 6)
+                    .contentTransition(.opacity)
+                    .animation(.easeOut(duration: 0.14), value: page)
+            }
+            .padding(6)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
+            )
+        }
+
+        private var viewPage: some View {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 10) {
+                    StageToggleChip(
+                        title: "Guides",
+                        systemNameOn: "ruler.fill",
+                        systemNameOff: "ruler",
+                        isOn: $guidesOn
+                    )
+                    StageToggleChip(
+                        title: "Always Recenter",
+                        systemNameOn: "viewfinder.circle.fill",
+                        systemNameOff: "viewfinder.circle",
+                        isOn: $alwaysRecenter
+                    )
+                }
+
+                ZoomPresetStepperControl(
+                    preset: Binding(
+                        get: { LatticeZoomPreset(rawValue: zoomPresetRaw) ?? .standard },
+                        set: { zoomPresetRaw = $0.rawValue }
+                    )
+                )
+
+                NodeSizeStepperControl(
+                    choice: Binding(
+                        get: { NodeSizeChoice(rawValue: nodeSizeRaw) ?? .m },
+                        set: { nodeSizeRaw = $0.rawValue }
+                    )
+                )
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Label Density")
+                        Spacer()
+                        Text("\(Int(labelDensity * 100))%")
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            DetentChip(title: "Off",  systemImage: "textformat.slash",        value: 0.0,  current: $labelDensity)
+                            DetentChip(title: "Low",  systemImage: "textformat.size.smaller", value: 0.35, current: $labelDensity)
+                            DetentChip(title: "Med",  systemImage: "textformat",              value: 0.65, current: $labelDensity)
+                            DetentChip(title: "High", systemImage: "textformat.size.larger",  value: 0.85, current: $labelDensity)
+                            DetentChip(title: "Max",  systemImage: "textformat.size",         value: 1.0,  current: $labelDensity)
+                        }
+                        .padding(.vertical, 2)
+                    }
+                    .onAppear { snapLabelDensityIfNeeded() }
+                    .onChange(of: labelDensity) { _ in snapLabelDensityIfNeeded() }
+                }
+
+                Text("Default Zoom affects Reset View; Labels control fade.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+
+        @ViewBuilder private var gridModePicker: some View {
+            let setMode: (LatticeGridMode) -> Void = { m in
+                withAnimation(.snappy) { gridModeRaw = m.rawValue }
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            }
+
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) {
+                    GridModeRadioChip(
+                        title: "Off",
+                        systemNameOff: "slash.circle",
+                        systemNameOn: "slash.circle.fill",
+                        selected: gridMode == .off
+                    ) { setMode(.off) }
+
+                    GridModeRadioChip(
+                        title: "Hex",
+                        systemNameOff: "hexagon",
+                        systemNameOn: "hexagon.fill",
+                        selected: gridMode == .outlines
+                    ) { setMode(.outlines) }
+
+                    GridModeRadioChip(
+                        title: "Triangle",
+                        systemNameOff: "triangle",
+                        systemNameOn: "triangle.fill",
+                        selected: gridMode == .triMesh
+                    ) { setMode(.triMesh) }
+                }
+
+                LazyVGrid(
+                    columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)],
+                    spacing: 10
+                ) {
+                    GridModeRadioChip(
+                        title: "Off",
+                        systemNameOff: "slash.circle",
+                        systemNameOn: "slash.circle.fill",
+                        selected: gridMode == .off
+                    ) { setMode(.off) }
+
+                    GridModeRadioChip(
+                        title: "Hex",
+                        systemNameOff: "hexagon",
+                        systemNameOn: "hexagon.fill",
+                        selected: gridMode == .outlines
+                    ) { setMode(.outlines) }
+
+                    GridModeRadioChip(
+                        title: "Triangle",
+                        systemNameOff: "triangle",
+                        systemNameOn: "triangle.fill",
+                        selected: gridMode == .triMesh
+                    ) { setMode(.triMesh) }
+                }
+            }
+        }
+
+        private var gridPage: some View {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Hex Grid")
+                    .font(.subheadline.weight(.semibold))
+
+                gridModePicker
+
+                if gridMode != .off {
+                    VStack(alignment: .leading, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Strength")
+                                .font(.subheadline.weight(.semibold))
+
+                            GridStrengthStepperChip(strength: $gridStrength)
+                        }
+                        .onAppear { snapGridStrengthIfNeeded() }
+                        .onChange(of: gridStrength) { _ in snapGridStrengthIfNeeded() }
+
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Major Lines")
+                                .font(.subheadline.weight(.semibold))
+
+                            StageToggleChip(
+                                title: "Enabled",
+                                systemNameOn: "grid.circle.fill",
+                                systemNameOff: "grid.circle",
+                                isOn: $gridMajorEnabled
+                            )
+
+                            MajorEveryStepperChip(value: $gridMajorEvery, enabled: gridMajorEnabled)
+                        }
+
+
+                        Text("Strength + Major Lines are shared across Light/Dark.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+
+        private var pagedPanel: some View {
+            ZStack(alignment: .topLeading) {
+                // Keep both pages alive (snappier switching). Fade only.
+            viewPage
+                .opacity(page == .view ? 1 : 0)
+                .allowsHitTesting(page == .view)
+                .accessibilityHidden(page != .view)
+
+            gridPage
+                .opacity(page == .grid ? 1 : 0)
+                .allowsHitTesting(page == .grid)
+                .accessibilityHidden(page != .grid)
+            }
+            .animation(.easeOut(duration: 0.14), value: page)
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
+            )
+        }
+
+        var body: some View {
+            VStack(alignment: .leading, spacing: 12) {
+
+                // ✅ Preview window (unchanged; static; never animates)
+                Group {
+                    if #available(iOS 26.0, *) {
+                        GlassEffectContainer {
+                            SettingsLatticePreview()
+                                .environment(\.latticePreviewMode, true)
+                                .environment(\.latticePreviewHideChips, true)
+                                .allowsHitTesting(false)
+                                .disabled(true)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        }
+                        .frame(height: 180)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .glassEffect(.regular, in: .rect(cornerRadius: 12))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
+                        )
+                    } else {
+                        SettingsLatticePreview()
+                            .environment(\.latticePreviewMode, true)
+                            .environment(\.latticePreviewHideChips, true)
+                            .allowsHitTesting(false)
+                            .disabled(true)
+                            .frame(height: 180)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
+                            )
+                    }
+                }
+                .transaction { $0.animation = nil }
+
+                // 2) Page switcher (hierarchical, non-native)
+                pageSwitcher
+
+                // 3) Paged content panel (animated in/out)
+                pagedPanel
+            }
+        }
+    }
+    private struct GridStrengthStepperChip: View {
+        @Binding var strength: Double
+
+        private var detents: [Double] { StudioConsoleView.gridStrengthDetents.sorted() }
+        private var snapped: Double { StudioConsoleView.nearestDetent(strength, in: detents) }
+        private var pct: Int { Int((snapped * 100).rounded()) }
+
+        private func step(_ dir: Int) {
+            let cur = snapped
+            guard let idx = detents.firstIndex(of: cur) else { return }
+            let nextIdx = max(0, min(detents.count - 1, idx + dir))
+            let next = detents[nextIdx]
+            guard next != strength else { return }
+            strength = next
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        }
+
+        var body: some View {
+            HStack(spacing: 10) {
+                Button { withAnimation(.snappy) { step(-1) } } label: {
+                    Image(systemName: "chevron.left")
+                        .frame(width: 34, height: 34)
+                        .background(.ultraThinMaterial, in: Circle())
+                }
+                .buttonStyle(.plain)
+
+                HStack(spacing: 8) {
+                    Image(systemName: "slider.horizontal.3")
+                        .symbolRenderingMode(.hierarchical)
+
+                    ViewThatFits(in: .horizontal) {
+                        Text("Strength \(pct)%")
+                        Text("\(pct)%")
+                    }
+                    .font(.footnote.weight(.semibold))
+                    .monospacedDigit()
+                    .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity)
+                .layoutPriority(1)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(.ultraThinMaterial, in: Capsule())
+                .overlay(Capsule().stroke(Color.secondary.opacity(0.12), lineWidth: 1))
+
+                Button { withAnimation(.snappy) { step(+1) } } label: {
+                    Image(systemName: "chevron.right")
+                        .frame(width: 34, height: 34)
+                        .background(.ultraThinMaterial, in: Circle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private struct MajorEveryStepperChip: View {
+        @Binding var value: Int
+        let enabled: Bool
+
+        private func step(_ dir: Int) {
+            guard enabled else { return }
+            value = max(2, min(24, value + dir))
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        }
+
+        var body: some View {
+            HStack(spacing: 10) {
+                Button { withAnimation(.snappy) { step(-1) } } label: {
+                    Image(systemName: "chevron.left")
+                        .frame(width: 34, height: 34)
+                        .background(.ultraThinMaterial, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .disabled(!enabled)
+                .opacity(enabled ? 1 : 0.5)
+
+                HStack(spacing: 8) {
+                    Image(systemName: "number")
+                        .symbolRenderingMode(.hierarchical)
+
+                    ViewThatFits(in: .horizontal) {
+                        Text("Every \(value)")
+                        Text("Every \(value)x") // tiny fallback; basically never used, but prevents ellipsis
+                    }
+                    .font(.footnote.weight(.semibold))
+                    .monospacedDigit()
+                    .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity)          // ✅ pill gets the available width
+                .layoutPriority(1)                   // ✅ resists compression
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(.ultraThinMaterial, in: Capsule())
+                .overlay(Capsule().stroke(Color.secondary.opacity(0.12), lineWidth: 1))
+                .opacity(enabled ? 1 : 0.5)
+
+                Button { withAnimation(.snappy) { step(+1) } } label: {
+                    Image(systemName: "chevron.right")
+                        .frame(width: 34, height: 34)
+                        .background(.ultraThinMaterial, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .disabled(!enabled)
+                .opacity(enabled ? 1 : 0.5)
+            }
+        }
+    }
     
         // Local scheme override for immediate visual update inside Settings
         private var settingsScheme: ColorScheme? {
@@ -269,6 +904,10 @@ struct StudioConsoleView: View {
                 showRatioAlong: $showRatioAlong,
                 nodeSize: $nodeSize,
                 labelDensity: $labelDensity,
+                gridModeRaw: $gridModeRaw,
+                gridMajorEnabled: $gridMajorEnabled,
+                gridMajorEvery: $gridMajorEvery,
+                gridStrength: $gridStrength,
                 guidesOn: $guidesOn,
                 overlay7: $overlay7,
                 overlay11: $overlay11,
@@ -286,7 +925,7 @@ struct StudioConsoleView: View {
                 localInkIsDark: $localInkIsDark,
                 broadcastAll: broadcastAll,
                 latticeDefaultZoomPresetRaw: $latticeDefaultZoomPresetRaw,
-                latticeRememberLastView: $latticeRememberLastView
+                latticeAlwaysRecenterOnQuit: $latticeAlwaysRecenterOnQuit
             )
         )
     }
@@ -433,6 +1072,10 @@ struct StudioConsoleView: View {
         @Binding var showRatioAlong: Bool
         @Binding var nodeSize: String
         @Binding var labelDensity: Double
+        @Binding var gridModeRaw: String
+        @Binding var gridMajorEnabled: Bool
+        @Binding var gridMajorEvery: Int
+        @Binding var gridStrength: Double
         @Binding var guidesOn: Bool
         @Binding var overlay7: Bool
         @Binding var overlay11: Bool
@@ -450,7 +1093,7 @@ struct StudioConsoleView: View {
         @Binding var localInkIsDark: Bool
         let broadcastAll: () -> Void
         @Binding var latticeDefaultZoomPresetRaw: String
-        @Binding var latticeRememberLastView: Bool
+        @Binding var latticeAlwaysRecenterOnQuit: Bool
 
 
         @State private var lastEffectiveIsDark: Bool = false
@@ -460,6 +1103,16 @@ struct StudioConsoleView: View {
                 .onAppear {
                     broadcastAll()
                     lastEffectiveIsDark = effectiveIsDark
+                    StudioConsoleView.migrateLegacyGridSettingsIfNeeded()
+                    let snappedLabel = StudioConsoleView.nearestDetent(labelDensity, in: StudioConsoleView.labelDensityDetents)
+                    if snappedLabel != labelDensity { labelDensity = snappedLabel }
+
+                    let snappedGrid = StudioConsoleView.nearestDetent(gridStrength, in: StudioConsoleView.gridStrengthDetents)
+                    if snappedGrid != gridStrength { gridStrength = snappedGrid }
+                    
+                    // Always remember lattice view (remove user-facing toggle; enforce ON)
+                                        UserDefaults.standard.set(true, forKey: SettingsKeys.latticeRememberLastView)
+                                        postSetting(SettingsKeys.latticeRememberLastView, true)
                 }
                 .onChange(of: defaultView)   { postSetting(SettingsKeys.defaultView, $0) }
                 .onChange(of: a4Staff)       { postSetting(SettingsKeys.staffA4Hz, $0) }
@@ -467,6 +1120,10 @@ struct StudioConsoleView: View {
                 .onChange(of: showRatioAlong){ postSetting(SettingsKeys.showRatioAlongHeji, $0) }
                 .onChange(of: nodeSize)      { postSetting(SettingsKeys.nodeSize, $0) }
                 .onChange(of: labelDensity)  { postSetting(SettingsKeys.labelDensity, $0) }
+                .onChange(of: gridModeRaw)       { postSetting(SettingsKeys.latticeHexGridMode, $0) }
+                .onChange(of: gridStrength)      { postSetting(SettingsKeys.latticeHexGridStrength, $0) }
+                .onChange(of: gridMajorEnabled)  { postSetting(SettingsKeys.latticeHexGridMajorEnabled, $0) }
+                .onChange(of: gridMajorEvery)    { postSetting(SettingsKeys.latticeHexGridMajorEvery, $0) }
                 .onChange(of: guidesOn)      { postSetting(SettingsKeys.guidesOn, $0) }
                 .onChange(of: overlay7)      { postSetting(SettingsKeys.overlay7, $0) }
                 .onChange(of: overlay11)     { postSetting(SettingsKeys.overlay11, $0) }
@@ -485,7 +1142,7 @@ struct StudioConsoleView: View {
                 .onChange(of: stageKeepAwake){ postSetting(SettingsKeys.stageKeepAwake, $0) }
                 .onChange(of: stageMinimalUI){ postSetting(SettingsKeys.stageMinimalUI, $0) }
                 .onChange(of: latticeDefaultZoomPresetRaw) { postSetting(SettingsKeys.latticeDefaultZoomPreset, $0) }
-                                .onChange(of: latticeRememberLastView)     { postSetting(SettingsKeys.latticeRememberLastView, $0) }
+                .onChange(of: latticeAlwaysRecenterOnQuit) { postSetting(SettingsKeys.latticeAlwaysRecenterOnQuit, $0) }
                                 .onChange(of: effectiveIsDark) { newVal in
                                     guard newVal != lastEffectiveIsDark else { return }
                                     lastEffectiveIsDark = newVal
@@ -733,80 +1390,20 @@ struct StudioConsoleView: View {
 
     @ViewBuilder private var latticeUISection: some View {
         glassCard("Lattice UI") {
-            VStack(alignment: .leading, spacing: 12) {
-
-                // ✅ Real lattice preview (uses your actual nodes + guides)
-                Group {
-                    if #available(iOS 26.0, *) {
-                        GlassEffectContainer {
-                            SettingsLatticePreview()
-                                .environment(\.latticePreviewMode, true)
-                                .environment(\.latticePreviewHideChips, true)
-                                .allowsHitTesting(false)
-                                .disabled(true)
-                                .frame(height: 180)
-                                .scaleEffect(0.92, anchor: .center)
-                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        }
-                        .glassEffect(.regular, in: .rect(cornerRadius: 12))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
+            LatticeUIControlsPager(
+                            nodeSizeRaw: $nodeSize,
+                            labelDensity: $labelDensity,
+                            guidesOn: $guidesOn,
+                            alwaysRecenter: $latticeAlwaysRecenterOnQuit,
+                            zoomPresetRaw: $latticeDefaultZoomPresetRaw,
+                            gridModeRaw: $gridModeRaw,
+                            gridStrength: $gridStrength,
+                            gridMajorEnabled: $gridMajorEnabled,
+                            gridMajorEvery: $gridMajorEvery
                         )
-                    } else {
-                        SettingsLatticePreview()
-                            .environment(\.latticePreviewMode, true)
-                            .environment(\.latticePreviewHideChips, true)
-                            .allowsHitTesting(false)
-                            .disabled(true)
-                            .frame(height: 180)
-                            .scaleEffect(0.92, anchor: .center)
-                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
-                            )
-                    }
-                }
-
-
-                // One middle window control: left/right stepper + current size label
-                NodeSizeStepperControl(
-                    choice: Binding(
-                        get: { NodeSizeChoice(rawValue: nodeSize) ?? .m },
-                        set: { nodeSize = $0.rawValue }
-                    )
-                )
-
-                ZoomPresetStepperControl(
-                    preset: Binding(
-                        get: { LatticeZoomPreset(rawValue: latticeDefaultZoomPresetRaw) ?? .standard },
-                        set: { latticeDefaultZoomPresetRaw = $0.rawValue }
-                    )
-                )
-
-                Toggle("Remember last view", isOn: $latticeRememberLastView)
-
-                Text("Default zoom affects Reset View and the initial view when not restoring last view.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-
-                
-                // Live controls (update preview instantly)
-                HStack(spacing: 12) {
-                    Text("Label density")
-                    Slider(value: $labelDensity, in: 0...1, step: 0.05)
-                    Text("\(Int(labelDensity * 100))%").monospacedDigit().foregroundStyle(.secondary)
-                }
-
-                Toggle("Guides on", isOn: $guidesOn)
-
-              //  Toggle("Fold audition to 20–5k Hz", isOn: $foldAudible)
-
-                Text("Node size affects pad size & hit-target; density controls label fade.")
-                    .font(.footnote).foregroundStyle(.secondary)
-            }
+            
         }
+        
     }
 
 
@@ -1188,8 +1785,15 @@ struct StudioConsoleView: View {
         postSetting(SettingsKeys.stageKeepAwake, stageKeepAwake)
         postSetting(SettingsKeys.stageMinimalUI, stageMinimalUI)
         postSetting(SettingsKeys.latticeDefaultZoomPreset, latticeDefaultZoomPresetRaw)
-        postSetting(SettingsKeys.latticeRememberLastView, latticeRememberLastView)
-
+        postSetting(SettingsKeys.latticeHexGridMode, gridModeRaw)
+        postSetting(SettingsKeys.latticeHexGridStrength, gridStrength)
+        postSetting(SettingsKeys.latticeHexGridMajorEnabled, gridMajorEnabled)
+        postSetting(SettingsKeys.latticeHexGridMajorEvery, gridMajorEvery)
+        postSetting(SettingsKeys.latticeAlwaysRecenterOnQuit, latticeAlwaysRecenterOnQuit)
+        
+                // Always remember lattice view (remove user-facing toggle; enforce ON)
+                UserDefaults.standard.set(true, forKey: SettingsKeys.latticeRememberLastView)
+                postSetting(SettingsKeys.latticeRememberLastView, true)
     }
 
     // MARK: - Glass primitive
@@ -1302,6 +1906,17 @@ struct StudioConsoleView: View {
         case .l:     return "Large"
         }
     }
+     
+     // Used in Lattice UI inactive-page summaries.
+         var summaryCode: String {
+             switch self {
+             case .s:     return "S"
+             case .m:     return "M"
+             case .mplus: return "M+"
+             case .l:     return "L"
+             }
+         }
+     
     var nodeDiameter: CGFloat {
         switch self {
         case .s:     return 22
@@ -1396,11 +2011,9 @@ private struct SettingsLatticePreview: View {
               .allowsHitTesting(false)
               .disabled(true)
 
-                .frame(width: geo.size.width, height: geo.size.height)
-                // A slight scale to keep a nice crop in the preview window;
-                // adjust if your scene already fits tightly.
-                .scaleEffect(0.92, anchor: .center)
-                .clipped()
+              .frame(width: geo.size.width, height: geo.size.height)
+              .clipped()
+
         }
         // Keep sound off while preview is visible
         .onAppear { app.latticeAuditionOn = false }

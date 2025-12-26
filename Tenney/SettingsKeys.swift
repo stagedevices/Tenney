@@ -9,6 +9,33 @@ import SwiftUI
 
 
 enum SettingsKeys {
+    
+    // NEW (single-value, v0.3+)
+        static let latticeHexGridStrength     = "lattice.hexGrid.strength"
+        static let latticeHexGridMajorEnabled = "lattice.hexGrid.major.enabled"
+        static let latticeHexGridMajorEvery   = "lattice.hexGrid.major.every"
+
+        // NOTE: keep existing v0.2 keys for migration only:
+    // Lattice Grid (single set)
+    static let latticeGridStyle        = "Tenney.Lattice.Grid.Style"         // String: off|cells|mesh|rails
+    static let latticeGridWeight       = "Tenney.Lattice.Grid.Weight"        // String: thin|light|medium|bold|heavy
+    static let latticeGridMajorEnabled = "Tenney.Lattice.Grid.Major.Enabled" // Bool
+    static let latticeGridMajorEvery   = "Tenney.Lattice.Grid.Major.Every"   // Int
+    
+    // LEGACY: Lattice Hex Grid (old per-theme keys; retained for migration only)
+    // Lattice Hex Grid (per-theme: light/dark)
+    static let latticeHexGridMode = "Tenney.Lattice.HexGrid.Mode" // shared
+    static let latticeHexGridEnabledLight = "Tenney.Lattice.HexGrid.Enabled.Light"
+    static let latticeHexGridEnabledDark = "Tenney.Lattice.HexGrid.Enabled.Dark"
+    static let latticeHexGridStrengthLight = "Tenney.Lattice.HexGrid.Strength.Light"
+    static let latticeHexGridStrengthDark = "Tenney.Lattice.HexGrid.Strength.Dark"
+
+    static let latticeHexGridMajorEnabledLight = "Tenney.Lattice.HexGrid.Major.Enabled.Light"
+    static let latticeHexGridMajorEnabledDark  = "Tenney.Lattice.HexGrid.Major.Enabled.Dark"
+    static let latticeHexGridMajorEveryLight   = "Tenney.Lattice.HexGrid.Major.Every.Light"
+    static let latticeHexGridMajorEveryDark    = "Tenney.Lattice.HexGrid.Major.Every.Dark"
+    
+    
     static let lastSeenBuild = "tenney.lastSeenBuild"
 
     static let tenneyDistanceMode = "tenney.distance.mode"

@@ -11,6 +11,7 @@ import AVFoundation
 import Combine
 import Accelerate
 import SwiftUI
+import UIKit
 
 // Lightweight global read-only handle so non-View code can read rootHz safely.
 enum AppModelLocator {
@@ -19,7 +20,22 @@ enum AppModelLocator {
 
 @MainActor
 final class AppModel: ObservableObject {
-    init() { AppModelLocator.shared = self }
+    private var _recenterObserver: NSObjectProtocol?
+    init() {
+        _recenterObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.willResignActiveNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            guard UserDefaults.standard.bool(forKey: SettingsKeys.latticeAlwaysRecenterOnQuit) else { return }
+            UserDefaults.standard.set(true, forKey: SettingsKeys.latticeRecenterPending)
+        }
+        AppModelLocator.shared = self
+    }
+    
+    deinit {
+            if let o = _recenterObserver { NotificationCenter.default.removeObserver(o) }
+        }
     
     enum MicPermissionState { case unknown, denied, granted }
 

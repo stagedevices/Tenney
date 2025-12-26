@@ -16,8 +16,51 @@ extension LatticeCamera {
     }
 }
 
+// MARK: - Hex Grid Mode (shared with Settings)
+enum LatticeGridMode: String, CaseIterable, Identifiable {
+    case outlines     // hex outlines
+    case cells        // filled hex cells (subtle)
+    case triMesh      // triangular mesh
+    case off          // no grid
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .outlines: return "Outlines"
+        case .cells:    return "Cells"
+        case .triMesh:  return "Tri Mesh"
+        case .off:      return "Off"
+        }
+    }
+}
 
 struct LatticeView: View {
+    
+
+    @AppStorage(SettingsKeys.latticeHexGridMode)
+    private var gridModeRaw: String = LatticeGridMode.outlines.rawValue
+
+    @AppStorage(SettingsKeys.latticeHexGridStrength)
+    private var gridStrengthRaw: Double = 0.16
+
+    @AppStorage(SettingsKeys.latticeHexGridMajorEnabled)
+    private var gridMajorEnabled: Bool = true
+
+    @AppStorage(SettingsKeys.latticeHexGridMajorEvery)
+    private var gridMajorEvery: Int = 2
+
+    private var gridMode: LatticeGridMode {
+        LatticeGridMode(rawValue: gridModeRaw) ?? .outlines
+    }
+
+    private var gridStrength: CGFloat {
+        max(0, min(1, CGFloat(gridStrengthRaw)))
+    }
+
+    private var gridMajorEveryClamped: Int {
+        max(2, min(24, gridMajorEvery))
+    }
+
     // Hold-to-toggle-all for overlay prime chips (7+)
     @State private var overlayPrimeHoldConsumedTap = false
 
@@ -111,6 +154,12 @@ struct LatticeView: View {
     
     @AppStorage(SettingsKeys.latticeThemeID) private var themeIDRaw: String = LatticeThemeID.classicBO.rawValue
     @AppStorage(SettingsKeys.latticeThemeStyle) private var themeStyleRaw: String = ThemeStyleChoice.system.rawValue
+    
+    @AppStorage(SettingsKeys.latticeAlwaysRecenterOnQuit)
+        private var latticeAlwaysRecenterOnQuit: Bool = false
+    
+        @AppStorage(SettingsKeys.latticeRecenterPending)
+        private var latticeRecenterPending: Bool = false
     
     @State private var viewSize: CGSize = .zero
     
@@ -1102,9 +1151,270 @@ struct LatticeView: View {
             }
         }
     }
+
     
-    
-    
+
+    private let gridMinZoom: CGFloat = 48   // threshold (B)
+
+    private func gridStride(for zoom: CGFloat) -> Int {
+        // stepwise subsample (B)
+        if zoom < (gridMinZoom + 14) { return 6 }
+        if zoom < (gridMinZoom + 44) { return 3 }
+        return 1
+    }
+
+    private func gridBasisUV() -> (u: CGPoint, v: CGPoint) {
+        let o = layout.position(for: LatticeCoord(e3: 0, e5: 0))
+        let u1 = layout.position(for: LatticeCoord(e3: 1, e5: 0))
+        let v1 = layout.position(for: LatticeCoord(e3: 0, e5: 1))
+        return (
+            CGPoint(x: u1.x - o.x, y: u1.y - o.y),
+            CGPoint(x: v1.x - o.x, y: v1.y - o.y)
+        )
+    }
+
+    private func drawGrid(ctx: inout GraphicsContext, viewRect: CGRect) {
+        guard gridMode != .off else { return }
+
+
+        let zoom = store.camera.scale
+        guard zoom >= gridMinZoom else { return }
+
+        let strength = gridStrength
+
+        let strengthEff = strength * 0.75 // cap: 1.00 UI -> 0.75 effective
+
+        guard strengthEff > 0.001 else { return }
+
+        let isDark = effectiveIsDark
+        let minorBaseAlpha: CGFloat = isDark ? 0.16 : 0.11
+        let majorAlphaMul: CGFloat = 1.35
+        let minorLine: CGFloat = 0.85
+        let majorLine: CGFloat = 1.25
+
+        let tintA = activeTheme.primeTint(3)
+        let tintB = activeTheme.primeTint(5)
+
+        let tintShade = GraphicsContext.Shading.linearGradient(
+            Gradient(colors: [tintA, tintB]),
+            startPoint: CGPoint(x: viewRect.minX, y: viewRect.minY),
+            endPoint: CGPoint(x: viewRect.maxX, y: viewRect.maxY)
+        )
+
+        let highlightColor: Color = isDark ? .white : .black
+        let tintBlend: GraphicsContext.BlendMode = isDark ? .screen : .multiply
+
+        let (u0, v0) = gridBasisUV()
+
+        let step = gridStride(for: zoom)
+        let pad: CGFloat = 90
+
+        let pivotWorld = layout.position(for: store.pivot)
+        let pivotScreen = store.camera.worldToScreen(pivotWorld)
+        let maxR = maxRadius(from: pivotScreen, in: viewRect)
+
+        func add(_ a: CGPoint, _ b: CGPoint) -> CGPoint { CGPoint(x: a.x + b.x, y: a.y + b.y) }
+        func sub(_ a: CGPoint, _ b: CGPoint) -> CGPoint { CGPoint(x: a.x - b.x, y: a.y - b.y) }
+        func mul(_ a: CGPoint, _ s: CGFloat) -> CGPoint { CGPoint(x: a.x * s, y: a.y * s) }
+
+        func fade(at sp: CGPoint) -> CGFloat {
+            let d = hypot(sp.x - pivotScreen.x, sp.y - pivotScreen.y)
+            let t = clamp01(1 - d / maxR)
+
+            // Boost low-t so the grid doesn't die near the edges.
+            // 0.70 = slower fade; try 0.60 (even slower) .. 0.85 (closer to current).
+            let boosted = CGFloat(pow(Double(t), 0.70))
+            return smoothstep(boosted)
+        }
+
+        func hexPath(centerWorld: CGPoint, u: CGPoint, v: CGPoint) -> Path {
+            // Voronoi hex for triangular lattice: corners = ±(u+v)/3, ±(2u-v)/3, ±(u-2v)/3
+            let a = mul(add(u, v), 1.0 / 3.0)
+            let b = mul(sub(mul(u, 2), v), 1.0 / 3.0)
+            let c = mul(sub(u, mul(v, 2)), 1.0 / 3.0)
+
+            let cornersWorld: [CGPoint] = [
+                add(centerWorld, a),
+                add(centerWorld, b),
+                add(centerWorld, c),
+                sub(centerWorld, a),
+                sub(centerWorld, b),
+                sub(centerWorld, c)
+            ]
+
+            let corners = cornersWorld.map { store.camera.worldToScreen($0) }
+
+            var p = Path()
+            if let first = corners.first {
+                p.move(to: first)
+                for pt in corners.dropFirst() { p.addLine(to: pt) }
+                p.closeSubpath()
+            }
+            return p
+        }
+
+        func shouldDraw(_ sp: CGPoint) -> Bool {
+            sp.x >= viewRect.minX - pad &&
+            sp.x <= viewRect.maxX + pad &&
+            sp.y >= viewRect.minY - pad &&
+            sp.y <= viewRect.maxY + pad
+        }
+        
+        func drawHexCellsPass(step: Int, alphaMul: CGFloat, lineWidth: CGFloat, emphasizePivot: Bool) {
+            let u = mul(u0, CGFloat(step))
+            let v = mul(v0, CGFloat(step))
+
+            let R = Int(max(12, min(96, zoom / 2)))
+            let pad: CGFloat = 90
+
+            for de3 in stride(from: -R, through: R, by: step) {
+                for de5 in stride(from: -R, through: R, by: step) {
+                    let coord = LatticeCoord(e3: store.pivot.e3 + de3, e5: store.pivot.e5 + de5)
+                    let cw = layout.position(for: coord)
+                    let cs = store.camera.worldToScreen(cw)
+
+                    if cs.x < viewRect.minX - pad || cs.x > viewRect.maxX + pad ||
+                       cs.y < viewRect.minY - pad || cs.y > viewRect.maxY + pad { continue }
+
+                    let f = fade(at: cs)
+                    var a = minorBaseAlpha * strengthEff * f * alphaMul
+                    if a < 0.003 { continue }
+
+                    let isPivotCell = (de3 == 0 && de5 == 0)
+                    if emphasizePivot && isPivotCell { a *= 1.25 }
+
+                    let hex = hexPath(centerWorld: cw, u: u, v: v)
+
+                    // Fill (subtle “cell” presence)
+                    var g = ctx
+                    g.opacity = a * 0.55
+                    g.fill(hex, with: tintShade)
+
+                    // Light etched outline for definition
+                    var o = ctx
+                    o.opacity = a * 0.85
+                    o.stroke(hex, with: .color(highlightColor.opacity(isDark ? 0.18 : 0.12)), lineWidth: lineWidth * 0.75)
+                    o.blendMode = tintBlend
+                    o.stroke(hex, with: tintShade, lineWidth: lineWidth * 0.85)
+                }
+            }
+        }
+
+
+        func drawHexPass(step: Int, alphaMul: CGFloat, lineWidth: CGFloat, emphasizePivot: Bool) {
+            let u = mul(u0, CGFloat(step))
+            let v = mul(v0, CGFloat(step))
+
+            // radius tuned to match view coverage without going insane
+            let R = Int(max(12, min(96, zoom / 2)))
+
+            for de3 in stride(from: -R, through: R, by: step) {
+                for de5 in stride(from: -R, through: R, by: step) {
+                    let coord = LatticeCoord(e3: store.pivot.e3 + de3, e5: store.pivot.e5 + de5)
+                    let cw = layout.position(for: coord)
+                    let cs = store.camera.worldToScreen(cw)
+                    if !shouldDraw(cs) { continue }
+
+                    let f = fade(at: cs)
+                    var a = minorBaseAlpha * strengthEff * f * alphaMul
+                    if a < 0.003 { continue }
+
+                    let isPivotCell = (de3 == 0 && de5 == 0)
+                    var lw = lineWidth
+                    if emphasizePivot && isPivotCell {
+                        a *= 1.35
+                        lw *= 1.20
+                    }
+
+                    let hex = hexPath(centerWorld: cw, u: u, v: v)
+
+                    // etched: faint bevel + tinted etch
+                    var g = ctx
+                    g.opacity = a
+
+                    g.stroke(hex, with: .color(highlightColor.opacity(isDark ? 0.26 : 0.18)), lineWidth: lw * 0.80)
+
+                    g.blendMode = tintBlend
+                    g.stroke(hex, with: tintShade, lineWidth: lw)
+                }
+            }
+        }
+
+        func drawTriMeshPass(step: Int, alphaMul: CGFloat, lineWidth: CGFloat, emphasizePivot: Bool) {
+            let u = mul(u0, CGFloat(step))
+            let v = mul(v0, CGFloat(step))
+
+            let R = Int(max(12, min(96, zoom / 2)))
+            var segments: [(CGPoint, CGPoint, CGFloat, Bool)] = []
+
+            for de3 in stride(from: -R, through: R, by: step) {
+                for de5 in stride(from: -R, through: R, by: step) {
+                    let coord = LatticeCoord(e3: store.pivot.e3 + de3, e5: store.pivot.e5 + de5)
+                    let cw = layout.position(for: coord)
+                    let cs = store.camera.worldToScreen(cw)
+                    if !shouldDraw(cs) { continue }
+
+                    let f = fade(at: cs)
+                    var a = minorBaseAlpha * strengthEff * f * alphaMul
+                    if a < 0.003 { continue }
+
+                    let isPivotCell = (de3 == 0 && de5 == 0)
+                    if emphasizePivot && isPivotCell { a *= 1.35 }
+
+                    let p0 = cs
+                    let pU = store.camera.worldToScreen(add(cw, u))
+                    let pV = store.camera.worldToScreen(add(cw, v))
+                    let pVU = store.camera.worldToScreen(add(cw, sub(v, u)))
+
+                    segments.append((p0, pU, a, isPivotCell))
+                    segments.append((p0, pV, a, isPivotCell))
+                    segments.append((p0, pVU, a, isPivotCell))
+                }
+            }
+
+            for (aPt, bPt, a, isPivot) in segments {
+                var lw = lineWidth
+                var aa = a
+                if emphasizePivot && isPivot { lw *= 1.25 }
+
+                var g = ctx
+                g.opacity = aa
+                var p = Path()
+                p.move(to: aPt)
+                p.addLine(to: bPt)
+
+                g.stroke(p, with: .color(highlightColor.opacity(isDark ? 0.24 : 0.16)), lineWidth: lw * 0.80)
+                g.blendMode = tintBlend
+                g.stroke(p, with: tintShade, lineWidth: lw)
+            }
+        }
+
+        switch gridMode {
+        case .off:
+            return
+
+        case .outlines:
+            drawHexPass(step: step, alphaMul: 1.0, lineWidth: minorLine, emphasizePivot: true)
+            if gridMajorEnabled {
+                drawHexPass(step: step * gridMajorEveryClamped, alphaMul: majorAlphaMul, lineWidth: majorLine, emphasizePivot: true)
+            }
+
+        case .cells:
+            drawHexCellsPass(step: step, alphaMul: 1.0, lineWidth: minorLine, emphasizePivot: true)
+            if gridMajorEnabled {
+                // keep majors as crisp outlines so “cells” don’t get muddy
+                drawHexPass(step: step * gridMajorEveryClamped, alphaMul: majorAlphaMul, lineWidth: majorLine, emphasizePivot: true)
+            }
+
+        case .triMesh:
+            drawTriMeshPass(step: step, alphaMul: 1.0, lineWidth: minorLine, emphasizePivot: true)
+            if gridMajorEnabled {
+                drawTriMeshPass(step: step * gridMajorEveryClamped, alphaMul: majorAlphaMul, lineWidth: majorLine, emphasizePivot: true)
+            }
+        }
+
+    }
+
     
     
     
@@ -1136,7 +1446,8 @@ struct LatticeView: View {
                 
                 guard let nodes = anyNodes as? [LatticeRenderNode] else { return }
                 
-                
+                drawGrid(ctx: &ctx, viewRect: viewRect)
+
                 // Axes
                 drawAxes(ctx: &ctx)
                 
@@ -1228,7 +1539,14 @@ struct LatticeView: View {
                     }
                 }
             }
-            .id("canvas-\(themeIDRaw)-\(themeStyleRaw)")
+            .id(
+                "canvas-\(themeIDRaw)-\(themeStyleRaw)" +
+                    "-grid:\(gridModeRaw)" +
+                    "-st:\(Int(gridStrengthRaw * 100))" +
+                    "-mj:\(gridMajorEnabled ? 1 : 0)" +
+                    "-me:\(gridMajorEvery)"
+            )
+
             .allowsHitTesting(false)
         }
     }
@@ -1261,16 +1579,12 @@ struct LatticeView: View {
                 return
             }
             
-            // If user doesn’t want to restore last view, always start at default.
-            let remember: Bool = {
-                if UserDefaults.standard.object(forKey: SettingsKeys.latticeRememberLastView) == nil { return true }
-                return UserDefaults.standard.bool(forKey: SettingsKeys.latticeRememberLastView)
-            }()
-            
-            if !remember {
-                withAnimation(.snappy) { store.resetView(in: geo.size) }
-                return
-            }
+            // Always-recenter: only fires after a *cold relaunch* (pending was set when the app went to background).
+                        if latticeAlwaysRecenterOnQuit && latticeRecenterPending {
+                            latticeRecenterPending = false
+                            withAnimation(.snappy) { store.resetView(in: geo.size) }
+                            return
+                        }
             
             // First-run/no-persist fallback: if translation is still zero, center using default zoom
             if store.camera.translation == .zero {
@@ -1404,12 +1718,19 @@ struct LatticeView: View {
     
     var body: some View {
         GeometryReader { geo in
-            latticeStack(in: geo)
-                .navigationTitle("Lattice")
-                .toolbar { clearToolbar }
-                .background(Color.clear)
-                .onPreferenceChange(SelectionTrayHeightKey.self) { trayHeight = $0 }
-                .onPreferenceChange(BottomHUDHeightKey.self) { bottomHUDHeight = $0 }
+            ZStack {
+                        TenneySceneBackground(
+                            isDark: effectiveIsDark,
+                            tintA: activeTheme.primeTint(3),
+                            tintB: activeTheme.primeTint(5)
+                        )
+            
+                        latticeStack(in: geo)
+                            .navigationTitle("Lattice")
+                            .toolbar { clearToolbar }
+                            .onPreferenceChange(SelectionTrayHeightKey.self) { trayHeight = $0 }
+                            .onPreferenceChange(BottomHUDHeightKey.self) { bottomHUDHeight = $0 }
+                    }
             
                 .onReceive(NotificationCenter.default.publisher(for: .settingsChanged)) { note in
                     applySettingsChanged(note)
