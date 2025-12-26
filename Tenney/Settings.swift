@@ -289,6 +289,54 @@ struct StudioConsoleView: View {
         let snapped = Self.nearestDetent(gridStrength, in: Self.gridStrengthDetents)
         if snapped != gridStrength { gridStrength = snapped }
     }
+    
+    
+    // MARK: - Scroll offset (reliable; UIKit KVO)
+    private struct ScrollOffsetReader: UIViewRepresentable {
+        var onChange: (CGFloat) -> Void
+
+        func makeUIView(context: Context) -> OffsetProbeView {
+            let v = OffsetProbeView()
+            v.onChange = onChange
+            return v
+        }
+
+        func updateUIView(_ uiView: OffsetProbeView, context: Context) {
+            uiView.onChange = onChange
+            uiView.startIfNeeded()
+        }
+
+        final class OffsetProbeView: UIView {
+            var onChange: ((CGFloat) -> Void)?
+            private var observation: NSKeyValueObservation?
+
+            override func didMoveToWindow() {
+                super.didMoveToWindow()
+                startIfNeeded()
+            }
+
+            func startIfNeeded() {
+                guard observation == nil else { return }
+                guard let sv = findEnclosingScrollView() else { return }
+
+                observation = sv.observe(\.contentOffset, options: [.initial, .new]) { [weak self] sv, _ in
+                    self?.onChange?(sv.contentOffset.y)
+                }
+            }
+
+            private func findEnclosingScrollView() -> UIScrollView? {
+                var v: UIView? = self
+                while let cur = v {
+                    if let sv = cur as? UIScrollView { return sv }
+                    v = cur.superview
+                }
+                return nil
+            }
+
+            deinit { observation?.invalidate() }
+        }
+    }
+
 
 // MARK: - Chip / Tile primitives (match Theme + Pro Audio visual language)
     private struct DetentChip: View {
@@ -1073,12 +1121,13 @@ struct StudioConsoleView: View {
     var body: some View {
         NavigationStack {
             contentStack
+            .navigationBarBackButtonHidden(true)
+            .toolbar(.hidden, for: .navigationBar)
         }
         // Apply the hidden flag to this stack so the chip has visible effect here
         .statusBar(hidden: stageHideStatus)
         .preferredColorScheme(settingsScheme)
-        .toolbar { doneToolbar }
-        .navigationBarTitleDisplayMode(.inline)
+        
         .sheet(isPresented: $showWhatsNewSheet, onDismiss: {
         markWhatsNewSeen()
         }) {
@@ -1167,27 +1216,66 @@ struct StudioConsoleView: View {
     private var contentStack: some View {
         ZStack {
             backgroundGlass
-            VStack(spacing: 14) {
+            // AFTER
+            VStack(alignment: .leading, spacing: 14) {
                 headerView
-                ScrollView { gridView }
+
+                ScrollView {
+                    gridView
+                        .background(
+                            ScrollOffsetReader { y in
+                                let y0   = max(0, y)
+                                let tRaw = min(max(y0 / headerCollapseRange, 0), 1)
+
+                                // Ease-out so it “gives” early, then settles (more HIG-like than linear)
+                                let t = 1 - pow(1 - tRaw, 1.6)
+
+                                settingsHeaderProgress = t
+                            }
+                            .frame(width: 0, height: 0)
+                        )
+                }
+
+
             }
             inkOverlay
         }
     }
 
     private var headerView: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        let p = settingsHeaderProgress
+
+        let titleBig: CGFloat   = (hSizeClass == .compact ? 34 : 30)
+        let titleSmall: CGFloat = 24
+        let titleSize = lerp(titleBig, titleSmall, p)
+
+        let subBig: CGFloat   = 16
+        let subSmall: CGFloat = 13
+        let subSize = lerp(subBig, subSmall, p)
+
+        return VStack(alignment: .leading, spacing: lerp(6, 3, p)) {
             Text("Settings")
-                .font(.system(size: (hSizeClass == .compact ? 34 : 30), weight: .bold))
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .font(.system(size: titleSize, weight: .bold))
+                .lineLimit(1)
+
             Text("Tuner & Lattice Algorithm Configs")
-                .font(.callout)
+                .font(.system(size: subSize, weight: .semibold))
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+
+            Divider()
+                .opacity(p * 0.9)
         }
         .padding(.horizontal, 20)
-        .padding(.top, 20)
-        .padding(.bottom, 6)
+        .padding(.top, lerp(16, 10, p))
+        .padding(.bottom, lerp(8, 4, p))
+        .frame(maxWidth: .infinity, alignment: .leading)
+
+        // Don’t let SwiftUI inject its own interpolation; follow the scroll exactly.
+        .transaction { $0.animation = nil }
     }
+
 
     private var gridView: some View {
         LazyVGrid(columns: columns, spacing: 14) {
@@ -1730,6 +1818,10 @@ struct StudioConsoleView: View {
                 .font(.footnote).foregroundStyle(.secondary)
         }
     }
+    
+    @State private var settingsHeaderProgress: CGFloat = 0   // 0 expanded → 1 collapsed
+    private let headerCollapseRange: CGFloat = 72            // increase to slow the “push” (e.g. 90–120)
+    private func lerp(_ a: CGFloat, _ b: CGFloat, _ t: CGFloat) -> CGFloat { a + (b - a) * t }
 
     @State private var cfg = ToneOutputEngine.shared.config
 
@@ -1933,7 +2025,10 @@ struct StudioConsoleView: View {
                 // One clear entry that pushes the full AboutView
                 NavigationLink {
                     AboutView()
-                } label: {
+                           .toolbar(.visible, for: .navigationBar)
+                           .navigationTitle("About")
+                           .navigationBarTitleDisplayMode(.inline)
+                   } label: {
                     HStack(spacing: 12) {
                         // App icon if available; otherwise a system symbol
                         Image("Logo")
