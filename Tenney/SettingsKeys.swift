@@ -70,6 +70,7 @@ enum SettingsKeys {
     static let foldAudible   = "tenney.lattice.foldAud"    // Bool (fold 20–5k)
     
     static let latticeConnectionMode = "Tenney.Lattice.Connection.Mode" // String: chain|loop|gridPath
+    static let builderExportCustomA4Hz = "Tenney.Builder.ExportCustomA4Hz"
 
     
     static let builderExportFormats   = "Tenney.Builder.ExportFormats"

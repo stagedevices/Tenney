@@ -240,6 +240,61 @@ extension SettingsKeys {
     static let latticeRecenterPending = "lattice.recenter.pending"
 }
 
+struct AudioRoutingSnapshot: Equatable {
+    enum OutputKind {
+        case speaker
+        case headphones
+        case bluetooth
+        case other
+    }
+
+    let kind: OutputKind
+    let displayName: String   // e.g. "iPhone Speaker", "AirPods Pro"
+
+    static func fromCurrentRoute() -> AudioRoutingSnapshot {
+        let session = AVAudioSession.sharedInstance()
+        let outputs = session.currentRoute.outputs
+
+        guard let first = outputs.first else {
+            return AudioRoutingSnapshot(kind: .other, displayName: "System Output")
+        }
+
+        let portType = first.portType
+        let name = first.portName
+
+        switch portType {
+        case .builtInSpeaker:
+            return AudioRoutingSnapshot(kind: .speaker,    displayName: name)
+        case .headphones, .headsetMic:
+            return AudioRoutingSnapshot(kind: .headphones, displayName: name)
+        case .bluetoothA2DP, .bluetoothHFP, .bluetoothLE:
+            return AudioRoutingSnapshot(kind: .bluetooth,  displayName: name)
+        default:
+            return AudioRoutingSnapshot(kind: .other,      displayName: name)
+        }
+    }
+
+    /// Short code for small labels inside the console (OUT module).
+    var shortCode: String {
+        switch kind {
+        case .speaker:    return "Spkr"
+        case .headphones: return "HP"
+        case .bluetooth:  return "BT"
+        case .other:      return "Sys"
+        }
+    }
+
+    /// SF Symbol for routing pill.
+    var systemImage: String {
+        switch kind {
+        case .speaker:    return "speaker.wave.2.fill"
+        case .headphones: return "headphones"
+        case .bluetooth:  return "bonjour"
+        case .other:      return "circle.grid.2x1"
+        }
+    }
+}
+
 
 struct StudioConsoleView: View {
     
@@ -656,10 +711,13 @@ struct StudioConsoleView: View {
                 safeAmp,
                 in: StudioConsoleView.safeAmpDetents
             )
-            let pct = Int((snapped * 100).rounded())
-            return "Limiter: \(onOff(cfg.limiterOn)) · Safe: \(pct)%"
-        }
+            let dB = ToneOutputEngine.outputGain(forSafeAmp: snapped)
+            let dBInt = Int(dB.rounded())
+            let dBText = "\(dBInt) dBFS"
 
+            return "Limiter: \(onOff(cfg.limiterOn)) · Nominal: \(dBText)"
+        }
+        
         private func summary(for p: Page) -> String {
             switch p {
             case .device:   return deviceSummary
@@ -970,40 +1028,37 @@ struct StudioConsoleView: View {
                     }
                 }
 
-                Text("Limiter and Safe level affect all output from Tenney’s engine. Start “Safe” on headphones; only use Hot/Max when you know your gain staging.")
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Safe level sets Tenney’s nominal output in dB below the limiter ceiling (0 dBFS). Use Safe/Normal for headphones; use Loud/Hot/Max for speakers or stage systems.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+
+                    let dangerous = (!cfg.limiterOn && safeAmp >= 0.24)
+
+                    if cfg.limiterOn {
+                        Text("Limiter clamps peaks near 0 dBFS to prevent clipping across all output.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    } else if dangerous {
+                        Text("Limiter is off. At this level, keep your hardware gain conservative and avoid headphones.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("Limiter is off. Outputs follow the Safe level target without a safety brickwall.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    GlassCTAButton(title: "Pro Audio Settings", systemName: "slider.horizontal.3") {
+                        withAnimation(pageAnim) { page = .device }
+                    }
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                }
             }
         }
 
         // MARK: - Preview + paged panel
 
-        private var previewRow: some View {
-            Group {
-                if #available(iOS 26.0, *) {
-                    GlassEffectContainer {
-                        AudioEnginePreview()
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    }
-                    .frame(height: 140)
-                    .glassEffect(.regular, in: .rect(cornerRadius: 12))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
-                    )
-                } else {
-                    AudioEnginePreview()
-                        .frame(height: 140)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
-                        )
-                }
-            }
-            .transaction { $0.animation = nil }   // never animate preview itself
-        }
 
         private var pagedPanel: some View {
             ZStack(alignment: .topLeading) {
@@ -1047,7 +1102,6 @@ struct StudioConsoleView: View {
 
         var body: some View {
             VStack(alignment: .leading, spacing: 12) {
-                previewRow
                 pageSwitcher
                 pagedPanel
             }
@@ -1811,25 +1865,25 @@ struct StudioConsoleView: View {
     
     // MARK: - Body (split to keep type-checker happy)
     var body: some View {
-        NavigationStack {
-            contentStack
-                .navigationBarBackButtonHidden(true)
-                .toolbar(.hidden, for: .navigationBar)
-        }
-        .environment(
-            \.tenneyTheme,
-            ThemeRegistry.theme(
-                LatticeThemeID(rawValue: latticeThemeID) ?? .classicBO,
-                dark: effectiveIsDark
+                NavigationStack {
+                    contentStack
+                        .navigationBarBackButtonHidden(true)
+                        .toolbar(.hidden, for: .navigationBar)
+                }
+                .environment(
+                    \.tenneyTheme,
+                ThemeRegistry.theme(
+                    LatticeThemeID(rawValue: latticeThemeID) ?? .classicBO,
+                    dark: effectiveIsDark
+                )
             )
-        )
-        .statusBar(hidden: stageHideStatus)
-        .preferredColorScheme(settingsScheme)
-        .sheet(isPresented: $showWhatsNewSheet, onDismiss: {
-            markWhatsNewSeen()
-        }) {
+            .statusBar(hidden: stageHideStatus)
+            .preferredColorScheme(settingsScheme)
+            .sheet(isPresented: $showWhatsNewSheet, onDismiss: {
+                markWhatsNewSeen()
+            }) {
             WhatsNewSheet(
-                items: WhatsNewContent.v0_2Items,
+                items: WhatsNewContent.v0_3Items,
                 primaryAction: {
                     showWhatsNewSheet = false
                     markWhatsNewSeen()
@@ -2048,6 +2102,15 @@ struct StudioConsoleView: View {
 
     // MARK: - Lightweight sink view holds all listeners
     private struct SettingsChangeSinks: View {
+        private func pushSafeAmpToEngine(_ v: Double) {
+            let mapped = ToneOutputEngine.outputGain(forSafeAmp: v)
+            var cfg = ToneOutputEngine.shared.config
+            if cfg.outputGain_dB != mapped {
+                cfg.outputGain_dB = mapped
+                ToneOutputEngine.shared.config = cfg
+            }
+        }
+
         @Binding var defaultView: String
         @Binding var a4Staff: Double
         @Binding var labelDefault: String
@@ -2093,8 +2156,15 @@ struct StudioConsoleView: View {
                     let snappedGrid = StudioConsoleView.nearestDetent(gridStrength, in: StudioConsoleView.gridStrengthDetents)
                     if snappedGrid != gridStrength { gridStrength = snappedGrid }
                     
-                    let snappedSafe = StudioConsoleView.nearestDetent(safeAmp, in: StudioConsoleView.safeAmpDetents)
-                    if snappedSafe != safeAmp { safeAmp = snappedSafe }
+                    let snappedSafe = StudioConsoleView.nearestDetent(
+                        safeAmp,
+                        in: StudioConsoleView.safeAmpDetents
+                    )
+                    if snappedSafe != safeAmp {
+                        safeAmp = snappedSafe
+                    }
+                    pushSafeAmpToEngine(snappedSafe)
+
                     
                     // Always remember lattice view (remove user-facing toggle; enforce ON)
                                         UserDefaults.standard.set(true, forKey: SettingsKeys.latticeRememberLastView)
@@ -2114,7 +2184,22 @@ struct StudioConsoleView: View {
                 .onChange(of: overlay7)      { postSetting(SettingsKeys.overlay7, $0) }
                 .onChange(of: overlay11)     { postSetting(SettingsKeys.overlay11, $0) }
                 .onChange(of: foldAudible)   { postSetting(SettingsKeys.foldAudible, $0) }
-                .onChange(of: safeAmp)       { postSetting(SettingsKeys.safeAmp, $0) }
+                .onChange(of: safeAmp) { newValue in
+                    let snapped = StudioConsoleView.nearestDetent(
+                        newValue,
+                        in: StudioConsoleView.safeAmpDetents
+                    )
+
+                    if snapped != newValue {
+                        // Re-snap and early-out to avoid double-mapping.
+                        safeAmp = snapped
+                        return
+                    }
+
+                    postSetting(SettingsKeys.safeAmp, snapped)
+                    pushSafeAmpToEngine(snapped)
+                }
+
                 .onChange(of: latticeConnectionModeRaw) { postSetting(SettingsKeys.latticeConnectionMode, $0) }
                 .onChange(of: latticeThemeID){ postSetting(SettingsKeys.latticeThemeID, $0) }
                 .onChange(of: themeStyleRaw) { postSetting(SettingsKeys.latticeThemeStyle, $0) }
@@ -2145,16 +2230,18 @@ struct StudioConsoleView: View {
 
     // MARK: - Background
     @ViewBuilder private var backgroundGlass: some View {
-        if #available(iOS 26.0, *) {
-            Rectangle()
-                .fill(.clear)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .glassEffect(.regular,
-                             in: RoundedRectangle(cornerRadius: 0, style: .continuous))
-        } else {
-            Color.clear.background(.ultraThinMaterial)
-        }
+        // Neutral, legible base – no more full-screen glassEffect
+        LinearGradient(
+            colors: [
+                Color(.systemBackground),
+                Color(.secondarySystemBackground)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .ignoresSafeArea()
     }
+
 
     // MARK: - Sections
     @AppStorage(SettingsKeys.stageDimLevel) private var stageDimLevel: Double = 0.85
@@ -2325,13 +2412,20 @@ struct StudioConsoleView: View {
 
         var body: some View {
             ZStack {
-                LinearGradient(
-                    colors: [.gray.opacity(0.25), .gray.opacity(0.05)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(.secondarySystemBackground),
+                                Color(.secondarySystemBackground).opacity(locked ? 0.95 : 0.9)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
 
                 Color.black.opacity(dim)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
                 if locked {
                     VStack(spacing: 6) {
@@ -2347,9 +2441,10 @@ struct StudioConsoleView: View {
                 }
             }
             .contentShape(Rectangle())
-            .opacity(locked ? 0.6 : 1)
+            .opacity(locked ? 0.7 : 1)
         }
     }
+
 
 
 
@@ -2576,10 +2671,11 @@ struct StudioConsoleView: View {
     }
     
     @State private var settingsHeaderProgress: CGFloat = 0   // 0 expanded → 1 collapsed
-    private let headerCollapseRange: CGFloat = 72            // increase to slow the “push” (e.g. 90–120)
+    private let headerCollapseRange: CGFloat = 72
     private func lerp(_ a: CGFloat, _ b: CGFloat, _ t: CGFloat) -> CGFloat { a + (b - a) * t }
 
     @State private var cfg = ToneOutputEngine.shared.config
+
 
     @ViewBuilder private var soundSection: some View {
         glassCard(
@@ -2589,6 +2685,7 @@ struct StudioConsoleView: View {
         ) {
             AudioEnginePager(cfg: $cfg, safeAmp: $safeAmp)
         }
+
     }
 
 
@@ -2758,6 +2855,8 @@ struct StudioConsoleView: View {
 
 
     // MARK: - Helpers
+    
+
         private func updateA4() { /* legacy no-op; A4 now managed by SettingsA4PickerView */ }
 
     private func broadcastAll() {
@@ -2891,21 +2990,28 @@ struct StudioConsoleView: View {
         .background(
             Group {
                 if #available(iOS 26.0, *) {
+                    // Light, still a bit “liquid”, but not stacked on other glass
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(.clear)
-                        .glassEffect(.regular,
-                                     in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .fill(.thinMaterial)
                 } else {
+                    // Just a solid card on older OS; far more legible
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(.ultraThinMaterial)
+                        .fill(Color(.secondarySystemBackground))
                 }
             }
         )
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
+                .stroke(Color.secondary.opacity(0.14), lineWidth: 1)
+        )
+        .shadow(
+            color: Color.black.opacity(0.08),
+            radius: 10,
+            x: 0,
+            y: 4
         )
     }
+
 
     // Quick preset chip for dimming
     private struct DimPresetChip: View {
@@ -3127,81 +3233,7 @@ private struct ZoomPresetStepperControl: View {
     }
 }
 
-private struct AudioEnginePreview: View {
-    var body: some View {
-        GeometryReader { geo in
-            Canvas { ctx, size in
-                let w = size.width
-                let h = size.height
 
-                // Background gradient
-                let bg = Path(CGRect(origin: .zero, size: size))
-                ctx.fill(
-                    bg,
-                    with: .linearGradient(
-                        Gradient(colors: [
-                            Color.primary.opacity(0.18),
-                            Color.primary.opacity(0.04)
-                        ]),
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-
-                // Simple folded-ish waveform
-                var wave = Path()
-                let midY = h * 0.55
-                let amp  = h * 0.30
-                let samples = max(48, Int(w))
-
-                for i in 0...samples {
-                    let x01 = CGFloat(i) / CGFloat(samples)
-                    let x   = x01 * w
-                    let t   = x01 * .pi * 4
-                    let y01 = abs(sin(t)) * 2 - 1        // folded-ish
-                    let y   = midY - y01 * amp
-                    if i == 0 { wave.move(to: CGPoint(x: x, y: y)) }
-                    else      { wave.addLine(to: CGPoint(x: x, y: y)) }
-                }
-
-                ctx.stroke(
-                    wave,
-                    with: .color(Color.primary.opacity(0.9)),
-                    lineWidth: 2
-                )
-
-                // Output meter on the right
-                let meterWidth: CGFloat = 7
-                let meterRect = CGRect(
-                    x: w - 18,
-                    y: h * 0.16,
-                    width: meterWidth,
-                    height: h * 0.68
-                )
-
-                ctx.stroke(
-                    Path(roundedRect: meterRect, cornerRadius: 3),
-                    with: .color(Color.secondary.opacity(0.45)),
-                    lineWidth: 1
-                )
-
-                let fillFraction: CGFloat = 0.6
-                let fillHeight = meterRect.height * fillFraction
-                let fillRect = CGRect(
-                    x: meterRect.minX + 1.5,
-                    y: meterRect.maxY - fillHeight - 1.5,
-                    width: meterWidth - 3,
-                    height: fillHeight
-                )
-
-                ctx.fill(
-                    Path(roundedRect: fillRect, cornerRadius: 2),
-                    with: .color(Color.accentColor.opacity(0.85))
-                )
-            }
-        }
-    }
-}
 
 
 private struct SettingsLatticePreview: View {

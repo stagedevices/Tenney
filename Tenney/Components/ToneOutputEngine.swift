@@ -31,6 +31,46 @@ final class ToneOutputEngine {
         var outputGain_dB: Float = -6.0                   // final gain before soft limiter
         var limiterOn: Bool = true                        // soft clip safety
     }
+    
+    // MARK: - SafeAmp → output gain mapping (dBFS below ~0 dB ceiling)
+
+    /// Canonical mapping from safeAmp detents into output gain in dBFS.
+    /// Values are relative to a nominal 0 dBFS limiter ceiling.
+    /// Safe   = 0.12 → ~ -18 dBFS
+    /// Normal = 0.18 → ~ -14 dBFS
+    /// Loud   = 0.24 → ~ -10 dBFS
+    /// Hot    = 0.30 → ~  -6 dBFS
+    /// Max    = 0.36 → ~  -3 dBFS
+    static func outputGain(forSafeAmp safeAmp: Double) -> Float {
+        let table: [(Double, Float)] = [
+            (0.12, -18.0),
+            (0.18, -14.0),
+            (0.24, -10.0),
+            (0.30,  -6.0),
+            (0.36,  -3.0)
+        ]
+
+        guard let first = table.first, let last = table.last else {
+            return -14.0
+        }
+
+        let v = max(first.0, min(last.0, safeAmp))
+
+        if v <= first.0 { return first.1 }
+        if v >= last.0  { return last.1  }
+
+        for i in 0..<(table.count - 1) {
+            let (v0, d0) = table[i]
+            let (v1, d1) = table[i + 1]
+            if v >= v0 && v <= v1 {
+                let t = Float((v - v0) / (v1 - v0))
+                return d0 + (d1 - d0) * t
+            }
+        }
+
+        return -14.0
+    }
+
     // Do NOT mutate from render thread.
         // Backed by a tiny lock to avoid tearing while the render thread snapshots config.
         var config: Config {

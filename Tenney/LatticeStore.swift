@@ -105,6 +105,7 @@ final class LatticeStore: ObservableObject {
     
     @Published var tenneyDistanceMode: TenneyDistanceMode = .breakdown
 
+    
 
     // MARK: - Prime visibility
     func togglePrime(_ p: Int) {
@@ -362,12 +363,7 @@ final class LatticeStore: ObservableObject {
     
     // MARK: - Selection (plane)
     func toggleSelection(_ c: LatticeCoord, pushUndo: Bool = true) {
-        let isSelecting = !selected.contains(c)   // final state will be selected?
         let key: SelectionKey = .plane(c)
-
-        if isSelecting { touchOrder(key) }
-        else { removeOrder(key) }
-
         
         if selected.contains(c) {
             selected.remove(c)
@@ -474,11 +470,7 @@ final class LatticeStore: ObservableObject {
     func toggleOverlay(prime p: Int, e3: Int, e5: Int, eP: Int, pushUndo: Bool = true) {
         let g = GhostMonzo(e3: e3, e5: e5, p: p, eP: eP)
 
-        let isSelecting = !selectedGhosts.contains(g) // final state will be selected?
         let key: SelectionKey = .ghost(g)
-
-        if isSelecting { touchOrder(key) }
-        else { removeOrder(key) }
 
         if selectedGhosts.contains(g) {
             startSelectionAnim(key, targetOn: false)

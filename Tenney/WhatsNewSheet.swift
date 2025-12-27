@@ -8,7 +8,6 @@
 import Foundation
 import SwiftUI
 import StoreKit
-import AVFAudio
 import UIKit
 
 struct WhatsNewItem: Identifiable {
@@ -31,34 +30,34 @@ enum AppInfo {
     }
 }
 
-// MARK: v0.2 content
+// MARK: v0.3 content
 enum WhatsNewContent {
     // “Big three” are rendered as custom cards below. Keep the rest here.
-    static let v0_2Items: [WhatsNewItem] = [
+    static let v0_3Items: [WhatsNewItem] = [
         .init(
-            symbol: "square.grid.3x3.fill",
-            title: "More Nodes & Pads",
-            summary: "Scale up to 13–31 nodes with larger pads. Faster layout, smoother guides."
-        ),
-        .init(
-            symbol: "sparkles.rectangle.stack",
-            title: "Setup Wizard",
-            summary: "First-run setup (and rerun anytime) to dial in roots, A4, and defaults."
-        ),
-        .init(
-            symbol: "wifi.circle",
-            title: "Cast Audio",
-            summary: "AirPlay, Bluetooth, USB, and Inter-App Audio—use the best route available."
+            symbol: "textformat.size",
+            title: "Label Density Controls",
+            summary: "Tune label density from Off → Max for clean screenshots or full-detail editing."
         ),
         .init(
             symbol: "gearshape.2",
-            title: "Better Settings",
-            summary: "Glass cards, live previews, clearer controls, and theme polish."
+            title: "Settings, Tightened",
+            summary: "A tighter, clearer Settings layout with better visual hierarchy."
+        ),
+        .init(
+            symbol: "paintpalette",
+            title: "Theme Polish",
+            summary: "More consistent theming across screens, with a cleaner dark/light presentation."
+        ),
+        .init(
+            symbol: "sparkles",
+            title: "Motion & Feel",
+            summary: "Smoother transitions and a more responsive, tactile feel across the app."
         ),
         .init(
             symbol: "checkmark.shield.fill",
-            title: "Stability & Polish",
-            summary: "Crash fixes, quicker launches, and snappier interactions."
+            title: "Stability & Performance",
+            summary: "Crash fixes, fewer edge-case glitches, and faster interactions."
         )
     ]
 }
@@ -68,10 +67,16 @@ struct WhatsNewSheet: View {
     let items: [WhatsNewItem]
     let primaryAction: () -> Void
 
-    // Optional deep-link actions (shown only if provided)
+    // v0.3 deep-link actions (shown only if provided)
+    var onOpenExport: (() -> Void)? = nil
+    var onSeeInLattice: (() -> Void)? = nil
+    var onRateApp: (() -> Void)? = nil
+
+    // Back-compat shims (safe to delete once call sites are migrated)
     var onSeeIntervalInLattice: (() -> Void)? = nil
     var onOpenProAudio: (() -> Void)? = nil
-    var onRateApp: (() -> Void)? = nil
+
+    private var seeInLatticeAction: (() -> Void)? { onSeeInLattice ?? onSeeIntervalInLattice }
 
     // Auto values from Info.plist
     private let versionString = AppInfo.version
@@ -94,8 +99,8 @@ struct WhatsNewSheet: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 heroHeader
-                bigThree // custom rich cards
-                featureList // the rest
+                bigThree
+                featureList
                 footerActions
             }
             .padding(16)
@@ -114,7 +119,7 @@ struct WhatsNewSheet: View {
                 // Red→Orange animated gradient blobs (iOS 26)
                 if #available(iOS 26.0, *) {
                     HeroGradient()
-                    .frame(height: 280)
+                        .frame(height: 280)
                         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                         .overlay(
                             RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -123,10 +128,10 @@ struct WhatsNewSheet: View {
                         .mask(
                             LinearGradient(
                                 stops: [
-                                    .init(color: .white,            location: 0.00),
-                                    .init(color: .white,            location: 0.65),
+                                    .init(color: .white,              location: 0.00),
+                                    .init(color: .white,              location: 0.65),
                                     .init(color: .white.opacity(0.6), location: 0.85),
-                                    .init(color: .clear,            location: 1.00),
+                                    .init(color: .clear,              location: 1.00),
                                 ],
                                 startPoint: .top, endPoint: .bottom
                             )
@@ -154,7 +159,6 @@ struct WhatsNewSheet: View {
 
                     Spacer()
 
-                    // Platform chip
                     if #available(iOS 26.0, *) {
                         Text("Designed for iOS 26")
                             .font(.caption2.weight(.black))
@@ -169,38 +173,38 @@ struct WhatsNewSheet: View {
         }
     }
 
-    // MARK: Big Three (rich cards with tiny previews)
+    // MARK: Big Three (v0.3)
     private var bigThree: some View {
         VStack(spacing: 12) {
-            // 1) Interval Distance badges (Tenney Height)
+            // 1) Export scala + more
             bigCard(
-                symbol: "chart.xyaxis.line",
-                title: "Interval Distance",
-                blurb: "Tenney Height—total or per-prime breakdown—now right on the lattice.",
-                preview: AnyView(TenneyPreview()),
-                primaryCTA: onSeeIntervalInLattice == nil ? nil : ("See in Lattice", {
-                    onSeeIntervalInLattice?()
+                symbol: "square.and.arrow.up",
+                title: "Export & Share Scales",
+                blurb: "Export saved scales and send them anywhere—Scala and other formats, ready for other devices and apps.",
+                preview: AnyView(ExportPreview()),
+                primaryCTA: onOpenExport == nil ? nil : ("Export Saved Scales", {
+                    onOpenExport?()
                 })
             )
 
-            // 2) Hold-to-Select-All (pads)
+            // 2) Lattice restyle
             bigCard(
-                symbol: "hand.tap.fill",
-                title: "Hold to Select",
-                blurb: "Press & hold a ratio pill to select the whole row—fast multi-edits.",
-                preview: AnyView(HoldSelectPreview()),
+                symbol: "circle.grid.2x2.fill",
+                title: "Lattice Restyle",
+                blurb: "New node styling, cleaner theming, and a redesigned motion/feel across the lattice.",
+                preview: AnyView(LatticeRestylePreview()),
+                primaryCTA: seeInLatticeAction == nil ? nil : ("See in Lattice", {
+                    seeInLatticeAction?()
+                })
+            )
+
+            // 3) Grid + connection modes
+            bigCard(
+                symbol: "square.grid.3x3.fill",
+                title: "Grids & Connections",
+                blurb: "New grid styles and connection modes for clearer structure—especially at higher node counts.",
+                preview: AnyView(GridConnectionsPreview()),
                 primaryCTA: nil
-            )
-
-            // 3) Pro Audio handling
-            bigCard(
-                symbol: "hifispeaker.2.fill",
-                title: "Pro Audio",
-                blurb: "Input device picker, sample rate, and latency awareness.",
-                preview: AnyView(ProAudioPreview()),
-                primaryCTA: onOpenProAudio == nil ? nil : ("Open in Settings", {
-                    onOpenProAudio?()
-                })
             )
         }
     }
@@ -216,7 +220,6 @@ struct WhatsNewSheet: View {
                         .frame(width: 28, height: 28)
                         .padding(10)
                         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .matchedGeometryEffect(id: item.symbol == "chart.xyaxis.line" ? "spark" : UUID().uuidString, in: heroNS, properties: .position, isSource: false)
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text(item.title)
@@ -226,6 +229,7 @@ struct WhatsNewSheet: View {
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
+
                     Spacer(minLength: 0)
                 }
                 .padding(12)
@@ -237,7 +241,6 @@ struct WhatsNewSheet: View {
     // MARK: Footer
     private var footerActions: some View {
         VStack(spacing: 12) {
-            // Links row
             HStack(spacing: 12) {
                 if let u = releaseNotesURL {
                     Link(destination: u) {
@@ -265,7 +268,6 @@ struct WhatsNewSheet: View {
                 Spacer(minLength: 0)
             }
 
-            // Primary CTA
             Button {
                 primaryAction()
             } label: {
@@ -293,12 +295,15 @@ struct WhatsNewSheet: View {
                     Image(systemName: symbol)
                         .imageScale(.large)
                         .foregroundStyle(.primary)
-                        .symbolEffect(.pulse, options: .repeating, value: true)
+                        .symbolEffect(.pulse, options: .repeating, value: animateHero)
+
                     Text(title).font(.headline)
                 }
+
                 Text(blurb)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+
                 if let cta = primaryCTA {
                     Button(cta.title, action: cta.action)
                         .buttonStyle(.borderedProminent)
@@ -306,7 +311,9 @@ struct WhatsNewSheet: View {
                         .padding(.top, 4)
                 }
             }
+
             Spacer(minLength: 10)
+
             preview
                 .frame(width: 148, height: 96)
         }
@@ -345,27 +352,28 @@ private struct HeroGradient: View {
     var body: some View {
         TimelineView(.animation) { _ in
             Canvas { ctx, size in
-// Meshy, moving blobs (red → orange), plus grain
                 ctx.blendMode = .plusLighter
-                let red   = Color(uiColor: .systemRed)
-                let org   = Color(uiColor: .systemOrange)
-                let ylw   = Color(uiColor: .systemYellow)
-                let w = size.width, h = size.height * 1.35   // overfill into body
+
+                let red = Color(uiColor: .systemRed)
+                let org = Color(uiColor: .systemOrange)
+                let ylw = Color(uiColor: .systemYellow)
+
+                let w = size.width
+                let h = size.height * 1.35
                 let rBase = min(w, h) * 0.52
 
-                // Control centers drift at different phases/speeds
                 let c1 = CGPoint(x: w*0.25 + cos(t*0.60+0.00)*w*0.08, y: h*0.35 + sin(t*0.70+0.30)*h*0.06)
                 let c2 = CGPoint(x: w*0.75 + cos(t*0.55+1.70)*w*0.09, y: h*0.32 + sin(t*0.60+0.90)*h*0.07)
                 let c3 = CGPoint(x: w*0.52 + cos(t*0.45+2.40)*w*0.07, y: h*0.78 + sin(t*1.00+1.20)*h*0.05)
                 let c4 = CGPoint(x: w*0.10 + cos(t*0.80+0.50)*w*0.10, y: h*0.62 + sin(t*0.85+0.20)*h*0.05)
                 let c5 = CGPoint(x: w*0.92 + cos(t*0.75+2.10)*w*0.06, y: h*0.58 + sin(t*0.95+1.50)*h*0.05)
+
                 let r1 = rBase * (0.95 + 0.06 * sin(t*0.80))
                 let r2 = rBase * (0.85 + 0.06 * sin(t*0.90+1.10))
                 let r3 = rBase * (0.72 + 0.08 * sin(t*1.10+2.00))
                 let r4 = rBase * (0.60 + 0.08 * sin(t*0.70+0.60))
                 let r5 = rBase * (0.55 + 0.07 * sin(t*0.65+1.30))
 
-                // Five overlapping radial shadings to mimic a mesh
                 let g1 = Gradient(colors: [red.opacity(0.80), red.opacity(0.35), .clear])
                 let g2 = Gradient(colors: [org.opacity(0.75), org.opacity(0.35), .clear])
                 let g3 = Gradient(colors: [red.opacity(0.55), org.opacity(0.30), .clear])
@@ -403,124 +411,138 @@ private struct HeroGradient: View {
     }
 }
 
+// MARK: - Mini previews (v0.3)
 
-// MARK: - Tenney mini preview (animated chips)
-private struct TenneyPreview: View {
-    @State private var pulse = false
+// 1) Export preview (scale card + share arrow)
+private struct ExportPreview: View {
+    @State private var bounce = false
+
     var body: some View {
-        GeometryReader { geo in
+        ZStack {
+            HStack(alignment: .center, spacing: 8) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Saved Scale")
+                        .font(.caption2.weight(.semibold))
+                    Text("Scala • .scl")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                Image(systemName: "square.and.arrow.up")
+                    .font(.system(size: 18, weight: .bold))
+                    .symbolEffect(.bounce, options: .repeating.speed(0.65), value: bounce)
+            }
+            .padding(10)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear { bounce = true }
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+}
+
+// 2) Lattice restyle preview (different node styles)
+private struct LatticeRestylePreview: View {
+    @State private var phase = false
+
+    var body: some View {
+        GeometryReader { _ in
             Canvas { ctx, size in
-                let a = CGPoint(x: size.width * 0.26, y: size.height * 0.70)
-                let b = CGPoint(x: size.width * 0.78, y: size.height * 0.34)
-                // nodes
-                for p in [a,b] {
-                    let r: CGFloat = 8
-                    ctx.fill(Path(ellipseIn: .init(x: p.x-r, y: p.y-r, width: r*2, height: r*2)), with: .color(.primary))
-                }
-                // guide
-                var line = Path(); line.move(to: a); line.addLine(to: b)
-                ctx.stroke(line, with: .color(.secondary.opacity(0.5)), lineWidth: 1)
+                let y = size.height * 0.54
+                let xs: [CGFloat] = [size.width*0.22, size.width*0.50, size.width*0.78]
+                let r: CGFloat = 9
 
-                // total chip
-                let mid = CGPoint(x: (a.x+b.x)/2, y: (a.y+b.y)/2)
-                let totalR = CGRect(x: mid.x-24, y: mid.y-10, width: 48, height: 20)
-                ctx.fill(RoundedRectangle(cornerRadius: 6).path(in: totalR),
-                         with: .color(Color.secondary.opacity(0.15)))
-                ctx.draw(Text("H 3.84").font(.system(size: 10, weight: .semibold)), at: mid)
+                // A faint “motion” guide line
+                var guide = Path()
+                guide.move(to: CGPoint(x: xs.first ?? 0, y: y))
+                guide.addQuadCurve(to: CGPoint(x: xs.last ?? 0, y: y),
+                                   control: CGPoint(x: size.width*0.50, y: y + (phase ? 10 : -10)))
+                ctx.stroke(guide, with: .color(.secondary.opacity(0.35)), lineWidth: 1)
 
-                // per-axis chips
-                let chips = [("+2×3", Color.orange), ("−1×5", .pink), ("+1×7", .blue)]
-                let offs: [CGPoint] = [ .init(x: -28, y: -18), .init(x: 0, y: 18), .init(x: 28, y: -14) ]
-                for i in 0..<chips.count {
-                    let pos  = CGPoint(x: mid.x + offs[i].x, y: mid.y + offs[i].y + (pulse ? 0 : -2))
-                    let rr = CGRect(x: pos.x-16, y: pos.y-8, width: 32, height: 16)
-                    ctx.fill(RoundedRectangle(cornerRadius: 5).path(in: rr),
-                             with: .color(chips[i].1.opacity(0.20)))
-                    ctx.draw(Text(chips[i].0).font(.system(size: 9, weight: .semibold)), at: pos)
-                }
+                // Style 1: filled
+                let p1 = CGPoint(x: xs[0], y: y)
+                ctx.fill(Path(ellipseIn: CGRect(x: p1.x-r, y: p1.y-r, width: r*2, height: r*2)),
+                         with: .color(.primary))
+
+                // Style 2: ring
+                let p2 = CGPoint(x: xs[1], y: y)
+                ctx.stroke(Path(ellipseIn: CGRect(x: p2.x-r, y: p2.y-r, width: r*2, height: r*2)),
+                           with: .color(.primary), lineWidth: 2)
+
+                // Style 3: diamond (alternate silhouette)
+                let p3 = CGPoint(x: xs[2], y: y)
+                var diamond = Path()
+                diamond.move(to: CGPoint(x: p3.x, y: p3.y - r))
+                diamond.addLine(to: CGPoint(x: p3.x + r, y: p3.y))
+                diamond.addLine(to: CGPoint(x: p3.x, y: p3.y + r))
+                diamond.addLine(to: CGPoint(x: p3.x - r, y: p3.y))
+                diamond.closeSubpath()
+                ctx.fill(diamond, with: .color(.primary.opacity(phase ? 0.75 : 1.0)))
             }
         }
-        .onAppear { withAnimation(.easeInOut(duration: 1.2).repeatForever()) { pulse.toggle() } }
+        .onAppear { withAnimation(.easeInOut(duration: 1.15).repeatForever(autoreverses: true)) { phase.toggle() } }
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 
-// MARK: - Hold-to-select preview (animated pills + long-press ripple)
-private struct HoldSelectPreview: View {
-    // Show 7–31 (real chips); we’ll render as many as fit
-private let labels = Array(7...31).map { "\($0)" }
+// 3) Grid + connection styles preview
+private struct GridConnectionsPreview: View {
+    @State private var phase = false
 
     var body: some View {
-        GeometryReader { geo in
-            let maxW = geo.size.width
-            let maxH = geo.size.height
-            // Realistic pill sizing to match .footnote.semibold
-            let uiFont = UIFont.systemFont(ofSize: 12, weight: .semibold) // GlassChip uses .caption.semibold
-            let hPad: CGFloat = 10, vPad: CGFloat = 6, spacing: CGFloat = 6
-            let pillH = ceil(uiFont.lineHeight) + vPad * 2
+        GeometryReader { _ in
+            Canvas { ctx, size in
+                let step: CGFloat = phase ? 16 : 20
+                let inset: CGFloat = 10
 
-// Compute how many pills fit (flow layout; may early-exit)
-            let placed: [(text: String, frame: CGRect)] = {
-                var arr: [(text: String, frame: CGRect)] = []
-                var x: CGFloat = 0, y: CGFloat = 0
-                for t in labels {
-                    let textW = ceil((t as NSString).size(withAttributes: [.font: uiFont]).width)
-                    let pillW = textW + hPad * 2
-                    if x + pillW > maxW { x = 0; y += (pillH + spacing) }
-                    if y + pillH > maxH { break }
-                    arr.append((t, CGRect(x: x, y: y, width: pillW, height: pillH)))
-                    x += pillW + spacing
+                // Grid
+                let left = inset
+                let right = size.width - inset
+                let top = inset
+                let bottom = size.height - inset
+
+                var grid = Path()
+                var x = left
+                while x <= right {
+                    grid.move(to: CGPoint(x: x, y: top))
+                    grid.addLine(to: CGPoint(x: x, y: bottom))
+                    x += step
                 }
-                return arr
-            }()
-
-            ZStack(alignment: .topLeading) {
-                ForEach(placed.indices, id: \.self) { i in
-                    let item = placed[i]
-                    GlassChip(title: item.text, active: false, color: .accentColor, action: {})
-                                            .frame(width: item.frame.width, height: item.frame.height, alignment: .center)
-                                            .position(x: item.frame.midX, y: item.frame.midY)
-                                            .allowsHitTesting(false)
+                var y = top
+                while y <= bottom {
+                    grid.move(to: CGPoint(x: left, y: y))
+                    grid.addLine(to: CGPoint(x: right, y: y))
+                    y += step
                 }
-            }
-        }
-        .padding(6)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
-}
+                ctx.stroke(grid, with: .color(.secondary.opacity(0.20)), lineWidth: 1)
 
-// MARK: - Pro Audio preview (route + sample rate shimmer)
-private struct ProAudioPreview: View {
-    @State private var label = ProAudioPreview.currentRouteSummary()
-    @State private var shimmer = false
+                // Nodes
+                let a = CGPoint(x: size.width * 0.28, y: size.height * 0.68)
+                let b = CGPoint(x: size.width * 0.76, y: size.height * 0.36)
+                let r: CGFloat = 8
 
-    var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "speaker.wave.2.fill").imageScale(.small)
-            Text(label)
-                .font(.caption2.weight(.semibold))
-                .overlay(
-                    Rectangle()
-                        .fill(Color.white.opacity(0.35))
-                        .frame(width: shimmer ? 0 : nil, height: 1)
-                        .offset(y: 10)
-                        .opacity(0.0)
+                ctx.fill(Path(ellipseIn: CGRect(x: a.x-r, y: a.y-r, width: r*2, height: r*2)),
+                         with: .color(.primary))
+                ctx.fill(Path(ellipseIn: CGRect(x: b.x-r, y: b.y-r, width: r*2, height: r*2)),
+                         with: .color(.primary))
+
+                // Connection (style swap)
+                var line = Path()
+                line.move(to: a)
+                line.addLine(to: b)
+
+                let style = StrokeStyle(
+                    lineWidth: 2,
+                    lineCap: .round,
+                    lineJoin: .round,
+                    dash: phase ? [6, 5] : []
                 )
+                ctx.stroke(line, with: .color(.primary.opacity(0.75)), style: style)
+            }
         }
-        .padding(.horizontal, 10).padding(.vertical, 6)
-        .background(Color.secondary.opacity(0.10), in: Capsule())
-        .onAppear {
-            label = ProAudioPreview.currentRouteSummary()
-            withAnimation(.easeInOut(duration: 1.6).delay(0.4)) { shimmer.toggle() }
-        }
+        .onAppear { withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) { phase.toggle() } }
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
-
-    static func currentRouteSummary() -> String {
-        let s = AVAudioSession.sharedInstance()
-        let name = s.currentRoute.outputs.first?.portName ?? "Built-in Speaker"
-        let kHz = s.sampleRate / 1000.0
-        let rateText = (abs(kHz - 44.1) < 0.2) ? "44.1" : String(format: "%.0f", kHz)
-        return "\(name) • \(rateText) kHz"
     }
 }

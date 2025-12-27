@@ -25,16 +25,18 @@ struct ScaleBuilderScreen: View {
         static let `default`: ExportFormat = [.scl, .kbm]
     }
     
-    private enum ExportRootMode: String, CaseIterable, Identifiable {
-        case tenneyA4
-        case builderRoot
+    private enum ExportA4Mode: String, CaseIterable, Identifiable {
+        case appDefault
+        case hz440
+        case custom
         
         var id: String { rawValue }
         
         var title: String {
             switch self {
-            case .tenneyA4:   return "Tenney A4"
-            case .builderRoot:return "Builder root"
+            case .appDefault: return "App default"
+            case .hz440:      return "440 Hz"
+            case .custom:     return "Custom"
             }
         }
     }
@@ -48,25 +50,37 @@ struct ScaleBuilderScreen: View {
     
     // Export preferences (persisted)
     @AppStorage(SettingsKeys.builderExportFormats) private var exportFormatsRaw: Int = ExportFormat.default.rawValue
-    @AppStorage(SettingsKeys.builderExportRootMode) private var exportRootModeRaw: String = ExportRootMode.tenneyA4.rawValue
-    
+    @AppStorage(SettingsKeys.builderExportRootMode) private var exportA4ModeRaw: String = ExportA4Mode.appDefault.rawValue
+    @AppStorage(SettingsKeys.builderExportCustomA4Hz) private var customExportA4Hz: Double = 440.0
+
     private var exportFormats: ExportFormat {
         ExportFormat(rawValue: exportFormatsRaw)
     }
-    
-    private var exportRootMode: ExportRootMode {
-        ExportRootMode(rawValue: exportRootModeRaw) ?? .tenneyA4
+
+    private var exportA4Mode: ExportA4Mode {
+        ExportA4Mode(rawValue: exportA4ModeRaw) ?? .appDefault
     }
-    private var exportRootModeBinding: Binding<ExportRootMode> {
+
+    private var exportA4ModeBinding: Binding<ExportA4Mode> {
         Binding(
-            get: { ExportRootMode(rawValue: exportRootModeRaw) ?? .tenneyA4 },
-            set: { exportRootModeRaw = $0.rawValue }
+            get: { ExportA4Mode(rawValue: exportA4ModeRaw) ?? .appDefault },
+            set: { exportA4ModeRaw = $0.rawValue }
         )
     }
-    
 
-    
-    
+    private var exportA4Hz: Double {
+        switch exportA4Mode {
+        case .appDefault:
+            // For now, treat the app default as 440 Hz.
+            // This can be wired to your global A4 setting (e.g. UserDefaults) later.
+            return 440.0
+        case .hz440:
+            return 440.0
+        case .custom:
+            return max(1.0, customExportA4Hz)
+        }
+    }
+
     @ObservedObject var store: ScaleBuilderStore
     @ObservedObject var lib = ScaleLibraryStore.shared
     @EnvironmentObject private var app: AppModel
@@ -81,6 +95,7 @@ struct ScaleBuilderScreen: View {
     @State private var enteredWithSoundOn: Bool = true
     @State private var pausedMicForBuilder = false
     @Namespace private var saveSlot
+    @Namespace private var exportSlot
     
     // Builder audio defaults (sheet-level). Per-pad overrides can be added later.
     @State private var wasSoundOnBeforePresenting: Bool? = nil
@@ -93,7 +108,6 @@ struct ScaleBuilderScreen: View {
     @State private var isExportMode = false
     @State private var showSaveBeforeExport = false
     @State private var exportErrorMessage: String? = nil
-    @State private var showExportErrorAlert = false
     
     @State private var exportURLs: [URL] = []
     @State private var isPresentingShareSheet = false
@@ -240,8 +254,6 @@ struct ScaleBuilderScreen: View {
             }
             .alert("Save before exporting?", isPresented: $showSaveBeforeExport) {
                 Button("Save & Export") {
-                    // Save using existing workflow (including conflict dialog),
-                    // then proceed with export using current in-memory degrees.
                     performSave()
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                         performExportNow()
@@ -254,16 +266,11 @@ struct ScaleBuilderScreen: View {
             } message: {
                 Text("Do you want to save “\(resolvedName())” to your Library before exporting?")
             }
-            .alert("Export failed", isPresented: $showExportErrorAlert) {
-                Button("OK", role: .cancel) {
-                    showExportErrorAlert = false
-                    exportErrorMessage = nil
-                }
-            } message: {
-                Text(exportErrorMessage ?? "")
-            }
             .sheet(isPresented: $isPresentingShareSheet, onDismiss: {
                 exportURLs.removeAll()
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) {
+                    isExportMode = false
+                }
             }) {
                 ActivityView(activityItems: exportURLs)
             }
@@ -303,8 +310,8 @@ struct ScaleBuilderScreen: View {
                     .accessibilityAddTraits(.isButton)
                 }
             }
-            .padding(.horizontal, 8)
-            .padding(.top, 8) // extra breathing room from the detent edge
+            .padding(.horizontal, 20)
+            .padding(.top, 20) // extra breathing room from the detent edge
         }
         
     }
@@ -409,33 +416,47 @@ struct ScaleBuilderScreen: View {
         
         // MARK: - Export mode UI
         
-        private var exportPanel: some View {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack {
-                    Label {
-                        Text("Export “\(resolvedName())”")
-                            .font(.headline)
-                    } icon: {
-                        Image(systemName: "square.and.arrow.up")
-                    }
-                    
-                    Spacer()
-                    
-                    Button {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) {
-                            isExportMode = false
-                        }
-                    } label: {
-                        Text("Done")
-                            .font(.subheadline.weight(.semibold))
-                    }
-                    .buttonStyle(.bordered)
+    private var exportPanel: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // Header row
+            HStack {
+                Label {
+                    Text("Export “\(resolvedName())”")
+                        .font(.headline)
+                } icon: {
+                    Image(systemName: "square.and.arrow.up")
                 }
                 
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Formats")
-                        .font(.footnote.weight(.semibold))
-                        .textCase(.uppercase)
+                Spacer()
+                
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) {
+                        isExportMode = false
+                        exportErrorMessage = nil
+                    }
+                } label: {
+                    Text("Done")
+                        .font(.subheadline.weight(.semibold))
+                }
+                .buttonStyle(.bordered)
+            }
+            
+            // Microcopy
+            Text("Choose formats to export and share this tuning to other apps and devices.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            
+            // Formats section
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Formats")
+                    .font(.footnote.weight(.semibold))
+                    .textCase(.uppercase)
+                    .foregroundStyle(.secondary)
+                
+                // Group 1: For synths & DAWs
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("For synths & DAWs")
+                        .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                     
                     VStack(spacing: 8) {
@@ -450,16 +471,6 @@ struct ScaleBuilderScreen: View {
                             subtitle: "Maps the scale to a MIDI note and reference frequency."
                         )
                         exportFormatRow(
-                            format: .freqs,
-                            title: "Plain text frequencies (freqs.txt)",
-                            subtitle: "One frequency per line in Hz."
-                        )
-                        exportFormatRow(
-                            format: .cents,
-                            title: "Plain text cents (cents.txt)",
-                            subtitle: "One offset per line in cents from unison."
-                        )
-                        exportFormatRow(
                             format: .ableton,
                             title: "Ableton scale (.ascl)",
                             subtitle: "Live 12 tuning (Scala-compatible stub)."
@@ -469,36 +480,95 @@ struct ScaleBuilderScreen: View {
                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
                 
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Reference")
-                        .font(.footnote.weight(.semibold))
-                        .textCase(.uppercase)
+                // Group 2: For documentation
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("For documentation")
+                        .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                     
-                    Picker("Reference", selection: exportRootModeBinding) {
-                        ForEach(ExportRootMode.allCases) { mode in
-                            Text(mode.title).tag(mode)
-                        }
+                    VStack(spacing: 8) {
+                        exportFormatRow(
+                            format: .freqs,
+                            title: "Plain text frequencies (freqs.txt)",
+                            subtitle: "One frequency per line in Hz."
+                        )
+                        exportFormatRow(
+                            format: .cents,
+                            title: "Plain text cents (cents.txt)",
+                            subtitle: "One offset per line in cents from unison."
+                        )
                     }
-                    .pickerStyle(.segmented)
-                    
+                    .padding(10)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
-                
-                Button {
-                    beginExportFlow()
-                } label: {
-                    HStack {
-                        Image(systemName: "square.and.arrow.up.on.square")
-                        Text("Export Selected")
-                            .fontWeight(.semibold)
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(exportFormats.isEmpty)
             }
-            .padding(.top, 6)
+            
+            // A4 reference section
+            VStack(alignment: .leading, spacing: 8) {
+                Text("A4 reference")
+                    .font(.footnote.weight(.semibold))
+                    .textCase(.uppercase)
+                    .foregroundStyle(.secondary)
+                
+                Picker("A4 reference", selection: exportA4ModeBinding) {
+                    ForEach(ExportA4Mode.allCases) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                
+                if exportA4Mode == .custom {
+                    HStack {
+                        Text("Custom A4 (Hz)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        TextField("440", value: $customExportA4Hz, format: .number)
+                            .keyboardType(.decimalPad)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                }
+            }
+            
+            // Builder root display
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Builder root")
+                    .font(.footnote.weight(.semibold))
+                    .textCase(.uppercase)
+                    .foregroundStyle(.secondary)
+                Text(builderRootSummary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            
+            // Summary row
+            Text(exportSummaryText)
+                .font(.footnote)
+                .foregroundStyle(exportFormats.isEmpty ? .secondary : .primary)
+            
+            // Export button
+            Button {
+                beginExportFlow()
+            } label: {
+                HStack {
+                    Image(systemName: "square.and.arrow.up.on.square")
+                    Text("Export Selected")
+                        .fontWeight(.semibold)
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(exportFormats.isEmpty)
+            
+            // Inline error row
+            if let message = exportErrorMessage {
+                Text(message)
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+            }
         }
+        .padding(.top, 6)
+    }
+
         
         @ViewBuilder
         private func padButton(idx: Int, r: RatioRef) -> some View {
@@ -602,153 +672,189 @@ struct ScaleBuilderScreen: View {
             .buttonStyle(.plain)
         }
         
-        private var exportModeButton: some View {
-            Button {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) {
-                    isExportMode.toggle()
-                }
-            } label: {
-                ZStack {
-                    Circle()
-                        .modifier(GlassBlueCircle())
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(.white)
-                }
-                .frame(width: 36, height: 36)
+    private var exportModeButton: some View {
+        Button {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) {
+                isExportMode.toggle()
             }
-            .contentShape(Circle())
-            .accessibilityLabel(isExportMode ? "Back to pads" : "Export options")
-            .accessibilityAddTraits(.isButton)
+        } label: {
+            Image(systemName: isExportMode ? "chevron.backward" : "square.and.arrow.up")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(.primary)
+                .frame(width: 44, height: 44)
+                .modifier(GlassWhiteCircle())
         }
+        .buttonStyle(.plain) // ⬅️ kill system blue pill
+        .contentShape(Circle())
+        .accessibilityLabel(isExportMode ? "Back to pads" : "Export options")
+        .accessibilityAddTraits(.isButton)
+    }
+
         
         // MARK: - Export flow
         
-        private func beginExportFlow() {
-            guard !exportFormats.isEmpty else {
-                exportErrorMessage = "Select at least one export format."
-                showExportErrorAlert = true
+    private func beginExportFlow() {
+        // Guard 1: at least one format
+        guard !exportFormats.isEmpty else {
+            exportErrorMessage = "Select at least one export format."
             return
-            }
-            
-            // If a Library scale already exists with this name, just export.
-            let name = resolvedName()
-            if library.scales.values.contains(where: { $0.name == name }) {
-                performExportNow()
-            } else {
-                // Prompt to save first
-                showSaveBeforeExport = true
-            }
         }
         
-        private func performExportNow() {
-            let degrees = adjustedDegreesForSave()
-            guard !degrees.isEmpty else {
-                exportErrorMessage = "Scale has no degrees to export."
-                               showExportErrorAlert = true
-                               return
-            }
-            
-            let name = sanitizedFilename(from: resolvedName())
-            let desc = store.descriptionText.trimmingCharacters(in: .whitespacesAndNewlines)
-            let rootHz = exportBaseRootHz()
-            
-            var urls: [URL] = []
-            
-            // Scala .scl
-            if exportFormats.contains(.scl) {
-                let text = ScalaExporter.sclText(
-                    scaleName: resolvedName(),
-                    description: desc,
-                    degrees: degrees
-                )
-                if let url = writeExportFile(named: "\(name).scl", contents: text) {
-                    urls.append(url)
-                }
-            }
-            
-            // Scala .kbm (use export root)
-            if exportFormats.contains(.kbm) {
-                let text = ScalaExporter.kbmText(
-                    referenceHz: rootHz,
-                    scaleSize: max(1, degrees.count)
-                )
-                if let url = writeExportFile(named: "\(name).kbm", contents: text) {
-                    urls.append(url)
-                }
-            }
-            
-            // Plain frequencies (Hz)
-            if exportFormats.contains(.freqs) {
-                let lines: [String] = degrees.map { r in
-                    let ratio = (Double(r.p) / Double(r.q)) * pow(2.0, Double(r.octave))
-                    let hz = ratio * rootHz
-                    return String(format: "%.8f", hz)
-                }
-                let text = lines.joined(separator: "\n")
-                if let url = writeExportFile(named: "\(name)_freqs.txt", contents: text) {
-                    urls.append(url)
-                }
-            }
-            
-            // Plain cents
-            if exportFormats.contains(.cents) {
-                let lines: [String] = degrees.map { r in
-                    let ratio = (Double(r.p) / Double(r.q)) * pow(2.0, Double(r.octave))
-                    let cents = 1200.0 * log2(ratio)
-                    return String(format: "%.8f", cents)
-                }
-                let text = lines.joined(separator: "\n")
-                if let url = writeExportFile(named: "\(name)_cents.txt", contents: text) {
-                    urls.append(url)
-                }
-            }
-            
-            // Ableton .ascl (Scala-compatible stub – writes .scl text with .ascl extension)
-            if exportFormats.contains(.ableton) {
-                let text = ScalaExporter.sclText(
-                    scaleName: resolvedName(),
-                    description: desc,
-                    degrees: degrees
-                )
-                if let url = writeExportFile(named: "\(name).ascl", contents: text) {
-                    urls.append(url)
-                }
-            }
-            
-            guard !urls.isEmpty else {
-                exportErrorMessage = "Nothing was exported."
-                showExportErrorAlert = true
-                return
-            }
+        exportErrorMessage = nil
+        
+        let name = resolvedName()
+        let alreadyInLibrary = library.scales.values.contains(where: { $0.name == name }) || (store.payload.existing != nil)
+        
+        if alreadyInLibrary {
+            // Scale is already in Library (or opened from Library) → export directly
+            performExportNow()
+        } else {
+            // Prompt to save before exporting
+            showSaveBeforeExport = true
+        }
+    }
 
-            // Hand off to SwiftUI sheet instead of presenting UIKit directly.
-            exportURLs = urls
-            isPresentingShareSheet = true
+        
+    private func performExportNow() {
+        exportErrorMessage = nil
+        
+        let degrees = adjustedDegreesForSave()
+        guard !degrees.isEmpty else {
+            exportErrorMessage = "Scale has no degrees to export."
+            return
         }
         
-        private func exportBaseRootHz() -> Double {
-            switch exportRootMode {
-            case .tenneyA4:
-                // TODO: Wire this to Tenney’s global A4 reference if/when exposed on AppModel.
-                return 440.0
-            case .builderRoot:
-                return store.payload.rootHz
+        let name = sanitizedFilename(from: resolvedName())
+        let desc = store.descriptionText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let rootHz = exportBaseRootHz()
+        
+        var urls: [URL] = []
+        
+        // Scala .scl
+        if exportFormats.contains(.scl) {
+            let text = ScalaExporter.sclText(
+                scaleName: resolvedName(),
+                description: desc,
+                degrees: degrees
+            )
+            if let url = writeExportFile(named: "\(name).scl", contents: text) {
+                urls.append(url)
             }
         }
         
-        private func writeExportFile(named: String, contents: String) -> URL? {
-            let dir = FileManager.default.temporaryDirectory
-            let url = dir.appendingPathComponent(named)
-            do {
-                try contents.write(to: url, atomically: true, encoding: .utf8)
-                return url
-            } catch {
-                exportErrorMessage = "Could not write \(named): \(error.localizedDescription)"
-                               showExportErrorAlert = true
-                               return nil
+        // Scala .kbm (use export A4)
+        if exportFormats.contains(.kbm) {
+            let text = ScalaExporter.kbmText(
+                referenceHz: rootHz,
+                scaleSize: max(1, degrees.count)
+            )
+            if let url = writeExportFile(named: "\(name).kbm", contents: text) {
+                urls.append(url)
             }
         }
+        
+        // Plain frequencies (Hz)
+        if exportFormats.contains(.freqs) {
+            let lines: [String] = degrees.map { r in
+                let ratio = (Double(r.p) / Double(r.q)) * pow(2.0, Double(r.octave))
+                let hz = ratio * store.payload.rootHz
+                return String(format: "%.8f", hz)
+            }
+            let text = lines.joined(separator: "\n")
+            if let url = writeExportFile(named: "\(name)_freqs.txt", contents: text) {
+                urls.append(url)
+            }
+        }
+        
+        // Plain cents
+        if exportFormats.contains(.cents) {
+            let lines: [String] = degrees.map { r in
+                let ratio = (Double(r.p) / Double(r.q)) * pow(2.0, Double(r.octave))
+                let cents = 1200.0 * log2(ratio)
+                return String(format: "%.8f", cents)
+            }
+            let text = lines.joined(separator: "\n")
+            if let url = writeExportFile(named: "\(name)_cents.txt", contents: text) {
+                urls.append(url)
+            }
+        }
+        
+        // Ableton .ascl (Scala-compatible stub – writes .scl text with .ascl extension)
+        if exportFormats.contains(.ableton) {
+            let text = ScalaExporter.sclText(
+                scaleName: resolvedName(),
+                description: desc,
+                degrees: degrees
+            )
+            if let url = writeExportFile(named: "\(name).ascl", contents: text) {
+                urls.append(url)
+            }
+        }
+        
+        // README (always if any export formats are enabled)
+        if let readmeURL = writeReadmeFile(baseName: name, degrees: degrees) {
+            urls.append(readmeURL)
+        }
+        
+        guard !urls.isEmpty else {
+            exportErrorMessage = "Nothing was exported."
+            return
+        }
+        
+        exportErrorMessage = nil
+        exportURLs = urls
+        isPresentingShareSheet = true
+    }
+
+        
+    private func exportBaseRootHz() -> Double {
+        exportA4Hz
+    }
+
+    
+    private func writeReadmeFile(baseName: String, degrees: [RatioRef]) -> URL? {
+        let scaleName = resolvedName()
+        let desc = store.descriptionText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let a4Hz = exportA4Hz
+        let rootHz = store.payload.rootHz
+        let (rootName, rootOct) = NotationFormatter.staffNoteName(freqHz: rootHz)
+        
+        let a4ModeLabel: String = {
+            switch exportA4Mode {
+            case .appDefault: return "App default"
+            case .hz440:      return "440 Hz"
+            case .custom:     return "Custom"
+            }
+        }()
+        
+        var lines: [String] = []
+        lines.append("Name: \(scaleName)")
+        lines.append("Description: \(desc)")
+        lines.append(String(format: "A4 reference: %.4f Hz (%@)", a4Hz, a4ModeLabel))
+        lines.append(String(format: "Builder root: %@%d (%.4f Hz)", rootName, rootOct, rootHz))
+        lines.append("Prime limit: \(store.detectedPrimeLimit)-limit JI")
+        lines.append("Degrees (p/q [octave]):")
+        
+        for (idx, r) in degrees.enumerated() {
+            lines.append("\(idx + 1): \(r.p)/\(r.q) [\(r.octave)]")
+        }
+        
+        let text = lines.joined(separator: "\n")
+        return writeExportFile(named: "\(baseName)_README.txt", contents: text)
+    }
+
+        
+    private func writeExportFile(named: String, contents: String) -> URL? {
+        let dir = FileManager.default.temporaryDirectory
+        let url = dir.appendingPathComponent(named)
+        do {
+            try contents.write(to: url, atomically: true, encoding: .utf8)
+            return url
+        } catch {
+            exportErrorMessage = "Could not write export files. Please try again."
+            return nil
+        }
+    }
         
         private func sanitizedFilename(from name: String) -> String {
             let invalid = CharacterSet(charactersIn: "/:\\?%*|\"<>")
@@ -757,16 +863,20 @@ struct ScaleBuilderScreen: View {
             return cleaned
         }
         
-        private func toggleFormat(_ f: ExportFormat) {
-            var current = exportFormats
-            if current.contains(f) {
-                current.remove(f)
-            } else {
-                current.insert(f)
-            }
-            exportFormatsRaw = current.rawValue
+    private func toggleFormat(_ f: ExportFormat) {
+        var current = exportFormats
+        if current.contains(f) {
+            current.remove(f)
+        } else {
+            current.insert(f)
         }
-        
+        exportFormatsRaw = current.rawValue
+        // Clear stale error once user changes formats
+        if exportErrorMessage != nil {
+            exportErrorMessage = nil
+        }
+    }
+
         // MARK: - Audio helpers
         
         /// Stop & restart the sustained tone for this index at the current adjusted octave.
@@ -924,7 +1034,43 @@ struct ScaleBuilderScreen: View {
         }
         
         // MARK: - Save helpers
+    private var builderRootSummary: String {
+        let hz = store.payload.rootHz
+        let (name, oct) = NotationFormatter.staffNoteName(freqHz: hz)
+        let hzInt = Int(round(hz))
+        return "Root: \(name)\(oct) (\(hzInt) Hz)"
+    }
+
+    private var exportSummaryText: String {
+        let exts: [String] = [
+            exportFormats.contains(.scl)     ? ".scl"      : nil,
+            exportFormats.contains(.kbm)     ? ".kbm"      : nil,
+            exportFormats.contains(.ableton) ? ".ascl"     : nil,
+            exportFormats.contains(.freqs)   ? "freqs.txt" : nil,
+            exportFormats.contains(.cents)   ? "cents.txt" : nil
+        ].compactMap { $0 }
         
+        if exts.isEmpty {
+            return "Select at least one format to export."
+        }
+        
+        let formatsPart = "Will export: " + exts.joined(separator: ", ")
+        
+        let a4Label: String
+        switch exportA4Mode {
+        case .appDefault:
+            let hzInt = Int(round(exportA4Hz))
+            a4Label = "A4: App default (\(hzInt) Hz)"
+        case .hz440:
+            a4Label = "A4: 440 Hz"
+        case .custom:
+            let hzInt = Int(round(exportA4Hz))
+            a4Label = "A4: Custom (\(hzInt) Hz)"
+        }
+        
+        return "\(formatsPart) • \(a4Label)"
+    }
+
         private func resolvedName() -> String {
             let n = store.name.trimmingCharacters(in: .whitespacesAndNewlines)
             return n.isEmpty ? "Untitled Scale" : n
@@ -995,16 +1141,49 @@ connectedScenes
 // MARK: - Glass styling helper
 
 private struct GlassBlueCircle: ViewModifier {
-func body(content: Content) -> some View {
-if #available(iOS 26.0, *) {
-content.glassEffect(.regular.tint(.blue), in: Circle())
-} else {
-content
-.background(.ultraThinMaterial, in: Circle())
-.overlay(Circle().stroke(Color.blue.opacity(0.35), lineWidth: 1))
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            // Back to your original: blue-tinted glass using system accent
+            content.glassEffect(.regular.tint(.blue), in: Circle())
+        } else {
+            content
+                .background(.ultraThinMaterial, in: Circle())
+                .overlay(
+                    Circle()
+                        .stroke(Color.blue.opacity(0.35), lineWidth: 1)
+                )
+        }
+    }
 }
+
+// Neutral / white glass circle for export button
+private struct GlassWhiteCircle: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .background(
+                Group {
+                    if #available(iOS 26.0, *) {
+                        Circle()
+                            .fill(.clear)
+                            .glassEffect(
+                                .regular,
+                                in: Circle()
+                            )
+                    } else {
+                        Circle()
+                            .fill(.ultraThinMaterial)
+                    }
+                }
+            )
+            .overlay(
+                Circle()
+                    .stroke(Color.secondary.opacity(0.16), lineWidth: 1)
+            )
+    }
 }
-}
+
+
+
 struct ActivityView: UIViewControllerRepresentable {
     let activityItems: [Any]
 
