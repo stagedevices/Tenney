@@ -1982,8 +1982,9 @@ struct StudioConsoleView: View {
                                 // Ease-out so it “gives” early, then settles (more HIG-like than linear)
                                 let t = 1 - pow(1 - tRaw, 1.6)
 
-                                settingsHeaderProgress = t
-                            }
+                                if abs(settingsHeaderProgress - t) > 0.012 {
+                                     settingsHeaderProgress = t
+                                 }                            }
                             .frame(width: 0, height: 0)
                         )
                 }

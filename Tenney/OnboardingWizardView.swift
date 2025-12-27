@@ -2,14 +2,6 @@
 //  OnboardingWizardView.swift
 //  Tenney
 //
-//  Created by Sebastian Suarez-Solis on 12/22/25.
-//
-
-
-//
-//  OnboardingWizardView.swift
-//  Tenney
-//
 //  Created by Sebastian Suarez-Solis on 10/17/25.
 //
 
@@ -140,7 +132,7 @@ struct OnboardingWizardView: View {
                     let hz = currentRootHz
                     if on { startTone(hz) } else { stopTone() }
                 }
-            Text("This is your Just Intonation root (used in Lattice & Tuner).")
+            Text("This is your Just Intonation root (used in Lattice & Tuner). Think of this as pitch 1/1")
                 .font(.footnote).foregroundStyle(.secondary)
         }
         .onAppear {
@@ -195,7 +187,7 @@ struct OnboardingWizardView: View {
                 .onChange(of: previewA4On) { on in
                     if on { startTone(currentA4Hz) } else { stopTone() }
                 }
-            Text("Used for staff names & ET cents. Independent from your JI root.")
+            Text("Different than your root pitch (1/1), this pitch is a reference pitch used for staff names & cents relative to ET. Independent from your JI root.")
                 .font(.footnote).foregroundStyle(.secondary)
         }
     }

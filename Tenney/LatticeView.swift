@@ -34,13 +34,29 @@ enum LatticeGridMode: String, CaseIterable, Identifiable {
     }
 }
 
+
 struct LatticeView: View {
+    
+    init(
+        previewGridMode: LatticeGridMode? = nil,
+        previewConnectionMode: LatticeConnectionMode? = nil
+    ) {
+        self.previewGridMode = previewGridMode
+        self.previewConnectionMode = previewConnectionMode
+    }
+
+    
+    // PREVIEW overrides (used by Settings/WhatsNew previews; nil = use AppStorage)
+    let previewGridMode: LatticeGridMode?
+    let previewConnectionMode: LatticeConnectionMode?
+
     
     @AppStorage(SettingsKeys.latticeConnectionMode)
     private var latticeConnectionModeRaw: String = LatticeConnectionMode.chain.rawValue
 
     private var latticeConnectionMode: LatticeConnectionMode {
-        LatticeConnectionMode(rawValue: latticeConnectionModeRaw) ?? .chain
+        previewConnectionMode
+        ?? (LatticeConnectionMode(rawValue: latticeConnectionModeRaw) ?? .chain)
     }
 
     @AppStorage(SettingsKeys.latticeHexGridMode)
@@ -56,7 +72,8 @@ struct LatticeView: View {
     private var gridMajorEvery: Int = 2
 
     private var gridMode: LatticeGridMode {
-        LatticeGridMode(rawValue: gridModeRaw) ?? .outlines
+        previewGridMode
+        ?? (LatticeGridMode(rawValue: gridModeRaw) ?? .outlines)
     }
 
     private var gridStrength: CGFloat {

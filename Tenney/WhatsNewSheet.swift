@@ -94,6 +94,44 @@ struct WhatsNewSheet: View {
     @Environment(\.colorScheme) private var scheme
     @Namespace private var heroNS
     @State private var animateHero = false
+    
+    private struct RealLatticePreview: View {
+        @EnvironmentObject private var app: AppModel
+        @StateObject private var store = LatticeStore()
+
+        let gridMode: LatticeGridMode?
+        let connectionMode: LatticeConnectionMode?
+        let seedSelection: [LatticeCoord]
+
+        init(
+            gridMode: LatticeGridMode? = nil,
+            connectionMode: LatticeConnectionMode? = nil,
+            seedSelection: [LatticeCoord] = []
+        ) {
+            self.gridMode = gridMode
+            self.connectionMode = connectionMode
+            self.seedSelection = seedSelection
+        }
+
+        var body: some View {
+            LatticeView(previewGridMode: gridMode, previewConnectionMode: connectionMode)
+                .environmentObject(app)
+                .environmentObject(store)
+                .environment(\.latticePreviewMode, true)
+                .environment(\.latticePreviewHideChips, true)
+                .environment(\.latticePreviewHideDistance, true)
+                .allowsHitTesting(false)
+                .onAppear {
+                    // deterministic “real nodes” for node-restyle previews
+                    if !seedSelection.isEmpty {
+                        store.clearSelection()
+                        store.setPivot(.init(e3: 0, e5: 0))
+                        for c in seedSelection { store.toggleSelection(c) }
+                    }
+                }
+        }
+    }
+
 
     var body: some View {
         ScrollView {
@@ -119,7 +157,7 @@ struct WhatsNewSheet: View {
                 // Red→Orange animated gradient blobs (iOS 26)
                 if #available(iOS 26.0, *) {
                     HeroGradient()
-                        .frame(height: 280)
+                        .frame(height: 180)
                         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                         .overlay(
                             RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -136,7 +174,7 @@ struct WhatsNewSheet: View {
                                 startPoint: .top, endPoint: .bottom
                             )
                         )
-                        .padding(.bottom, -48)
+                        .padding(.bottom, -34)
                         .accessibilityHidden(true)
                 }
 
@@ -190,9 +228,13 @@ struct WhatsNewSheet: View {
             // 2) Lattice restyle
             bigCard(
                 symbol: "circle.grid.2x2.fill",
-                title: "Lattice Restyle",
-                blurb: "New node styling, cleaner theming, and a redesigned motion/feel across the lattice.",
-                preview: AnyView(LatticeRestylePreview()),
+                title: "Node Restyle",
+                blurb: "Nodes got a visual upgrade, plus path connection modes (Chain, Loop, Map) and better selection that follows your Attack/Release timing.",
+                preview: AnyView(
+                    HStack(spacing: 10) {
+                        RealLatticePreview(gridMode: .triMesh)
+                    }
+                ),
                 primaryCTA: seeInLatticeAction == nil ? nil : ("See in Lattice", {
                     seeInLatticeAction?()
                 })
@@ -200,10 +242,20 @@ struct WhatsNewSheet: View {
 
             // 3) Grid + connection modes
             bigCard(
-                symbol: "square.grid.3x3.fill",
-                title: "Grids & Connections",
-                blurb: "New grid styles and connection modes for clearer structure—especially at higher node counts.",
-                preview: AnyView(GridConnectionsPreview()),
+                symbol: "hexagon.fill",
+                title: "Hex & Triangle Grids",
+                blurb: "New hex and triangle grids reveal the lattice structure more clearly at any zoom.",
+                preview: AnyView(
+                    RealLatticePreview(
+                        gridMode: .outlines,
+                        connectionMode: .chain,
+                        seedSelection: [
+                            .init(e3: 0, e5: 0),
+                            .init(e3: 1, e5: 0),
+                            .init(e3: 0, e5: 1)
+                        ]
+                    )
+                ),
                 primaryCTA: nil
             )
         }
@@ -443,103 +495,167 @@ private struct ExportPreview: View {
     }
 }
 
-// 2) Lattice restyle preview (different node styles)
-private struct LatticeRestylePreview: View {
-    @State private var phase = false
+// 2) Node restyle preview (one–two nodes, close up + selection attack/release feel)
+private struct NodeRestylePreview: View {
+@State private var t: CGFloat = 0
 
     var body: some View {
-        GeometryReader { _ in
-            Canvas { ctx, size in
-                let y = size.height * 0.54
-                let xs: [CGFloat] = [size.width*0.22, size.width*0.50, size.width*0.78]
-                let r: CGFloat = 9
+        TimelineView(.animation) { _ in
+            GeometryReader { _ in
+                Canvas { ctx, size in
+                    let bg = Color(uiColor: .systemBackground)
 
-                // A faint “motion” guide line
-                var guide = Path()
-                guide.move(to: CGPoint(x: xs.first ?? 0, y: y))
-                guide.addQuadCurve(to: CGPoint(x: xs.last ?? 0, y: y),
-                                   control: CGPoint(x: size.width*0.50, y: y + (phase ? 10 : -10)))
-                ctx.stroke(guide, with: .color(.secondary.opacity(0.35)), lineWidth: 1)
+                    let a = CGPoint(x: size.width * 0.42, y: size.height * 0.58)
+                    let b = CGPoint(x: size.width * 0.72, y: size.height * 0.40)
 
-                // Style 1: filled
-                let p1 = CGPoint(x: xs[0], y: y)
-                ctx.fill(Path(ellipseIn: CGRect(x: p1.x-r, y: p1.y-r, width: r*2, height: r*2)),
-                         with: .color(.primary))
+                    let r: CGFloat = 16
+                    let innerR: CGFloat = 13
 
-                // Style 2: ring
-                let p2 = CGPoint(x: xs[1], y: y)
-                ctx.stroke(Path(ellipseIn: CGRect(x: p2.x-r, y: p2.y-r, width: r*2, height: r*2)),
-                           with: .color(.primary), lineWidth: 2)
+                    // Connection modes mini-motifs:
+                    // Chain: straight link
+                    // Loop: orbit ring
+                    // Map: a dashed branch
 
-                // Style 3: diamond (alternate silhouette)
-                let p3 = CGPoint(x: xs[2], y: y)
-                var diamond = Path()
-                diamond.move(to: CGPoint(x: p3.x, y: p3.y - r))
-                diamond.addLine(to: CGPoint(x: p3.x + r, y: p3.y))
-                diamond.addLine(to: CGPoint(x: p3.x, y: p3.y + r))
-                diamond.addLine(to: CGPoint(x: p3.x - r, y: p3.y))
-                diamond.closeSubpath()
-                ctx.fill(diamond, with: .color(.primary.opacity(phase ? 0.75 : 1.0)))
+                    // Chain
+                    var chain = Path()
+                    chain.move(to: a)
+                    chain.addLine(to: b)
+                    ctx.stroke(chain, with: .color(.primary.opacity(0.70)),
+                               style: StrokeStyle(lineWidth: 3, lineCap: .round))
+
+                    // Map (branch)
+                    let c = CGPoint(x: size.width * 0.80, y: size.height * 0.72)
+                    var map = Path()
+                    map.move(to: a)
+                    map.addLine(to: c)
+                    ctx.stroke(map, with: .color(.secondary.opacity(0.55)),
+                               style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [5, 4]))
+
+                    // Loop (orbit)
+                    let loopR = r + 9
+                    let loopRect = CGRect(x: a.x - loopR, y: a.y - loopR, width: loopR * 2, height: loopR * 2)
+                    ctx.stroke(Path(ellipseIn: loopRect), with: .color(.secondary.opacity(0.35)),
+                               style: StrokeStyle(lineWidth: 2))
+
+                    // Nodes (close-up)
+                    ctx.fill(Path(ellipseIn: CGRect(x: a.x - r, y: a.y - r, width: r * 2, height: r * 2)),
+                             with: .color(.primary))
+                    ctx.fill(Path(ellipseIn: CGRect(x: b.x - r, y: b.y - r, width: r * 2, height: r * 2)),
+                             with: .color(.primary.opacity(0.92)))
+
+                    // Inner cut for “upgraded” node look
+                    ctx.fill(Path(ellipseIn: CGRect(x: a.x - innerR, y: a.y - innerR, width: innerR * 2, height: innerR * 2)),
+                             with: .color(bg))
+                    ctx.fill(Path(ellipseIn: CGRect(x: b.x - innerR, y: b.y - innerR, width: innerR * 2, height: innerR * 2)),
+                             with: .color(bg))
+
+                    // Selection halo (approx attack/release envelope)
+                    let s = (sin(t) * 0.5 + 0.5) // 0..1
+                    let attack = min(1, s * 1.8)
+                    let release = pow(max(0, 1 - s), 1.7)
+                    let haloAlpha = 0.55 * attack + 0.20 * release
+                    let haloR = r + 6 + 10 * attack
+
+                    let haloRect = CGRect(x: a.x - haloR, y: a.y - haloR, width: haloR * 2, height: haloR * 2)
+                    ctx.stroke(Path(ellipseIn: haloRect), with: .color(.primary.opacity(haloAlpha)),
+                               style: StrokeStyle(lineWidth: 3))
+
+                    // Tiny label chip (implies selection polish)
+                    let chip = CGRect(x: a.x - 22, y: a.y + r + 6, width: 44, height: 18)
+                    ctx.fill(RoundedRectangle(cornerRadius: 6).path(in: chip),
+                             with: .color(Color.secondary.opacity(0.15)))
+                    ctx.draw(Text("SEL").font(.system(size: 10, weight: .semibold)),
+                             at: CGPoint(x: chip.midX, y: chip.midY))
+                }
             }
         }
-        .onAppear { withAnimation(.easeInOut(duration: 1.15).repeatForever(autoreverses: true)) { phase.toggle() } }
+        .onAppear {
+            withAnimation(.linear(duration: 1.4).repeatForever(autoreverses: false)) {
+                t = 2 * .pi
+            }
+        }
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 
-// 3) Grid + connection styles preview
-private struct GridConnectionsPreview: View {
+
+
+// 3) Lattice grid preview (triangle/hex lattice, not square)
+private struct LatticeGridPreview: View {
     @State private var phase = false
 
     var body: some View {
         GeometryReader { _ in
             Canvas { ctx, size in
-                let step: CGFloat = phase ? 16 : 20
                 let inset: CGFloat = 10
-
-                // Grid
                 let left = inset
                 let right = size.width - inset
                 let top = inset
                 let bottom = size.height - inset
 
-                var grid = Path()
-                var x = left
-                while x <= right {
-                    grid.move(to: CGPoint(x: x, y: top))
-                    grid.addLine(to: CGPoint(x: x, y: bottom))
-                    x += step
-                }
+                // Triangle lattice (three families of parallel lines)
+                let step: CGFloat = phase ? 16 : 20
+                let a: CGFloat = step
+                let h: CGFloat = step * 0.8660254 // sin(60°)
+
+                var tri = Path()
+
+                // Horizontal-ish (actually horizontal)
                 var y = top
                 while y <= bottom {
-                    grid.move(to: CGPoint(x: left, y: y))
-                    grid.addLine(to: CGPoint(x: right, y: y))
-                    y += step
+                    tri.move(to: CGPoint(x: left, y: y))
+                    tri.addLine(to: CGPoint(x: right, y: y))
+                    y += h
                 }
-                ctx.stroke(grid, with: .color(.secondary.opacity(0.20)), lineWidth: 1)
 
-                // Nodes
-                let a = CGPoint(x: size.width * 0.28, y: size.height * 0.68)
-                let b = CGPoint(x: size.width * 0.76, y: size.height * 0.36)
-                let r: CGFloat = 8
+                // +60° lines
+                var x0 = left - step * 4
+                while x0 <= right + step * 4 {
+                    tri.move(to: CGPoint(x: x0, y: bottom))
+                    tri.addLine(to: CGPoint(x: x0 + (bottom - top) / 0.5773503, y: top)) // tan(30)=0.577...
+                    x0 += a
+                }
 
-                ctx.fill(Path(ellipseIn: CGRect(x: a.x-r, y: a.y-r, width: r*2, height: r*2)),
-                         with: .color(.primary))
-                ctx.fill(Path(ellipseIn: CGRect(x: b.x-r, y: b.y-r, width: r*2, height: r*2)),
-                         with: .color(.primary))
+                // -60° lines
+                var x1 = left - step * 4
+                while x1 <= right + step * 4 {
+                    tri.move(to: CGPoint(x: x1, y: top))
+                    tri.addLine(to: CGPoint(x: x1 + (bottom - top) / 0.5773503, y: bottom))
+                    x1 += a
+                }
 
-                // Connection (style swap)
-                var line = Path()
-                line.move(to: a)
-                line.addLine(to: b)
+                ctx.stroke(tri, with: .color(.secondary.opacity(0.22)), lineWidth: 1)
 
-                let style = StrokeStyle(
-                    lineWidth: 2,
-                    lineCap: .round,
-                    lineJoin: .round,
-                    dash: phase ? [6, 5] : []
-                )
-                ctx.stroke(line, with: .color(.primary.opacity(0.75)), style: style)
+                // Hex overlay hint when phase toggles (a couple cells)
+                if phase {
+                    let centers: [CGPoint] = [
+                        CGPoint(x: size.width * 0.40, y: size.height * 0.42),
+                        CGPoint(x: size.width * 0.62, y: size.height * 0.62)
+                    ]
+                    let R = step * 0.65
+                    for c in centers {
+                        var hex = Path()
+                        for i in 0..<6 {
+                            let ang = CGFloat(i) * (.pi / 3)
+                            let p = CGPoint(x: c.x + cos(ang) * R, y: c.y + sin(ang) * R)
+                            if i == 0 { hex.move(to: p) } else { hex.addLine(to: p) }
+                        }
+                        hex.closeSubpath()
+                        ctx.stroke(hex, with: .color(.primary.opacity(0.25)), style: .init(lineWidth: 2, lineJoin: .round))
+                    }
+                }
+
+                // A couple nodes to “ground” it as the lattice
+                let n1 = CGPoint(x: size.width * 0.34, y: size.height * 0.70)
+                let n2 = CGPoint(x: size.width * 0.74, y: size.height * 0.36)
+                let r: CGFloat = 7
+                ctx.fill(Path(ellipseIn: CGRect(x: n1.x - r, y: n1.y - r, width: r*2, height: r*2)), with: .color(.primary))
+                ctx.fill(Path(ellipseIn: CGRect(x: n2.x - r, y: n2.y - r, width: r*2, height: r*2)), with: .color(.primary))
+
+                var link = Path()
+                link.move(to: n1)
+                link.addLine(to: n2)
+                ctx.stroke(link, with: .color(.primary.opacity(0.55)), style: .init(lineWidth: 2, lineCap: .round))
             }
         }
         .onAppear { withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) { phase.toggle() } }
