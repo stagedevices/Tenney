@@ -225,7 +225,7 @@ private let libraryStore = ScaleLibraryStore.shared
             // Mark seen when the sheet closes (via button swipe, or drag-to-dismiss)
             lastSeenBuild = AppInfo.build
         }) {
-            WhatsNewSheet(items: WhatsNewContent.v0_2Items) {
+            WhatsNewSheet(items: WhatsNewContent.v0_3Items) {
                 // Primary CTA: just close; marking happens in onDismiss
                 showWhatsNew = false
             }

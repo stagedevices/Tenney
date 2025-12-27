@@ -1955,7 +1955,7 @@ struct StudioConsoleView: View {
 
                 Spacer()
 
-                GlassCTAButton(title: "View", systemName: "sparkles") {
+                GlassCTAButton(title: "Check it out", systemName: "sparkles") {
                     showWhatsNewSheet = true
                 }
             }
