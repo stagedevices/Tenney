@@ -551,6 +551,16 @@ private struct TunerCard: View {
     @State private var currentNearest: RatioResult? = nil
     @Binding var stageActive: Bool
 
+    @Environment(\.tenneyTheme) private var theme
+
+    private var pillGrad: LinearGradient {
+        LinearGradient(
+            colors: [theme.e3, theme.e5],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
     private func centsVsLocked(_ locked: RatioResult?, hz: Double, root: Double) -> Double {
         guard let t = locked, hz.isFinite else { return model.display.cents }
         let targetHz = root * pow(2.0, Double(t.octave)) * (Double(t.num)/Double(t.den))
@@ -567,21 +577,49 @@ private struct TunerCard: View {
                     Spacer()
                     Button {
                         withAnimation(.snappy) { stageActive.toggle() }
-                                    } label: {
-                                        Label("Stage", systemImage: stageActive ? "theatermasks.fill" : "theatermasks")
-                                                .labelStyle(.automatic)
-                                                .font(.footnote.weight(.semibold))
-                                                .symbolRenderingMode(.palette)
-                                                .foregroundStyle(stageActive ? .primary : .secondary, .clear)
-                                                .padding(.horizontal, 10).padding(.vertical, 6)
-                                                .background(.thinMaterial, in: Capsule())
-                                                .contentTransition(.symbolEffect(.replace.downUp))
-                                                .symbolEffect(.bounce, value: stageActive)
-                                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: stageActive ? "theatermasks.fill" : "theatermasks")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(
+                                    stageActive
+                                    ? AnyShapeStyle(pillGrad)
+                                    : AnyShapeStyle(Color.secondary)
+                                )
+                                .blendMode(stageActive ? (theme.isDark ? .screen : .darken) : .normal)
+
+                            Text("Stage")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(
+                                    stageActive
+                                    ? (theme.isDark ? Color.white : Color.black)
+                                    : Color.secondary
+                                )
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(
+                            stageActive
+                            ? AnyShapeStyle(.thinMaterial)
+                            : AnyShapeStyle(.ultraThinMaterial),
+                            in: Capsule()
+                        )
+                        .overlay(
+                            Capsule().stroke(
+                                stageActive
+                                ? AnyShapeStyle(pillGrad)
+                                : AnyShapeStyle(Color.secondary.opacity(0.12)),
+                                lineWidth: 1
+                            )
+                        )
+                        .contentTransition(.symbolEffect(.replace.downUp))
+                        .symbolEffect(.bounce, value: stageActive)
+                    }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Stage Mode")
                     .accessibilityHint("Boosts contrast, thicker strobe, calmer text motion for performance.")
                 }
+
 
                 // Chrono dial (rectangular card contains it)
                 let cents = centsVsLocked(store.lockedTarget, hz: model.display.hz, root: model.rootHz)
@@ -657,22 +695,42 @@ private struct TunerCard: View {
                 HStack(spacing: 8) {
                     Text("Limit").font(.caption).foregroundStyle(.secondary)
                     ForEach([3,5,7,11,13], id:\.self) { p in
+                        let selected = (store.primeLimit == p)
                         Button {
                             withAnimation(.snappy) { store.primeLimit = p }
                         } label: {
                             Text("\(p)")
-                                .font(.footnote.weight(.semibold))
-                                .padding(.horizontal, 10).padding(.vertical, 6)
-                                .background(store.primeLimit == p ? .thinMaterial : .ultraThinMaterial, in: Capsule())
+                                .font(.footnote.weight(selected ? .semibold : .regular))
+                                .foregroundStyle(
+                                    selected
+                                    ? (theme.isDark ? Color.white : Color.black)
+                                    : Color.secondary
+                                )
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(
+                                    selected
+                                    ? AnyShapeStyle(.thinMaterial)
+                                    : AnyShapeStyle(.ultraThinMaterial),
+                                    in: Capsule()
+                                )
+                                .overlay(
+                                    Capsule().stroke(
+                                        selected
+                                        ? AnyShapeStyle(pillGrad)
+                                        : AnyShapeStyle(Color.secondary.opacity(0.12)),
+                                        lineWidth: 1
+                                    )
+                                )
                         }
                         .buttonStyle(.plain)
                     }
                     Spacer()
                 }
                 .padding(.top, 4)
-                // Keep solver in sync with the tuner-local limit
-                                .onChange(of: store.primeLimit) { model.tunerPrimeLimit = $0 }
-                                .onAppear { store.primeLimit = model.tunerPrimeLimit }
+                .onChange(of: store.primeLimit) { model.tunerPrimeLimit = $0 }
+                .onAppear { store.primeLimit = model.tunerPrimeLimit }
+
             }
         }
 
@@ -716,6 +774,17 @@ private struct UtilityBar: View {
     let rootNS: Namespace.ID
     /// Reorders the segmented picker so the user's default view appears on the **left**.
     let defaultView: String
+
+    @Environment(\.tenneyTheme) private var theme
+
+    private var pillGrad: LinearGradient {
+        LinearGradient(
+            colors: [theme.e3, theme.e5],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
     var body: some View {
         HStack {
             Picker("Mode", selection: $mode) {
@@ -732,23 +801,50 @@ private struct UtilityBar: View {
             .padding(.trailing, 8)
 
             // In lattice mode, show a clear, tappable Sound toggle for audition
-                        if mode == .lattice {
-                            Button {
-                                app.latticeAuditionOn.toggle()
-                            } label: {
-                                HStack(spacing: 8) {
-                                    Image(systemName: app.latticeAuditionOn ? "speaker.wave.2.fill" : "speaker.slash.fill")
-                                        .imageScale(.large)
-                                    Text(app.latticeAuditionOn ? "Sound On" : "Sound Off")
-                                        .font(.footnote.weight(.semibold))
-                                }
-                                .padding(.horizontal, 12).padding(.vertical, 8)
-                                .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel(app.latticeAuditionOn ? "Audition sound on" : "Audition sound off")
-                            .ifAvailableiOS26Glass() // see helper below
-                        } else {
+            if mode == .lattice {
+                Button {
+                    app.latticeAuditionOn.toggle()
+                } label: {
+                    let on = app.latticeAuditionOn
+                    HStack(spacing: 8) {
+                        Image(systemName: on ? "speaker.wave.2.fill" : "speaker.slash.fill")
+                            .imageScale(.large)
+                            .foregroundStyle(
+                                on
+                                ? AnyShapeStyle(pillGrad)
+                                : AnyShapeStyle(Color.secondary)
+                            )
+                            .blendMode(on ? (theme.isDark ? .screen : .darken) : .normal)
+
+                        Text(on ? "Sound On" : "Sound Off")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(
+                                on
+                                ? (theme.isDark ? Color.white : Color.black)
+                                : Color.secondary
+                            )
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(
+                        on
+                        ? AnyShapeStyle(.thinMaterial)
+                        : AnyShapeStyle(.ultraThinMaterial),
+                        in: Capsule()
+                    )
+                    .overlay(
+                        Capsule().stroke(
+                            on
+                            ? AnyShapeStyle(pillGrad)
+                            : AnyShapeStyle(Color.secondary.opacity(0.12)),
+                            lineWidth: 1
+                        )
+                    )
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(app.latticeAuditionOn ? "Audition sound on" : "Audition sound off")
+            } else {
                             Image(systemName: "dot.radiowaves.left.and.right").imageScale(.large)
                             Text(app.micPermission == .granted ? "Tuner active" : "Initializing")
                                     }
@@ -1263,22 +1359,57 @@ fileprivate enum RootFavorites {
 }
 private struct PrimeLimitCard: View {
     @EnvironmentObject private var model: AppModel
+    @Environment(\.tenneyTheme) private var theme
+
+    private var grad: LinearGradient {
+        LinearGradient(
+            colors: [theme.e3, theme.e5],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
     var body: some View {
         GlassCard {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Prime Limit").font(.caption).foregroundStyle(.secondary)
-                HStack { ForEach([3,5,7,11], id:\.self) { p in
-                    Button(action: { model.primeLimit = p }) {
-                        Text("\(p)").padding(.horizontal, 10).padding(.vertical, 6)
+                HStack {
+                    ForEach([3,5,7,11], id:\.self) { p in
+                        let selected = (model.primeLimit == p)
+                        Button(action: { model.primeLimit = p }) {
+                            Text("\(p)")
+                                .font(.footnote.weight(selected ? .semibold : .regular))
+                                .foregroundStyle(
+                                    selected
+                                    ? (theme.isDark ? Color.white : Color.black)
+                                    : Color.secondary
+                                )
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(
+                                    selected
+                                    ? AnyShapeStyle(.thinMaterial)
+                                    : AnyShapeStyle(.ultraThinMaterial),
+                                    in: Capsule()
+                                )
+                                .overlay(
+                                    Capsule().stroke(
+                                        selected
+                                        ? AnyShapeStyle(grad)
+                                        : AnyShapeStyle(Color.secondary.opacity(0.12)),
+                                        lineWidth: 1
+                                    )
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Prime limit \(p)")
                     }
-                    .background(model.primeLimit == p ? .thinMaterial : .ultraThinMaterial)
-                    .clipShape(Capsule())
-                    .accessibilityLabel("Prime limit \(p)")
-                }}
+                }
             }
         }
     }
 }
+
 
 private struct StrictnessCard: View {
     @EnvironmentObject private var model: AppModel
@@ -1309,22 +1440,41 @@ private struct TestToneCard: View {
     }
 }
 // === Reusables for Root Studio =================================================
- struct GlassSelectTile: View {
+struct GlassSelectTile: View {
     let title: String
     let isOn: Bool
     let action: () -> Void
+
+    @Environment(\.tenneyTheme) private var theme
+
+    private var grad: LinearGradient {
+        LinearGradient(
+            colors: [theme.e3, theme.e5],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
     var body: some View {
         Button(action: action) {
             ZStack(alignment: .topTrailing) {
                 Text(title)
                     .font(.title3.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(
+                        isOn
+                        ? (theme.isDark ? Color.white : Color.black) // tile content is usually on light-ish glass
+                        : Color.secondary
+                    )
                     .frame(minWidth: 88, minHeight: 44)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(12)
+
                 if isOn {
                     Image(systemName: "checkmark.circle.fill")
                         .imageScale(.small)
                         .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(AnyShapeStyle(grad))
+                        .blendMode(theme.isDark ? .screen : .darken)
                         .padding(6)
                 }
             }
@@ -1342,7 +1492,12 @@ private struct TestToneCard: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(isOn ? Color.accentColor.opacity(0.35) : Color.secondary.opacity(0.12), lineWidth: 1)
+                    .stroke(
+                        isOn
+                        ? AnyShapeStyle(grad)
+                        : AnyShapeStyle(Color.secondary.opacity(0.12)),
+                        lineWidth: 1
+                    )
             )
         }
         .buttonStyle(.plain)
@@ -1350,26 +1505,76 @@ private struct TestToneCard: View {
     }
 }
 
+
 private struct RootChip<Trailing: View>: View {
+    @Environment(\.tenneyTheme) private var theme
+
     let value: Double
     var highlighted: Bool = false
     let onTap: () -> Void
     @ViewBuilder let trailing: () -> Trailing
-    init(_ v: Double, highlighted: Bool = false, onTap: @escaping () -> Void, @ViewBuilder trailing: @escaping () -> Trailing) {
-        self.value = v; self.highlighted = highlighted; self.onTap = onTap; self.trailing = trailing
+
+    private var grad: LinearGradient {
+        LinearGradient(
+            colors: [theme.e3, theme.e5],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
     }
+
+    init(
+        _ v: Double,
+        highlighted: Bool = false,
+        onTap: @escaping () -> Void,
+        @ViewBuilder trailing: @escaping () -> Trailing
+    ) {
+        self.value = v
+        self.highlighted = highlighted
+        self.onTap = onTap
+        self.trailing = trailing
+    }
+
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: 6) {
-                Text(String(format: "%.1f", value)).font(.footnote.monospacedDigit().weight(.semibold))
+                Text(String(format: "%.1f", value))
+                    .font(.footnote.monospacedDigit().weight(.semibold))
+
+                // Let the trailing view show its own icon; we tint the star when highlighted.
                 trailing()
+                    .foregroundStyle(
+                        highlighted
+                        ? AnyShapeStyle(grad)
+                        : AnyShapeStyle(Color.secondary)
+                    )
+                    .blendMode(highlighted ? (theme.isDark ? .screen : .darken) : .normal)
             }
-            .padding(.horizontal, 10).padding(.vertical, 6)
-            .background(highlighted ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.10), in: Capsule())
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .foregroundStyle(
+                highlighted
+                ? (theme.isDark ? Color.white : Color.black)
+                : Color.secondary
+            )
+            .background(
+                highlighted
+                ? AnyShapeStyle(.thinMaterial)
+                : AnyShapeStyle(.ultraThinMaterial),
+                in: Capsule()
+            )
+            .overlay(
+                Capsule().stroke(
+                    highlighted
+                    ? AnyShapeStyle(grad)
+                    : AnyShapeStyle(Color.secondary.opacity(0.12)),
+                    lineWidth: 1
+                )
+            )
         }
         .buttonStyle(.plain)
     }
 }
+
 // MARK: - Key-window snapshot (used for frozen backdrop)
 private func captureKeyWindowSnapshot(afterScreenUpdates: Bool = true) -> UIImage? {
     guard

@@ -12,6 +12,11 @@ import AVKit
 import UIKit
 
 public struct ProAudioSettingsView: View {
+    
+    // Whether to draw its own rounded-rect card background and title.
+        // When false, we render "flat" so the parent can supply the material layer.
+        private let showsOuterCard: Bool
+    
     // MARK: - Persisted prefs (use existing keys where present)
     @AppStorage(SettingsKeys.audioPreferredSampleRate) private var preferredSampleRate: Double = 48_000
     @AppStorage(SettingsKeys.audioPreferredBufferFrames) private var preferredBufferFrames: Int = 256
@@ -33,109 +38,124 @@ public struct ProAudioSettingsView: View {
     private let deviceCols = [GridItem(.adaptive(minimum: 150, maximum: 220), spacing: 12, alignment: .top)]
     private let optCols    = [GridItem(.adaptive(minimum: 110, maximum: 160), spacing: 12, alignment: .top)]
 
-    public init() {}
+    public init(showsOuterCard: Bool = true) {
+        self.showsOuterCard = showsOuterCard
+    }
 
     public var body: some View {
-        card("Pro Audio · Input & Engine") {
-            VStack(alignment: .leading, spacing: 14) {
-                // == Input devices ==
-                headerRow(title: "Input Device", icon: "waveform.badge.mic")
-                LazyVGrid(columns: deviceCols, spacing: 12) {
-                    ForEach(availableInputs, id: \.uid) { input in
-                        let sel = (selectedInputUID == input.uid)
-                        DeviceCard(
-                            title: displayName(for: input),
-                            subtitle: subtitle(for: input),
-                            symbol: symbolName(for: input),
-                            selected: sel
-                        ) { select(input) }
-                        .matchedGeometryEffect(id: sel ? "selectedDevice" : "\(input.uid)-idle", in: inputNS, isSource: true)
-                        .accessibilityElement(children: .combine)
-                        .accessibilityLabel(displayName(for: input))
-                        .accessibilityAddTraits(sel ? .isSelected : [])
-                    }
+        Group {
+            if showsOuterCard {
+                card("Pro Audio · Input & Engine") {
+                    coreContent
                 }
-                if availableInputs.isEmpty {
-                    EmptyDevicesFallback()
-                }
-
-                // == Channel mode ==
-                headerRow(title: "Channel Mode", icon: "square.3.layers.3d.down.right")
-                LazyVGrid(columns: optCols, spacing: 12) {
-                    OptionTile(label: "Mono", selected: preferredChannelMode == 0) {
-                        withAnimation(.snappy) { preferredChannelMode = 0 }
-                    }
-                    OptionTile(label: "Stereo", selected: preferredChannelMode == 1) {
-                        withAnimation(.snappy) { preferredChannelMode = 1 }
-                    }
-                    OptionTile(label: "Multi-Channel", selected: preferredChannelMode == 2) {
-                        withAnimation(.snappy) { preferredChannelMode = 2 }
-                    }
-                }
-
-                // == Sample rate ==
-                headerRow(title: "Sample Rate", icon: "metronome.fill")
-                LazyVGrid(columns: optCols, spacing: 12) {
-                    RateTile(label: "44.1 kHz", rate: 44_100, current: preferredSampleRate) { commitSampleRate(44_100) }
-                    RateTile(label: "48 kHz",   rate: 48_000, current: preferredSampleRate) { commitSampleRate(48_000) }
-                    RateTile(label: "96 kHz",   rate: 96_000, current: preferredSampleRate) { commitSampleRate(96_000) }
-                }
-
-                // == Buffer size ==
-                headerRow(title: "Buffer Size (frames)", icon: "memorychip.fill")
-                LazyVGrid(columns: optCols, spacing: 12) {
-                    BufferTile(size: 128,  current: preferredBufferFrames) { commitBuffer(128) }
-                    BufferTile(size: 256,  current: preferredBufferFrames) { commitBuffer(256) }
-                    BufferTile(size: 512,  current: preferredBufferFrames) { commitBuffer(512) }
-                    BufferTile(size: 1024, current: preferredBufferFrames) { commitBuffer(1024) }
-                }
-
-                // == Monitor ==
-                Toggle("Monitor Input", isOn: $monitorInput)
-                    .onChange(of: monitorInput) { _ in manageInputMonitoring() }
-                if monitorInput {
-                    Text("Make sure outputs are isolated to avoid feedback.")
-                        .font(.footnote).foregroundStyle(.secondary)
-                }
-                
-                // == Output & routing ==
-                                Divider().padding(.vertical, 2)
-                                headerRow(title: "Output & Routing", icon: "speaker.wave.2.fill")
-                
-                                // System route picker (this is how iOS exposes the device list)
-                                RoutePickerRow()
-                
-                                // Current route badges (update on change)
-                                CurrentRouteRow(outputs: currentOutputs.map { (outputDisplayName(for: $0), outputSymbolName(for: $0)) })
-                
-                                // Optional: Prefer Speaker (the only programmatic override iOS allows)
-                                Toggle("Prefer Speaker (when possible)", isOn: $preferSpeaker)
-                                    .onChange(of: preferSpeaker) { _ in applySpeakerOverride() }
-                                Text("Use the button above to choose Bluetooth, AirPlay, USB, etc. “Prefer Speaker” only works in certain categories (e.g., Play & Record).")
-                                    .font(.footnote).foregroundStyle(.secondary)
+            } else {
+                coreContent
             }
         }
-        
         .onAppear {
-                    refreshInputs()
-                    refreshOutputs()
-                    applySpeakerOverride()
-                    // Listen for system route changes so our chips reflect user selection
-                    routeObserver = NotificationCenter.default.addObserver(
-                        forName: AVAudioSession.routeChangeNotification,
-                        object: AVAudioSession.sharedInstance(),
-                        queue: .main
-                    ) { _ in
-                        refreshOutputs()
-                    }
-                }
-                .onDisappear {
-                    if let obs = routeObserver {
-                        NotificationCenter.default.removeObserver(obs)
-                        routeObserver = nil
-                    }
-                }
+            refreshInputs()
+            refreshOutputs()
+            applySpeakerOverride()
+            // Listen for system route changes so our chips reflect user selection
+            routeObserver = NotificationCenter.default.addObserver(
+                forName: AVAudioSession.routeChangeNotification,
+                object: AVAudioSession.sharedInstance(),
+                queue: .main
+            ) { _ in
+                refreshOutputs()
+            }
+        }
+        .onDisappear {
+            if let obs = routeObserver {
+                NotificationCenter.default.removeObserver(obs)
+                routeObserver = nil
+            }
+        }
     }
+
+    @ViewBuilder
+    private var coreContent: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            // == Input devices ==
+            headerRow(title: "Input Device", icon: "waveform.badge.mic")
+            LazyVGrid(columns: deviceCols, spacing: 12) {
+                ForEach(availableInputs, id: \.uid) { input in
+                    let sel = (selectedInputUID == input.uid)
+                    DeviceCard(
+                        title: displayName(for: input),
+                        subtitle: subtitle(for: input),
+                        symbol: symbolName(for: input),
+                        selected: sel
+                    ) { select(input) }
+                    .matchedGeometryEffect(id: sel ? "selectedDevice" : "\(input.uid)-idle", in: inputNS, isSource: true)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel(displayName(for: input))
+                    .accessibilityAddTraits(sel ? .isSelected : [])
+                }
+            }
+            if availableInputs.isEmpty {
+                EmptyDevicesFallback()
+            }
+
+            // == Channel mode ==
+            headerRow(title: "Channel Mode", icon: "square.3.layers.3d.down.right")
+            LazyVGrid(columns: optCols, spacing: 12) {
+                OptionTile(label: "Mono", selected: preferredChannelMode == 0) {
+                    withAnimation(.snappy) { preferredChannelMode = 0 }
+                }
+                OptionTile(label: "Stereo", selected: preferredChannelMode == 1) {
+                    withAnimation(.snappy) { preferredChannelMode = 1 }
+                }
+                OptionTile(label: "Multi-Channel", selected: preferredChannelMode == 2) {
+                    withAnimation(.snappy) { preferredChannelMode = 2 }
+                }
+            }
+
+            // == Sample rate ==
+            headerRow(title: "Sample Rate", icon: "metronome.fill")
+            LazyVGrid(columns: optCols, spacing: 12) {
+                RateTile(label: "44.1 kHz", rate: 44_100, current: preferredSampleRate) { commitSampleRate(44_100) }
+                RateTile(label: "48 kHz",   rate: 48_000, current: preferredSampleRate) { commitSampleRate(48_000) }
+                RateTile(label: "96 kHz",   rate: 96_000, current: preferredSampleRate) { commitSampleRate(96_000) }
+            }
+
+            // == Buffer size ==
+            headerRow(title: "Buffer Size (frames)", icon: "memorychip.fill")
+            LazyVGrid(columns: optCols, spacing: 12) {
+                BufferTile(size: 128,  current: preferredBufferFrames) { commitBuffer(128) }
+                BufferTile(size: 256,  current: preferredBufferFrames) { commitBuffer(256) }
+                BufferTile(size: 512,  current: preferredBufferFrames) { commitBuffer(512) }
+                BufferTile(size: 1024, current: preferredBufferFrames) { commitBuffer(1024) }
+            }
+
+            // == Monitor ==
+            Toggle("Monitor Input", isOn: $monitorInput)
+                .onChange(of: monitorInput) { _ in manageInputMonitoring() }
+            if monitorInput {
+                Text("Make sure outputs are isolated to avoid feedback.")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
+
+            // == Output & routing ==
+            Divider().padding(.vertical, 2)
+            headerRow(title: "Output & Routing", icon: "speaker.wave.2.fill")
+
+            // System route picker (this is how iOS exposes the device list)
+            RoutePickerRow()
+
+            // Current route badges (update on change)
+            CurrentRouteRow(outputs: currentOutputs.map { (outputDisplayName(for: $0), outputSymbolName(for: $0)) })
+
+            // Optional: Prefer Speaker (the only programmatic override iOS allows)
+            Toggle("Prefer Speaker (when possible)", isOn: $preferSpeaker)
+                .onChange(of: preferSpeaker) { _ in applySpeakerOverride() }
+
+            Text("Use the button above to choose Bluetooth, AirPlay, USB, etc. “Prefer Speaker” only works in certain categories (e.g., Play & Record).")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+    }
+
     
     private func refreshOutputs() {
             let session = AVAudioSession.sharedInstance()
@@ -270,6 +290,8 @@ public struct ProAudioSettingsView: View {
         }
 }
 
+
+    
 // MARK: - Subviews (match Theme/A4 card visual language)
 private struct DeviceCard: View {
     let title: String

@@ -160,19 +160,17 @@ final class AppModel: ObservableObject {
     // MARK: Mic on/off (used by ContentView when switching modes)
     // MARK: Mic on/off (used by views)
         /// Request mic activity. Will only actually start if the scene is active and permission is granted.
-        func setMicActive(_ active: Bool) {
-            desiredMicActive = active
-            guard sceneIsActive else {
-                // If turning off while inactive, still stop immediately.
-                if !active { audio.stop() }
-                return
-            }
-            if active, micPermission == .granted {
-                restartPipeline()
-            } else {
-                audio.stop()
-            }
+    func setMicActive(_ active: Bool) {
+        desiredMicActive = active
+
+        let shouldRunMic = sceneIsActive && desiredMicActive
+
+        if shouldRunMic, micPermission == .granted {
+            restartPipeline()
+        } else {
+            audio.stop()
         }
+    }
     
     // MARK: - Scale Library actions
 
@@ -210,17 +208,17 @@ final class AppModel: ObservableObject {
 
     
         // MARK: Scene phase
-        func scenePhaseDidChange(_ phase: ScenePhase) {
-            let nowActive = (phase == .active)
-            sceneIsActive = nowActive
-            if nowActive {
-                // Restore pipeline only if caller wanted it.
-                if desiredMicActive, micPermission == .granted { restartPipeline() }
-            } else {
-                // Quiesce immediately when leaving foreground.
-                audio.stop()
-            }
+    func scenePhaseDidChange(_ phase: ScenePhase) {
+        let shouldRunMic = (phase == .active) && desiredMicActive
+        sceneIsActive = (phase == .active)
+
+        if shouldRunMic, micPermission == .granted {
+            restartPipeline()
+        } else {
+            audio.stop()
         }
+    }
+
     // MARK: - New core: dual-path fusion + PLL + smoothing
         private func process(samples: [Float], sr: Double) {
             guard !samples.isEmpty else { return }

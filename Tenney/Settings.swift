@@ -9,6 +9,20 @@ import Foundation
 import UIKit
  import AVFAudio
 
+// MARK: Wave options (file scope)
+
+fileprivate struct WaveOption {
+    let wave: ToneOutputEngine.GlobalWave
+    let label: String
+}
+
+fileprivate let audioWaveOptions: [WaveOption] = [
+    .init(wave: .foldedSine, label: "Folded Sine"),
+    .init(wave: .triangle,   label: "Triangle"),
+    .init(wave: .saw,        label: "Saw")
+]
+
+
 // Somewhere shared (e.g., near other enums)
 enum TenneyDistanceMode: String, CaseIterable, Identifiable {
     case off, total, breakdown
@@ -58,35 +72,69 @@ private struct StageOptionChip: View {
         .buttonStyle(.plain)
     }
 }
+
 private struct StageAccentPicker: View {
     @Binding var selected: String   // "system" | "amber" | "red"
-    private struct Option: Identifiable { let id: String; let label: String; let colors: [Color] }
+
+    private struct Option: Identifiable {
+        let id: String
+        let label: String
+        let colors: [Color]
+    }
+
     private let options: [Option] = [
         .init(id: "system", label: "System", colors: [.accentColor, .accentColor.opacity(0.6)]),
         .init(id: "amber",  label: "Amber",  colors: [.orange, .yellow]),
         .init(id: "red",    label: "Red",    colors: [.red, .pink])
     ]
+
+    @Environment(\.tenneyTheme) private var theme
+
+    private var strokeGrad: LinearGradient {
+        LinearGradient(
+            colors: [theme.e3, theme.e5],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
     var body: some View {
         HStack(spacing: 12) {
             ForEach(options) { opt in
                 let on = (selected == opt.id)
+
                 Button {
                     withAnimation(.snappy) { selected = opt.id }
                 } label: {
                     VStack(spacing: 8) {
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(LinearGradient(colors: opt.colors, startPoint: .topLeading, endPoint: .bottomTrailing))
+                            .fill(
+                                LinearGradient(
+                                    colors: opt.colors,
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
                             .frame(width: 64, height: 40)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .stroke(on ? Color.accentColor.opacity(0.9) : Color.secondary.opacity(0.2), lineWidth: on ? 2 : 1)
+                                    .stroke(
+                                        on
+                                        ? AnyShapeStyle(strokeGrad)
+                                        : AnyShapeStyle(Color.secondary.opacity(0.2)),
+                                        lineWidth: on ? 2 : 1
+                                    )
                             )
+
                         Text(opt.label)
                             .font(.caption2.weight(on ? .semibold : .regular))
                             .foregroundStyle(on ? .primary : .secondary)
                     }
                     .padding(8)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .background(
+                        .ultraThinMaterial,
+                        in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    )
                 }
                 .buttonStyle(.plain)
                 .contentTransition(.symbolEffect(.replace))
@@ -96,35 +144,75 @@ private struct StageAccentPicker: View {
     }
 }
 
+
 private struct StageToggleChip: View {
     let title: String
     let systemNameOn: String
     let systemNameOff: String
     @Binding var isOn: Bool
     var invertVisual: Bool = false
+
+    @Environment(\.tenneyTheme) private var theme
+
+    private var grad: LinearGradient {
+        LinearGradient(
+            colors: [theme.e3, theme.e5],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
     var body: some View {
         Button {
             withAnimation(.snappy) { isOn.toggle() }
         } label: {
             let on = invertVisual ? !isOn : isOn
+
             HStack(spacing: 8) {
                 Image(systemName: on ? systemNameOn : systemNameOff)
-                    .symbolRenderingMode(.palette)
-                    .foregroundStyle(on ? Color.accentColor : Color.secondary, .clear)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(
+                        on
+                        ? AnyShapeStyle(grad)
+                        : AnyShapeStyle(Color.secondary)
+                    )
+                    .blendMode(on ? (theme.isDark ? .screen : .darken) : .normal)
                     .frame(width: 18)
+
                 Text(title)
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
                     .truncationMode(.tail)
                     .font(.footnote.weight(on ? .semibold : .regular))
-        }
-            .padding(.horizontal, 12).padding(.vertical, 8)
-            .background(on ? .thinMaterial : .ultraThinMaterial, in: Capsule())
+                    .foregroundStyle(
+                        on
+                        ? (theme.isDark ? Color.white : Color.black)
+                        : Color.secondary
+                    )
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                AnyShapeStyle(.ultraThinMaterial),
+                in: Capsule()
+            )
+            .overlay(
+                Capsule().stroke(
+                    on
+                    ? AnyShapeStyle(grad)
+                    : AnyShapeStyle(Color.secondary.opacity(0.12)),
+                    lineWidth: 1
+                )
+            )
         }
         .buttonStyle(.plain)
         .contentTransition(.symbolEffect(.replace))
     }
 }
+
+
+
+
 // Utils somewhere shared in the lattice module
 func tenneyHeightDelta(_ delta: [Int:Int]) -> Double {
     // H = Σ |Δe_p| * log2(p)
@@ -156,6 +244,9 @@ extension SettingsKeys {
 struct StudioConsoleView: View {
     
     
+    @AppStorage(SettingsKeys.latticeConnectionMode)
+    private var latticeConnectionModeRaw: String = LatticeConnectionMode.chain.rawValue
+
     @AppStorage(SettingsKeys.whatsNewLastSeenBuild)
     private var whatsNewLastSeenBuild: String = ""
 
@@ -274,6 +365,10 @@ struct StudioConsoleView: View {
 
     private static let labelDensityDetents: [Double] = [0.0, 0.35, 0.65, 0.85, 1.0]
     private static let gridStrengthDetents: [Double] = [0.10, 0.25, 0.40, 0.65, 0.85, 1.0]
+    
+    
+    // NEW: Headroom detents (safeAmp)
+    private static let safeAmpDetents: [Double] = [0.12, 0.18, 0.24, 0.30, 0.36]
 
     private static func nearestDetent(_ v: Double, in detents: [Double]) -> Double {
         guard let best = detents.min(by: { abs($0 - v) < abs($1 - v) }) else { return v }
@@ -338,12 +433,22 @@ struct StudioConsoleView: View {
     }
 
 
-// MARK: - Chip / Tile primitives (match Theme + Pro Audio visual language)
+    // MARK: - Chip / Tile primitives (match Theme + Pro Audio visual language)
     private struct DetentChip: View {
         let title: String
         let systemImage: String
         let value: Double
         @Binding var current: Double
+
+        @Environment(\.tenneyTheme) private var theme
+
+        private var grad: LinearGradient {
+            LinearGradient(
+                colors: [theme.e3, theme.e5],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
 
         private var selected: Bool { current == value }
 
@@ -355,18 +460,34 @@ struct StudioConsoleView: View {
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: systemImage)
-                        .symbolRenderingMode(.palette)
-                        .foregroundStyle(selected ? Color.accentColor : Color.secondary, .clear)
+                        .foregroundStyle(
+                            selected
+                            ? AnyShapeStyle(grad)
+                            : AnyShapeStyle(Color.secondary)
+                        )
+                        .blendMode(selected ? (theme.isDark ? .screen : .darken) : .normal)
                         .frame(width: 18)
                         .contentTransition(.symbolEffect(.replace))
+
                     Text(title)
                         .font(.footnote.weight(selected ? .semibold : .regular))
+                        .foregroundStyle(
+                            selected
+                            ? (theme.isDark ? Color.white : Color.black)
+                            : Color.secondary
+                        )
                 }
-                .padding(.horizontal, 12).padding(.vertical, 8)
-                .background(selected ? .thinMaterial : .ultraThinMaterial, in: Capsule())
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(
+                    AnyShapeStyle(.ultraThinMaterial),
+                    in: Capsule()
+                )
                 .overlay(
                     Capsule().stroke(
-                        selected ? Color.accentColor.opacity(0.35) : Color.secondary.opacity(0.12),
+                        selected
+                        ? AnyShapeStyle(grad)
+                        : AnyShapeStyle(Color.secondary.opacity(0.12)),
                         lineWidth: 1
                     )
                 )
@@ -375,6 +496,8 @@ struct StudioConsoleView: View {
             .symbolEffect(.bounce, value: selected)
         }
     }
+
+
 
     private enum LatticeUIPage: String, CaseIterable, Identifiable {
         case view, grid, theme, distance
@@ -396,33 +519,563 @@ struct StudioConsoleView: View {
         let selected: Bool
         let tap: () -> Void
 
+        @Environment(\.tenneyTheme) private var theme
+
+        private var grad: LinearGradient {
+            LinearGradient(
+                colors: [theme.e3, theme.e5],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+
         var body: some View {
             Button(action: tap) {
                 HStack(spacing: 8) {
                     Image(systemName: selected ? systemNameOn : systemNameOff)
-                        .symbolRenderingMode(.palette)
-                        .foregroundStyle(selected ? Color.accentColor : Color.secondary, .clear)
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(
+                            selected
+                            ? AnyShapeStyle(grad)
+                            : AnyShapeStyle(Color.secondary)
+                        )
+                        .blendMode(selected ? (theme.isDark ? .screen : .darken) : .normal)
                         .frame(width: 18)
                         .contentTransition(.symbolEffect(.replace))
+
                     Text(title)
                         .font(.footnote.weight(selected ? .semibold : .regular))
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(
+                            selected
+                            ? (theme.isDark ? Color.white : Color.black)
+                            : Color.secondary
+                        )
                 }
-                .padding(.horizontal, 12).padding(.vertical, 8)
-                .background(selected ? .thinMaterial : .ultraThinMaterial, in: Capsule())
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(
+                    selected
+                    ? AnyShapeStyle(.thinMaterial)
+                    : AnyShapeStyle(.ultraThinMaterial),
+                    in: Capsule()
+                )
                 .overlay(
                     Capsule().stroke(
-                        selected ? Color.accentColor.opacity(0.35) : Color.secondary.opacity(0.12),
+                        selected
+                        ? AnyShapeStyle(grad)
+                        : AnyShapeStyle(Color.secondary.opacity(0.12)),
                         lineWidth: 1
                     )
                 )
+                .contentShape(Capsule())
             }
             .buttonStyle(.plain)
             .symbolEffect(.bounce, value: selected)
         }
     }
 
+
+    
+    private struct AudioEnginePager: View {
+        @Binding var cfg: ToneOutputEngine.Config
+        @Binding var safeAmp: Double
+        
+        @Environment(\.tenneyTheme) private var theme
+
+                private var pageGrad: LinearGradient {
+                    LinearGradient(
+                        colors: [theme.e3, theme.e5],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                }
+
+
+        private func setWave(_ w: ToneOutputEngine.GlobalWave) {
+            guard cfg.wave != w else { return }
+            cfg.wave = w
+            ToneOutputEngine.shared.config = cfg
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        }
+
+        private enum Page: String, CaseIterable, Identifiable {
+            case device, tone, envelope, headroom
+            var id: String { rawValue }
+            var title: String {
+                switch self {
+                case .device:   return "Device"
+                case .tone:     return "Tone"
+                case .envelope: return "Envelope"
+                case .headroom: return "Headroom"
+                }
+            }
+        }
+
+        @State private var page: Page = .tone
+        private let pageAnim = Animation.easeInOut(duration: 0.22)
+
+        
+
+        
+
+
+        // MARK: - Icons & summaries
+
+        private func icon(for p: Page) -> String {
+            switch p {
+            case .device:   return "hifispeaker.2"
+            case .tone:     return "waveform"
+            case .envelope: return "waveform.path.ecg"
+            case .headroom: return "level"
+            }
+        }
+
+        private func waveLabel(_ wave: ToneOutputEngine.GlobalWave) -> String {
+            audioWaveOptions.first(where: { $0.wave == wave })?.label ?? "Custom"
+        }
+
+        private func onOff(_ v: Bool) -> String { v ? "On" : "Off" }
+
+        private var deviceSummary: String {
+            // We don’t have routing details here yet; keep it simple but descriptive.
+            "Devices & routing"
+        }
+
+        private var toneSummary: String {
+            let fold = String(format: "%.1f", cfg.foldAmount)
+            let drive = Int(cfg.drive_dB.rounded())
+            return "Wave: \(waveLabel(cfg.wave)) · Fold: \(fold) · Drive: \(drive)dB"
+        }
+
+        private var envelopeSummary: String {
+            "Attack: \(Int(cfg.attackMs))ms · Release: \(Int(cfg.releaseMs))ms"
+        }
+
+        private var headroomSummary: String {
+            let snapped = StudioConsoleView.nearestDetent(
+                safeAmp,
+                in: StudioConsoleView.safeAmpDetents
+            )
+            let pct = Int((snapped * 100).rounded())
+            return "Limiter: \(onOff(cfg.limiterOn)) · Safe: \(pct)%"
+        }
+
+        private func summary(for p: Page) -> String {
+            switch p {
+            case .device:   return deviceSummary
+            case .tone:     return toneSummary
+            case .envelope: return envelopeSummary
+            case .headroom: return headroomSummary
+            }
+        }
+
+        // MARK: - Pager chips
+
+        @ViewBuilder private func pageChip(_ p: Page) -> some View {
+            let active = (page == p)
+
+            Button {
+                switchTo(p)
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: icon(for: p))
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(
+                            active
+                            ? AnyShapeStyle(pageGrad)
+                            : AnyShapeStyle(Color.secondary)
+                        )
+                        .blendMode(active ? (theme.isDark ? .screen : .darken) : .normal)
+                        .frame(width: 18)
+                        .contentTransition(.symbolEffect(.replace))
+
+                    Text(p.title)
+                        .font(.footnote.weight(active ? .semibold : .regular))
+                        .foregroundStyle(
+                            active
+                            ? (theme.isDark ? Color.white : Color.black)
+                            : Color.secondary
+                        )
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity)
+                .background(
+                    active
+                    ? AnyShapeStyle(.thinMaterial)
+                    : AnyShapeStyle(.ultraThinMaterial),
+                    in: Capsule()
+                )
+                .overlay(
+                    Capsule().stroke(
+                        active
+                        ? AnyShapeStyle(pageGrad)
+                        : AnyShapeStyle(Color.secondary.opacity(0.12)),
+                        lineWidth: 1
+                    )
+                )
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .symbolEffect(.bounce, value: active)
+        }
+
+
+        private func switchTo(_ p: Page) {
+            guard page != p else { return }
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            withAnimation(pageAnim) { page = p }
+        }
+
+
+        private var pageSwitcher: some View {
+            VStack(alignment: .leading, spacing: 8) {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 10) {
+                        pageChip(.device)
+                        pageChip(.tone)
+                        pageChip(.envelope)
+                        pageChip(.headroom)
+                    }
+                    VStack(spacing: 10) {
+                        HStack(spacing: 10) {
+                            pageChip(.device)
+                            pageChip(.tone)
+                        }
+                        HStack(spacing: 10) {
+                            pageChip(.envelope)
+                            pageChip(.headroom)
+                        }
+                    }
+                }
+
+                Text(summary(for: page))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .padding(.horizontal, 6)
+                    .contentTransition(.opacity)
+                    .animation(.easeOut(duration: 0.14), value: page)
+            }
+            .padding(6)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
+            )
+        }
+
+        // MARK: - Page headers
+
+        private struct AudioPageHeader: View {
+            let title: String
+            let systemImage: String
+            @Environment(\.tenneyTheme) private var theme
+
+            private var headerGradient: LinearGradient {
+                LinearGradient(
+                    colors: [theme.e3, theme.e5],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            }
+
+            var body: some View {
+                HStack(spacing: 10) {
+                    Image(systemName: systemImage)
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(headerGradient)
+                        .blendMode(theme.isDark ? .screen : .darken)
+                        .frame(width: 22)
+
+                    Text(title)
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(theme.isDark ? Color.white : Color.black)
+                }
+                .padding(.bottom, 2)
+            }
+        }
+
+
+
+        private func panelContainer<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+            content()
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
+                )
+        }
+
+        // MARK: - Individual pages
+
+        private var devicePage: some View {
+            VStack(alignment: .leading, spacing: 12) {
+                AudioPageHeader(title: "Device", systemImage: icon(for: .device))
+
+                // Reuse existing Pro Audio controls as the Device page, without its own card.
+                ProAudioSettingsView(showsOuterCard: false)
+
+                Text("Input and output routing are shared across the tuner and lattice. “Prefer speaker” keeps sound on the main speaker when possible.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+
+        private var tonePage: some View {
+            VStack(alignment: .leading, spacing: 14) {
+                AudioPageHeader(title: "Tone", systemImage: icon(for: .tone))
+
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 132, maximum: 200), spacing: 12)], spacing: 10) {
+                    ForEach(Array(audioWaveOptions.enumerated()), id: \.offset) { _, opt in
+                        WaveTile(option: opt, selected: cfg.wave == opt.wave) {
+                            withAnimation(.snappy) { setWave(opt.wave) }
+                        }
+                    }
+                }
+                .animation(.snappy, value: cfg.wave)
+
+                HStack {
+                    Text("Fold")
+                    Slider(
+                        value: Binding(
+                            get: { Double(cfg.foldAmount) },
+                            set: { cfg.foldAmount = Float($0); ToneOutputEngine.shared.config = cfg }
+                        ),
+                        in: 0...5
+                    )
+                }
+
+                HStack {
+                    Text("Drive")
+                    Slider(
+                        value: Binding(
+                            get: { Double(cfg.drive_dB) },
+                            set: { cfg.drive_dB = Float($0); ToneOutputEngine.shared.config = cfg }
+                        ),
+                        in: -6...24
+                    )
+                }
+
+                Text("Fold adds harmonics; Drive increases saturation before the limiter.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+
+        private var envelopePage: some View {
+            VStack(alignment: .leading, spacing: 14) {
+                AudioPageHeader(title: "Envelope", systemImage: icon(for: .envelope))
+
+                HStack {
+                    Text("Attack")
+                    Slider(
+                        value: Binding(
+                            get: { cfg.attackMs },
+                            set: { cfg.attackMs = $0; ToneOutputEngine.shared.config = cfg }
+                        ),
+                        in: 1...200
+                    )
+                    Text("\(Int(cfg.attackMs))ms")
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                }
+
+                HStack {
+                    Text("Release")
+                    Slider(
+                        value: Binding(
+                            get: { cfg.releaseMs },
+                            set: { cfg.releaseMs = $0; ToneOutputEngine.shared.config = cfg }
+                        ),
+                        in: 20...2000
+                    )
+                    Text("\(Int(cfg.releaseMs))ms")
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                }
+
+                Text("Envelope applies to both short beeps and sustained tones.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+
+        private var headroomPage: some View {
+            VStack(alignment: .leading, spacing: 14) {
+                AudioPageHeader(title: "Headroom", systemImage: icon(for: .headroom))
+
+                HStack(spacing: 10) {
+                    StageToggleChip(
+                        title: "Limiter",
+                        systemNameOn: "shield.lefthalf.fill",
+                        systemNameOff: "shield",
+                        isOn: Binding(
+                            get: { cfg.limiterOn },
+                            set: { cfg.limiterOn = $0; ToneOutputEngine.shared.config = cfg }
+                        )
+                    )
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Safe level")
+                        Spacer()
+                        let snapped = StudioConsoleView.nearestDetent(
+                            safeAmp,
+                            in: StudioConsoleView.safeAmpDetents
+                        )
+                        Text("\(Int((snapped * 100).rounded()))%")
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            DetentChip(
+                                title: "Safe",
+                                systemImage: "speaker.wave.1",
+                                value: 0.12,
+                                current: $safeAmp
+                            )
+                            DetentChip(
+                                title: "Normal",
+                                systemImage: "speaker.wave.2",
+                                value: 0.18,
+                                current: $safeAmp
+                            )
+                            DetentChip(
+                                title: "Loud",
+                                systemImage: "speaker.wave.3",
+                                value: 0.24,
+                                current: $safeAmp
+                            )
+                            DetentChip(
+                                title: "Hot",
+                                systemImage: "speaker.badge.exclamationmark",
+                                value: 0.30,
+                                current: $safeAmp
+                            )
+                            DetentChip(
+                                title: "Max",
+                                systemImage: "exclamationmark.triangle",
+                                value: 0.36,
+                                current: $safeAmp
+                            )
+                        }
+                        .padding(.vertical, 2)
+                    }
+                }
+
+                Text("Limiter and Safe level affect all output from Tenney’s engine. Start “Safe” on headphones; only use Hot/Max when you know your gain staging.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+
+        // MARK: - Preview + paged panel
+
+        private var previewRow: some View {
+            Group {
+                if #available(iOS 26.0, *) {
+                    GlassEffectContainer {
+                        AudioEnginePreview()
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                    .frame(height: 140)
+                    .glassEffect(.regular, in: .rect(cornerRadius: 12))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
+                    )
+                } else {
+                    AudioEnginePreview()
+                        .frame(height: 140)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
+                        )
+                }
+            }
+            .transaction { $0.animation = nil }   // never animate preview itself
+        }
+
+        private var pagedPanel: some View {
+            ZStack(alignment: .topLeading) {
+                switch page {
+                case .device:
+                    // Place Device content directly in the tray body, no extra
+                    // rounded-rect container.
+                    devicePage
+                        .padding(12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .id("audio.engine.panel.device")
+                        .transition(.opacity)
+
+                case .tone:
+                    panelContainer {
+                        tonePage
+                    }
+                    .id("audio.engine.panel.tone")
+                    .transition(.opacity)
+
+                case .envelope:
+                    panelContainer {
+                        envelopePage
+                    }
+                    .id("audio.engine.panel.envelope")
+                    .transition(.opacity)
+
+                case .headroom:
+                    panelContainer {
+                        headroomPage
+                    }
+                    .id("audio.engine.panel.headroom")
+                    .transition(.opacity)
+                }
+            }
+            .animation(pageAnim, value: page)
+        }
+
+
+        // MARK: - Body
+
+        var body: some View {
+            VStack(alignment: .leading, spacing: 12) {
+                previewRow
+                pageSwitcher
+                pagedPanel
+            }
+            .onChange(of: cfg) { ToneOutputEngine.shared.config = $0 }
+        }
+
+        // existing helper lives in outer scope:
+        // private func setWave(_ w: ToneOutputEngine.GlobalWave) { ... }
+    }
+
+
     private struct LatticeUIControlsPager: View {
+        @Binding var latticeConnectionModeRaw: String
+
+        @Environment(\.tenneyTheme) private var theme
+
+        private var pageGrad: LinearGradient {
+            LinearGradient(
+                colors: [theme.e3, theme.e5],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+        
+        private var latticeConnectionMode: LatticeConnectionMode {
+            LatticeConnectionMode(rawValue: latticeConnectionModeRaw) ?? .chain
+        }
+
         @Binding var nodeSizeRaw: String
         @Binding var labelDensity: Double
         @Binding var guidesOn: Bool
@@ -450,33 +1103,36 @@ struct StudioConsoleView: View {
                     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
                 }
 
-                private struct MeasuredPage<Content: View>: View {
-                    let id: LatticeUIPage
-                    @Binding var active: LatticeUIPage
-                    @Binding var heights: [LatticeUIPage: CGFloat]
-                    @Binding var currentHeight: CGFloat
-                    let pageAnim: Animation
-                    @ViewBuilder var content: () -> Content
+        private struct MeasuredPage<Content: View>: View {
+           let id: LatticeUIPage
+           @Binding var active: LatticeUIPage
+           @Binding var heights: [LatticeUIPage: CGFloat]
+           @Binding var currentHeight: CGFloat
+           let pageAnim: Animation
+           @ViewBuilder var content: () -> Content
 
-                    var body: some View {
-                        content()
-                            .background(
-                                GeometryReader { geo in
-                                    Color.clear.preference(key: PanelHeightKey.self, value: geo.size.height)
-                                }
-                            )
-                            .onPreferenceChange(PanelHeightKey.self) { h in
-                                guard h > 0 else { return }
-                                heights[id] = h
-                                guard active == id else { return } // ignore outgoing page during transition
-                                if abs(currentHeight - h) > 0.5 {
-                                    withAnimation(pageAnim) { currentHeight = h }
-                                } else {
-                                    currentHeight = h
-                                }
-                            }
+            var body: some View {
+                content()
+                    // Let the page report its intrinsic vertical height,
+                    // instead of the constrained/clipped height.
+                    .fixedSize(horizontal: false, vertical: true)
+                    .background(
+                        GeometryReader { geo in
+                            Color.clear.preference(key: PanelHeightKey.self, value: geo.size.height)
+                        }
+                    )
+                    .onPreferenceChange(PanelHeightKey.self) { h in
+                        guard h > 0 else { return }
+                        heights[id] = h
+                        guard active == id else { return }
+                        if abs(currentHeight - h) > 0.5 {
+                            withAnimation(pageAnim) { currentHeight = h }
+                        } else {
+                            currentHeight = h
+                        }
                     }
-                }
+            }
+        }
         
         private func icon(for p: LatticeUIPage) -> String {
                     switch p {
@@ -487,30 +1143,36 @@ struct StudioConsoleView: View {
                     }
                 }
 
-                private struct PageHeader: View {
-                    let title: String
-                    let systemImage: String
-                    var body: some View {
-                        HStack(spacing: 10) {
-                            Image(systemName: systemImage)
-                                .font(.title3.weight(.semibold))
-                                .symbolRenderingMode(.palette)
-                                .foregroundStyle(Color.accentColor, Color.accentColor.opacity(0.18))
-                                .frame(width: 22)
+        private struct PageHeader: View {
+            let title: String
+            let systemImage: String
+            @Environment(\.tenneyTheme) private var theme
 
-                            Text(title)
-                                .font(.title3.weight(.bold))
-                                .foregroundStyle(
-                                    LinearGradient(
-                                        colors: [Color.primary, Color.accentColor.opacity(0.85)],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                        }
-                        .padding(.bottom, 2)
-                    }
+            private var headerGradient: LinearGradient {
+                LinearGradient(
+                    colors: [theme.e3, theme.e5],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            }
+
+            var body: some View {
+                HStack(spacing: 10) {
+                    Image(systemName: systemImage)
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(headerGradient)
+                        .blendMode(theme.isDark ? .screen : .darken)
+                        .frame(width: 22)
+
+                    Text(title)
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(theme.isDark ? Color.white : Color.black)
                 }
+                .padding(.bottom, 2)
+            }
+        }
+
+
 
         private var nodeChoice: NodeSizeChoice {
             NodeSizeChoice(rawValue: nodeSizeRaw) ?? .m
@@ -596,27 +1258,44 @@ struct StudioConsoleView: View {
                     withAnimation(pageAnim) { page = p }
                 }
 
-@ViewBuilder private func pageChip(_ p: LatticeUIPage) -> some View {
+        @ViewBuilder private func pageChip(_ p: LatticeUIPage) -> some View {
             let active = (page == p)
-    
+
             Button { switchTo(p) } label: {
                 HStack(spacing: 8) {
                     Image(systemName: icon(for: p))
-                        .symbolRenderingMode(.palette)
-                        .foregroundStyle(active ? Color.accentColor : Color.secondary, .clear)
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(
+                            active
+                            ? AnyShapeStyle(pageGrad)
+                            : AnyShapeStyle(Color.secondary)
+                        )
+                        .blendMode(active ? (theme.isDark ? .screen : .darken) : .normal)
                         .frame(width: 18)
                         .contentTransition(.symbolEffect(.replace))
+
                     Text(p.title)
                         .font(.footnote.weight(active ? .semibold : .regular))
-                        .foregroundStyle(active ? .primary : .secondary)
+                        .foregroundStyle(
+                            active
+                            ? (theme.isDark ? Color.white : Color.black)
+                            : Color.secondary
+                        )
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
                 .frame(maxWidth: .infinity)
-                .background(active ? .thinMaterial : .ultraThinMaterial, in: Capsule())
+                .background(
+                    active
+                    ? AnyShapeStyle(.thinMaterial)
+                    : AnyShapeStyle(.ultraThinMaterial),
+                    in: Capsule()
+                )
                 .overlay(
                     Capsule().stroke(
-                        active ? Color.accentColor.opacity(0.35) : Color.secondary.opacity(0.12),
+                        active
+                        ? AnyShapeStyle(pageGrad)
+                        : AnyShapeStyle(Color.secondary.opacity(0.12)),
                         lineWidth: 1
                     )
                 )
@@ -625,6 +1304,7 @@ struct StudioConsoleView: View {
             .buttonStyle(.plain)
             .symbolEffect(.bounce, value: active)
         }
+
 
         private var pageSwitcher: some View {
             VStack(alignment: .leading, spacing: 8) {
@@ -701,7 +1381,7 @@ struct StudioConsoleView: View {
 
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 10) {
-                            DetentChip(title: "Off",  systemImage: "textformat.slash",        value: 0.0,  current: $labelDensity)
+                            DetentChip(title: "Off",  systemImage: "textformat.alt",        value: 0.0,  current: $labelDensity)
                             DetentChip(title: "Low",  systemImage: "textformat.size.smaller", value: 0.35, current: $labelDensity)
                             DetentChip(title: "Med",  systemImage: "textformat",              value: 0.65, current: $labelDensity)
                             DetentChip(title: "High", systemImage: "textformat.size.larger",  value: 0.85, current: $labelDensity)
@@ -711,6 +1391,18 @@ struct StudioConsoleView: View {
                     }
                     .onAppear { snapLabelDensityIfNeeded() }
                     .onChange(of: labelDensity) { _ in snapLabelDensityIfNeeded() }
+                }
+                
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Connection Mode")
+                        .font(.subheadline.weight(.semibold))
+
+                    Picker("Connection Mode", selection: $latticeConnectionModeRaw) {
+                        ForEach(LatticeConnectionMode.allCases) { m in
+                            Text(m.title).tag(m.rawValue)
+                        }
+                    }
+                    .pickerStyle(.segmented)
                 }
 
                 Text("Default Zoom affects Reset View; Labels control fade.")
@@ -1121,25 +1813,29 @@ struct StudioConsoleView: View {
     var body: some View {
         NavigationStack {
             contentStack
-            .navigationBarBackButtonHidden(true)
-            .toolbar(.hidden, for: .navigationBar)
+                .navigationBarBackButtonHidden(true)
+                .toolbar(.hidden, for: .navigationBar)
         }
-        // Apply the hidden flag to this stack so the chip has visible effect here
+        .environment(
+            \.tenneyTheme,
+            ThemeRegistry.theme(
+                LatticeThemeID(rawValue: latticeThemeID) ?? .classicBO,
+                dark: effectiveIsDark
+            )
+        )
         .statusBar(hidden: stageHideStatus)
         .preferredColorScheme(settingsScheme)
-        
         .sheet(isPresented: $showWhatsNewSheet, onDismiss: {
-        markWhatsNewSeen()
+            markWhatsNewSeen()
         }) {
-        WhatsNewSheet(
-        items: WhatsNewContent.v0_2Items,
-        primaryAction: {
-        showWhatsNewSheet = false
-        markWhatsNewSeen()
+            WhatsNewSheet(
+                items: WhatsNewContent.v0_2Items,
+                primaryAction: {
+                    showWhatsNewSheet = false
+                    markWhatsNewSeen()
+                }
+            )
         }
-        )
-        }
-        // Move all listeners off the main expression tree
         .background(
             SettingsChangeSinks(
                 defaultView: $defaultView,
@@ -1157,6 +1853,7 @@ struct StudioConsoleView: View {
                 overlay11: $overlay11,
                 foldAudible: $foldAudible,
                 safeAmp: $safeAmp,
+                latticeConnectionModeRaw: $latticeConnectionModeRaw,
                 latticeThemeID: $latticeThemeID,
                 themeStyleRaw: $themeStyleRaw,
                 stageDimLevel: $stageDimLevel,
@@ -1175,7 +1872,11 @@ struct StudioConsoleView: View {
     }
     
     @ViewBuilder private var whatsNewSection: some View {
-        glassCard("What’s New") {
+        glassCard(
+            icon: "sparkles",
+            title: "What’s New",
+            subtitle: "Latest features and changes"
+        ) {
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 8) {
@@ -1200,16 +1901,13 @@ struct StudioConsoleView: View {
 
                 Spacer()
 
-                Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                GlassCTAButton(title: "View", systemName: "sparkles") {
                     showWhatsNewSheet = true
-                } label: {
-                    Label("View", systemImage: "sparkles")
                 }
-                .buttonStyle(.borderedProminent)
             }
         }
     }
+
 
 
     // MARK: - Split content
@@ -1253,9 +1951,15 @@ struct StudioConsoleView: View {
         let subSmall: CGFloat = 13
         let subSize = lerp(subBig, subSmall, p)
 
+        let theme = ThemeRegistry.theme(
+            LatticeThemeID(rawValue: latticeThemeID) ?? .classicBO,
+            dark: effectiveIsDark
+        )
+
         return VStack(alignment: .leading, spacing: lerp(6, 3, p)) {
             Text("Settings")
                 .font(.system(size: titleSize, weight: .bold))
+                .foregroundStyle(theme.isDark ? Color.white : Color.black)
                 .lineLimit(1)
 
             Text("Tuner & Lattice Algorithm Configs")
@@ -1271,27 +1975,24 @@ struct StudioConsoleView: View {
         .padding(.top, lerp(16, 10, p))
         .padding(.bottom, lerp(8, 4, p))
         .frame(maxWidth: .infinity, alignment: .leading)
-
-        // Don’t let SwiftUI inject its own interpolation; follow the scroll exactly.
         .transaction { $0.animation = nil }
     }
+
+
 
 
     private var gridView: some View {
         LazyVGrid(columns: columns, spacing: 14) {
             whatsNewSection
             latticeUISection
-            // theme + interval distance moved into Lattice UI chips
             stageSection
             defaultViewSection
             // labelingSection
             // overlaysSection
-            soundSection
-            ProAudioSettingsView()
+            soundSection          // now the Type A Audio Engine section
             tuningSection
             quickSetupCard
             aboutSection
-            // ⚠️ Avoid Spacer() inside grid – it confuses layout and adds type load
         }
         .padding(.vertical, 14)
         .padding(.horizontal, 14)
@@ -1316,26 +2017,25 @@ struct StudioConsoleView: View {
         }
     }
 
-    @ViewBuilder
-    private var quickSetupCard: some View {
-        glassCard("Quick Setup Wizard") {
+    @ViewBuilder private var quickSetupCard: some View {
+        glassCard(
+            icon: "wand.and.stars",
+            title: "Quick Setup",
+            subtitle: "Guided configuration"
+        ) {
             HStack {
                 Text("Run the first-time setup again.")
                     .foregroundStyle(.gray, .primary)
                 Spacer()
-                Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                GlassCTAButton(title: "Rerun Setup", systemName: "sparkles") {
                     model.showOnboardingWizard = true
                     dismiss()
-                } label: {
-                    Label("Rerun Setup", systemImage: "sparkles")
                 }
-                .buttonStyle(.borderedProminent)
             }
             .font(.callout)
-            .foregroundStyle(.white, .secondary)
         }
     }
+
     
     private static func forceStatusBarUpdate() {
         DispatchQueue.main.async {
@@ -1363,6 +2063,7 @@ struct StudioConsoleView: View {
         @Binding var overlay11: Bool
         @Binding var foldAudible: Bool
         @Binding var safeAmp: Double
+        @Binding var latticeConnectionModeRaw: String
         @Binding var latticeThemeID: String
         @Binding var themeStyleRaw: String
         @Binding var stageDimLevel: Double
@@ -1392,6 +2093,9 @@ struct StudioConsoleView: View {
                     let snappedGrid = StudioConsoleView.nearestDetent(gridStrength, in: StudioConsoleView.gridStrengthDetents)
                     if snappedGrid != gridStrength { gridStrength = snappedGrid }
                     
+                    let snappedSafe = StudioConsoleView.nearestDetent(safeAmp, in: StudioConsoleView.safeAmpDetents)
+                    if snappedSafe != safeAmp { safeAmp = snappedSafe }
+                    
                     // Always remember lattice view (remove user-facing toggle; enforce ON)
                                         UserDefaults.standard.set(true, forKey: SettingsKeys.latticeRememberLastView)
                                         postSetting(SettingsKeys.latticeRememberLastView, true)
@@ -1411,6 +2115,7 @@ struct StudioConsoleView: View {
                 .onChange(of: overlay11)     { postSetting(SettingsKeys.overlay11, $0) }
                 .onChange(of: foldAudible)   { postSetting(SettingsKeys.foldAudible, $0) }
                 .onChange(of: safeAmp)       { postSetting(SettingsKeys.safeAmp, $0) }
+                .onChange(of: latticeConnectionModeRaw) { postSetting(SettingsKeys.latticeConnectionMode, $0) }
                 .onChange(of: latticeThemeID){ postSetting(SettingsKeys.latticeThemeID, $0) }
                 .onChange(of: themeStyleRaw) { postSetting(SettingsKeys.latticeThemeStyle, $0) }
                 .onChange(of: stageDimLevel) { postSetting(SettingsKeys.stageDimLevel, $0) }
@@ -1463,132 +2168,142 @@ struct StudioConsoleView: View {
     private var isAutoAndCurrentlyDark: Bool { styleChoice == .system && systemScheme == .dark }
 
     @ViewBuilder private var stageSection: some View {
-        glassCard("Stage Mode") {
+        glassCard(
+            icon: "rectangle.on.rectangle.angled",
+            title: "Stage Mode",
+            subtitle: "Dim, accent, performance behavior"
+        ) {
+            let dimLocked = isExplicitDarkStyle || isAutoAndCurrentlyDark
+
             VStack(alignment: .leading, spacing: 14) {
 
-                // == Background dimming (now lockable in explicit Dark) ==
-                let dimLocked = isExplicitDarkStyle
-
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 8) {
-                        Text("Background dimming")
-                        Spacer()
-                        if dimLocked {
-                            LockTag(text: "Dark Mode")
-                        }
-                        Text("\(Int(stageDimLevel * 100))%")
-                            .monospacedDigit()
-                            .foregroundStyle(.secondary)
-                    }
-
-                    // Quick presets
-                    HStack(spacing: 8) {
-                        DimPresetChip(title: "Off",  value: 0.00, current: $stageDimLevel)
-                        DimPresetChip(title: "25%", value: 0.25, current: $stageDimLevel)
-                        DimPresetChip(title: "50%", value: 0.50, current: $stageDimLevel)
-                        DimPresetChip(title: "75%", value: 0.75, current: $stageDimLevel)
-                    }
-                    .disabled(dimLocked)
-                    .opacity(dimLocked ? 0.5 : 1)
-
-                    // Fine-tune
-                    Slider(value: $stageDimLevel, in: 0.0...0.75, step: 0.01)
-                        .disabled(dimLocked)
-                        .opacity(dimLocked ? 0.5 : 1)
-
-                    // Visual mini-preview (shows a lock overlay when disabled)
-                    StageDimMiniPreview(dim: stageDimLevel, locked: dimLocked)
-                        .frame(height: 52)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
-                        )
-
-                    // Clarifying captions
+                // Dimmer preview + lock state
+                HStack(alignment: .center, spacing: 12) {
                     Group {
-                        if dimLocked {
-                            Text("Background dimming doesn’t apply in Dark Mode. Switch to Light or Auto to adjust.")
-                        } else if isAutoAndCurrentlyDark {
-                            Text("You’re in Auto (Dark right now). Dimming only affects the background when the app is in Light.")
+                        if #available(iOS 26.0, *) {
+                            GlassEffectContainer {
+                                StageDimMiniPreview(
+                                    dim: dimLocked ? 0.9 : stageDimLevel,
+                                    locked: dimLocked
+                                )
+                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            }
+                            .frame(width: 140, height: 70)
+                            .glassEffect(.regular, in: .rect(cornerRadius: 12))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
+                            )
                         } else {
-                            EmptyView()
+                            StageDimMiniPreview(
+                                dim: dimLocked ? 0.9 : stageDimLevel,
+                                locked: dimLocked
+                            )
+                            .frame(width: 140, height: 70)
+                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
+                            )
                         }
                     }
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                }
-                .onChange(of: stageDimLevel) { v in postSetting(SettingsKeys.stageDimLevel, v) }
 
-                // == Accent for dark stages ==
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Accent for dark stages")
-                    HStack(spacing: 12) {
-                        StageAccentTile(
-                            label: "System",
-                            colors: [.accentColor, .accentColor.opacity(0.55)],
-                            selected: stageAccent == "system"
-                        ) { stageAccent = "system" }
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Stage dimmer")
+                            .font(.subheadline.weight(.semibold))
 
-                        StageAccentTile(
-                            label: "Amber",
-                            colors: [.orange, .yellow],
-                            selected: stageAccent == "amber"
-                        ) { stageAccent = "amber" }
-
-                        StageAccentTile(
-                            label: "Red",
-                            colors: [.red, .pink],
-                            selected: stageAccent == "red"
-                        ) { stageAccent = "red" }
+                        if dimLocked {
+                            Text("Locked while using Dark appearance.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Text("Dims the background while Stage Mode is active.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
                     }
-                    .onChange(of: stageAccent) { v in postSetting(SettingsKeys.stageAccent, v) }
 
-                    Text("Amber/Red preserves night vision and reduces blue light; affects accent UI and halos, not pitch detection.")
+                    Spacer()
+
+                    if dimLocked {
+                        LockTag(text: "Locked in Dark")
+                    }
+                }
+
+                // Dim controls (only when not locked)
+                if !dimLocked {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Dim level")
+                            Spacer()
+                            Text("\(Int(stageDimLevel * 100))%")
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Slider(value: $stageDimLevel, in: 0.3...0.95)
+
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 10) {
+                                DimPresetChip(title: "Soft",    value: 0.55, current: $stageDimLevel)
+                                DimPresetChip(title: "Classic", value: 0.75, current: $stageDimLevel)
+                                DimPresetChip(title: "Deep",    value: 0.85, current: $stageDimLevel)
+                            }
+                            .padding(.vertical, 2)
+                        }
+                    }
+                }
+
+                Divider()
+
+                // Accent color
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Accent color")
+                        .font(.subheadline.weight(.semibold))
+
+                    StageAccentPicker(selected: $stageAccent)
+
+                    Text("Controls the highlight color used while Stage Mode is active.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
 
-                // == Behavior (one line; scrolls if tight) ==
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Behavior")
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 10) {
-                            // "Status Bar" — ON = visible, OFF = hidden (storage remains: stageHideStatus == hidden)
-                            // "Status Bar" — ON = visible, OFF = hidden
-                                                        StageToggleChip(
-                                                            title: "Status Bar",
-                                                            systemNameOn: "rectangle.topthird.inset",          // ON (visible)
-                                                            systemNameOff: "rectangle.topthird.inset.filled",   // OFF (hidden)
-                                                            isOn: Binding(
-                                                                get: { !stageHideStatus },       // show = true
-                                                                set: { stageHideStatus = !$0 }   // stored flag is 'hidden'
-                                                            )
-                                                        )
-                            StageToggleChip(
-                                title: "Keep Awake",
-                                systemNameOn: "moon.zzz.fill",
-                                systemNameOff: "moon.zzz",
-                                isOn: $stageKeepAwake
-                            )
-                            StageToggleChip(
-                                title: "Minimal UI",
-                                systemNameOn: "star.slash.fill",
-                                systemNameOff: "star.slash",
-                                isOn: $stageMinimalUI
-                            )
-                        }
-                        .padding(.vertical, 2)
-                    }
+                Divider()
+
+                // Behavior toggles
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Performance behavior")
+                        .font(.subheadline.weight(.semibold))
+
+                    StageToggleChip(
+                        title: "Hide status bar",
+                        systemNameOn: "rectangle.topthird.inset.filled",
+                        systemNameOff: "rectangle",
+                        isOn: $stageHideStatus
+                    )
+
+                    StageToggleChip(
+                        title: "Keep screen awake",
+                        systemNameOn: "moon.zzz.fill",
+                        systemNameOff: "moon",
+                        isOn: $stageKeepAwake
+                    )
+
+                    StageToggleChip(
+                        title: "Minimal UI",
+                        systemNameOn: "wand.and.stars.inverse",
+                        systemNameOff: "wand.and.stars",
+                        isOn: $stageMinimalUI
+                    )
+
+                    Text("Stage Mode is available from the Utility Bar. It remembers these dimmer and behavior settings.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
-                .onChange(of: stageHideStatus) { v in postSetting(SettingsKeys.stageHideStatus, v) }
-                .onChange(of: stageKeepAwake)  { v in postSetting(SettingsKeys.stageKeepAwake, v) }
-                .onChange(of: stageMinimalUI)  { v in postSetting(SettingsKeys.stageMinimalUI, v) }
             }
         }
-        
     }
+
 
     private struct LockTag: View {
         let text: String
@@ -1607,14 +2322,14 @@ struct StudioConsoleView: View {
     private struct StageDimMiniPreview: View {
         let dim: Double
         let locked: Bool
+
         var body: some View {
             ZStack {
-                LinearGradient(colors: [.gray.opacity(0.25), .gray.opacity(0.05)],
-                               startPoint: .topLeading, endPoint: .bottomTrailing)
-
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                    .frame(width: 120, height: 30)
+                LinearGradient(
+                    colors: [.gray.opacity(0.25), .gray.opacity(0.05)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
 
                 Color.black.opacity(dim)
 
@@ -1625,7 +2340,10 @@ struct StudioConsoleView: View {
                     }
                     .padding(8)
                     .foregroundStyle(.secondary)
-                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .background(
+                        .thinMaterial,
+                        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    )
                 }
             }
             .contentShape(Rectangle())
@@ -1634,28 +2352,27 @@ struct StudioConsoleView: View {
     }
 
 
+
     @ViewBuilder private var tuningSection: some View {
-            glassCard("Equal-Temperament Reference (A4)") {
-                SettingsA4PickerView()
-            }
-        }
-
-    @ViewBuilder private var labelingSection: some View {
-        glassCard("Labeling") {
-            Picker("Default", selection: $labelDefault) {
-                Text("Ratio").tag("ratio")
-                Text("HEJI").tag("heji")
-            }
-            .pickerStyle(.segmented)
-
-            Toggle("Show ratio alongside HEJI", isOn: $showRatioAlong)
-
-            Text("Affects Lattice info cards and Builder labels.")
-                .font(.footnote).foregroundStyle(.secondary)
+        glassCard(
+            icon: "tuningfork",
+            title: "Reference Pitch (A4)",
+            subtitle: "Staff & equal temperament base"
+        ) {
+            SettingsA4PickerView()
         }
     }
+
+
+    
+
+    
     @ViewBuilder private var defaultViewSection: some View {
-        glassCard("Default Screen at Launch") {
+        glassCard(
+            icon: "rectangle.2.swap",
+            title: "Default Screen",
+            subtitle: "Which screen opens on launch"
+        ) {
             HStack(spacing: 12) {
                 GlassSelectTile(title: "Lattice", isOn: defaultView == "lattice") {
                     withAnimation(.snappy) { defaultView = "lattice" }
@@ -1665,49 +2382,85 @@ struct StudioConsoleView: View {
                 }
             }
             Text("Matches the first-run setup. Reorders the Utility Bar so your default is on the left.")
-                .font(.footnote).foregroundStyle(.secondary)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
         }
     }
+
 
 
     @ViewBuilder private var latticeUISection: some View {
-        glassCard("Lattice UI") {
+        glassCard(
+            icon: "hexagon",
+            title: "Lattice UI",
+            subtitle: "View, grid, theme, distance"
+        ) {
             LatticeUIControlsPager(
-                            nodeSizeRaw: $nodeSize,
-                            labelDensity: $labelDensity,
-                            guidesOn: $guidesOn,
-                            alwaysRecenter: $latticeAlwaysRecenterOnQuit,
-                            zoomPresetRaw: $latticeDefaultZoomPresetRaw,
-                            gridModeRaw: $gridModeRaw,
-                            gridStrength: $gridStrength,
-                            gridMajorEnabled: $gridMajorEnabled,
-                            gridMajorEvery: $gridMajorEvery,
-                            latticeThemeID: $latticeThemeID,
-                            tenneyDistanceModeRaw: $tenneyDistanceModeRaw
-                        )
-            
-        }
-        
-    }
-
-
-    @ViewBuilder private var themeSection: some View {
-        glassCard("Appearance · Lattice Theme") {
-            SettingsThemePickerView()
-            Text("Themes change node colors (3- vs 5-limit) and high-prime overlays. Selection rims and the selection path inherit per-node tints.")
-                .font(.footnote).foregroundStyle(.secondary)
+                latticeConnectionModeRaw: $latticeConnectionModeRaw,
+                nodeSizeRaw: $nodeSize,
+                labelDensity: $labelDensity,
+                guidesOn: $guidesOn,
+                alwaysRecenter: $latticeAlwaysRecenterOnQuit,
+                zoomPresetRaw: $latticeDefaultZoomPresetRaw,
+                gridModeRaw: $gridModeRaw,
+                gridStrength: $gridStrength,
+                gridMajorEnabled: $gridMajorEnabled,
+                gridMajorEvery: $gridMajorEvery,
+                latticeThemeID: $latticeThemeID,
+                tenneyDistanceModeRaw: $tenneyDistanceModeRaw
+            )
         }
     }
 
+
+    @ViewBuilder private var labelingSection: some View {
+        glassCard(
+            icon: "tag",
+            title: "Labeling",
+            subtitle: "Lattice labels and info cards"
+        ) {
+            Picker("Default", selection: $labelDefault) {
+                Text("Ratio").tag("ratio")
+                Text("HEJI").tag("heji")
+            }
+            .pickerStyle(.segmented)
+
+            Toggle("Show ratio alongside HEJI", isOn: $showRatioAlong)
+
+            Text("Affects Lattice info cards and Builder labels.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+    }
 
     @ViewBuilder private var overlaysSection: some View {
-        glassCard("Overlays") {
+        glassCard(
+            icon: "circle.grid.cross.down.fill",
+            title: "Overlays",
+            subtitle: "Higher-prime ghost nodes"
+        ) {
             Toggle("Show 7-limit overlay", isOn: $overlay7)
             Toggle("Show 11-limit overlay", isOn: $overlay11)
             Text("Toggles higher-prime ghost nodes.")
-                .font(.footnote).foregroundStyle(.secondary)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
         }
     }
+
+    @ViewBuilder private var themeSection: some View {
+        glassCard(
+            icon: "paintpalette",
+            title: "Appearance · Lattice Theme",
+            subtitle: "Node colors and overlays"
+        ) {
+            SettingsThemePickerView()
+            Text("Themes change node colors (3- vs 5-limit) and high-prime overlays. Selection rims and the selection path inherit per-node tints.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    
     @AppStorage(SettingsKeys.tenneyDistanceMode)
     private var tenneyDistanceModeRaw: String = TenneyDistanceMode.breakdown.rawValue
 
@@ -1799,7 +2552,10 @@ struct StudioConsoleView: View {
     }
 
     @ViewBuilder private var tenneyDistanceSection: some View {
-        glassCard("Interval Distance (Tenney Height)") {
+        glassCard(
+            icon: "ruler",
+            title: "Interval Distance (Tenney Height)"
+        ) {
             // Glass tiles like your theme/default pickers
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 180, maximum: 240), spacing: 12)], spacing: 12) {
                 TenneyModeTile(mode: .off,       selected: tenneyMode == .off) {
@@ -1826,97 +2582,17 @@ struct StudioConsoleView: View {
     @State private var cfg = ToneOutputEngine.shared.config
 
     @ViewBuilder private var soundSection: some View {
-        glassCard("Sine Envelope & Headroom") {
-            VStack(alignment: .leading, spacing: 14) {
-
-                // Waveform tiles (same visual treatment as theme/default pickers)
-                // Waveform tiles (glass + mini preview; label outside)
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 132, maximum: 200), spacing: 12)], spacing: 10) {
-                    ForEach(Array(waveOptions.enumerated()), id: \.offset) { _, opt in
-                        WaveTile(option: opt, selected: cfg.wave == opt.wave) {
-                            withAnimation(.snappy) { setWave(opt.wave) }
-                        }
-                    }
-                }
-                .animation(.snappy, value: cfg.wave)
-
-
-                .pickerStyle(.segmented)
-
-                // Fold
-                HStack {
-                    Text("Fold")
-                    Slider(
-                        value: Binding(
-                            get: { Double(cfg.foldAmount) },
-                            set: { cfg.foldAmount = Float($0); ToneOutputEngine.shared.config = cfg }
-                        ),
-                        in: 0...5
-                    )
-                }
-
-                // Drive
-                HStack {
-                    Text("Drive")
-                    Slider(
-                        value: Binding(
-                            get: { Double(cfg.drive_dB) },
-                            set: { cfg.drive_dB = Float($0); ToneOutputEngine.shared.config = cfg }
-                        ),
-                        in: -6...24
-                    )
-                }
-
-                // Attack
-                HStack {
-                    Text("Attack")
-                    Slider(
-                        value: Binding(
-                            get: { cfg.attackMs },
-                            set: { cfg.attackMs = $0; ToneOutputEngine.shared.config = cfg }
-                        ),
-                        in: 1...200
-                    )
-                    Text("\(Int(cfg.attackMs))ms").monospacedDigit()
-                }
-
-                // Release
-                HStack {
-                    Text("Release")
-                    Slider(
-                        value: Binding(
-                            get: { cfg.releaseMs },
-                            set: { cfg.releaseMs = $0; ToneOutputEngine.shared.config = cfg }
-                        ),
-                        in: 20...2000
-                    )
-                    Text("\(Int(cfg.releaseMs))ms").monospacedDigit()
-                }
-
-                // Limiter
-                Toggle(
-                    "Limiter",
-                    isOn: Binding(
-                        get: { cfg.limiterOn },
-                        set: { cfg.limiterOn = $0; ToneOutputEngine.shared.config = cfg }
-                    )
-                )
-            }
-            .onChange(of: cfg) { ToneOutputEngine.shared.config = $0 }
+        glassCard(
+            icon: "waveform.and.mic",
+            title: "Audio Engine & Headroom",
+            subtitle: "Devices, tone, envelope, limiter"
+        ) {
+            AudioEnginePager(cfg: $cfg, safeAmp: $safeAmp)
         }
     }
 
+
     // MARK: Wave options + preview tile
-
-    // Put these at file scope (outside any struct)
-
-    fileprivate struct WaveOption { let wave: ToneOutputEngine.GlobalWave; let label: String }
-    fileprivate let waveOptions: [WaveOption] = [
-        .init(wave: .foldedSine, label: "Folded Sine"),
-        .init(wave: .triangle,   label: "Triangle"),
-        .init(wave: .saw,        label: "Saw")
-    ]
-
     // Inside StudioConsoleView
     private static func previewWaveY(_ kind: ToneOutputEngine.GlobalWave, x: CGFloat) -> CGFloat {
         let t = x - floor(x)
@@ -1954,6 +2630,15 @@ struct StudioConsoleView: View {
     }
 
     fileprivate struct WaveTile: View {
+        @Environment(\.tenneyTheme) private var theme
+
+            private var grad: LinearGradient {
+                LinearGradient(
+                    colors: [theme.e3, theme.e5],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            }
         let option: WaveOption
         let selected: Bool
         let tap: () -> Void
@@ -1971,9 +2656,14 @@ struct StudioConsoleView: View {
                             .glassEffect(.regular, in: .rect(cornerRadius: 12))
                             .overlay(
                                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .stroke(selected ? Color.accentColor.opacity(0.35)
-                                                     : Color.secondary.opacity(0.12), lineWidth: 1)
+                                    .stroke(
+                                        selected
+                                        ? AnyShapeStyle(grad)
+                                        : AnyShapeStyle(Color.secondary.opacity(0.12)),
+                                        lineWidth: 1
+                                    )
                             )
+
                         } else {
                             RoundedRectangle(cornerRadius: 12, style: .continuous)
                                 .fill(.ultraThinMaterial)
@@ -1984,9 +2674,14 @@ struct StudioConsoleView: View {
                                 )
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                        .stroke(selected ? Color.accentColor.opacity(0.35)
-                                                         : Color.secondary.opacity(0.12), lineWidth: 1)
+                                        .stroke(
+                                            selected
+                                            ? AnyShapeStyle(grad)
+                                            : AnyShapeStyle(Color.secondary.opacity(0.12)),
+                                            lineWidth: 1
+                                        )
                                 )
+
                                 .frame(minWidth: 120, minHeight: 64)
                         }
 
@@ -1994,6 +2689,8 @@ struct StudioConsoleView: View {
                             Image(systemName: "checkmark.circle.fill")
                                 .imageScale(.small)
                                 .symbolRenderingMode(.hierarchical)
+                                .foregroundStyle(AnyShapeStyle(grad))
+                                .blendMode(theme.isDark ? .screen : .darken)
                                 .padding(6)
                                 .transition(.opacity)
                         }
@@ -2020,40 +2717,45 @@ struct StudioConsoleView: View {
 
 
     // MARK: - About
-        @ViewBuilder private var aboutSection: some View {
-            glassCard("About · Credits & Licenses") {
-                // One clear entry that pushes the full AboutView
-                NavigationLink {
-                    AboutView()
-                           .toolbar(.visible, for: .navigationBar)
-                           .navigationTitle("About")
-                           .navigationBarTitleDisplayMode(.inline)
-                   } label: {
-                    HStack(spacing: 12) {
-                        // App icon if available; otherwise a system symbol
-                        Image("Logo")
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 28, height: 28)
-                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-    
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Tenney").font(.subheadline.weight(.semibold))
-                            Text(versionString)
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.footnote.weight(.semibold))
+    @ViewBuilder private var aboutSection: some View {
+        glassCard(
+            icon: "info.circle",
+            title: "About Tenney",
+            subtitle: "Version, acknowledgments, licenses"
+        ) {
+            NavigationLink {
+                AboutView()
+                    .toolbar(.visible, for: .navigationBar)
+                    .navigationTitle("About")
+                    .navigationBarTitleDisplayMode(.inline)
+            } label: {
+                HStack(spacing: 12) {
+                    Image("Logo")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 28, height: 28)
+                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Tenney")
+                            .font(.subheadline.weight(.semibold))
+                        Text(versionString)
+                            .font(.caption)
                             .foregroundStyle(.secondary)
-                            .imageScale(.small)
                     }
-                    .contentShape(Rectangle())
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .imageScale(.small)
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("About Tenney, Credits, and Licenses")
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("About Tenney, Credits, and Licenses")
         }
+    }
+
 
     // MARK: - Helpers
         private func updateA4() { /* legacy no-op; A4 now managed by SettingsA4PickerView */ }
@@ -2087,10 +2789,102 @@ struct StudioConsoleView: View {
                 postSetting(SettingsKeys.latticeRememberLastView, true)
     }
 
-    // MARK: - Glass primitive
-    @ViewBuilder private func glassCard(_ title: String, @ViewBuilder _ content: () -> some View) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title).font(.headline)
+    // MARK: - Section Header + Glass Card
+
+    private struct SectionHeader: View {
+        let systemName: String
+        let title: String
+        var subtitle: String?
+        @Environment(\.tenneyTheme) private var theme
+
+        private var headerGradient: LinearGradient {
+            LinearGradient(
+                colors: [theme.e3, theme.e5],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+
+        var body: some View {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 10) {
+                    Image(systemName: systemName)
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(headerGradient)
+                        .blendMode(theme.isDark ? .screen : .darken)
+                        .frame(width: 22)
+
+                    Text(title)
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(theme.isDark ? Color.white : Color.black)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(.bottom, 4)
+        }
+    }
+
+
+    
+    private struct GlassCTAButton: View {
+        let title: String
+        let systemName: String
+        let action: () -> Void
+
+        var body: some View {
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                action()
+            } label: {
+                Label(title, systemImage: systemName)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.primary)   // ⬅️ add this line
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(
+                        Group {
+                            if #available(iOS 26.0, *) {
+                                RoundedRectangle(cornerRadius: 999, style: .continuous)
+                                    .fill(.clear)
+                                    .glassEffect(
+                                        .regular,
+                                        in: RoundedRectangle(cornerRadius: 999, style: .continuous)
+                                    )
+                            } else {
+                                RoundedRectangle(cornerRadius: 999, style: .continuous)
+                                    .fill(.ultraThinMaterial)
+                            }
+                        }
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 999, style: .continuous)
+                            .stroke(Color.secondary.opacity(0.16), lineWidth: 1)
+                    )
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+
+
+    @ViewBuilder
+    private func glassCard(
+        icon systemName: String,
+        title: String,
+        subtitle: String? = nil,
+        @ViewBuilder _ content: () -> some View
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader(systemName: systemName, title: title, subtitle: subtitle)
             content()
         }
         .padding(14)
@@ -2102,11 +2896,17 @@ struct StudioConsoleView: View {
                         .glassEffect(.regular,
                                      in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 } else {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous).fill(.ultraThinMaterial)
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(.ultraThinMaterial)
                 }
             }
         )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
+        )
     }
+
     // Quick preset chip for dimming
     private struct DimPresetChip: View {
         let title: String
@@ -2172,6 +2972,7 @@ struct StudioConsoleView: View {
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .stroke(selected ? Color.accentColor.opacity(0.35)
                                              : Color.secondary.opacity(0.12), lineWidth: 1)
+                    
                     )
                 }
                 .buttonStyle(.plain)
@@ -2326,6 +3127,83 @@ private struct ZoomPresetStepperControl: View {
     }
 }
 
+private struct AudioEnginePreview: View {
+    var body: some View {
+        GeometryReader { geo in
+            Canvas { ctx, size in
+                let w = size.width
+                let h = size.height
+
+                // Background gradient
+                let bg = Path(CGRect(origin: .zero, size: size))
+                ctx.fill(
+                    bg,
+                    with: .linearGradient(
+                        Gradient(colors: [
+                            Color.primary.opacity(0.18),
+                            Color.primary.opacity(0.04)
+                        ]),
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+
+                // Simple folded-ish waveform
+                var wave = Path()
+                let midY = h * 0.55
+                let amp  = h * 0.30
+                let samples = max(48, Int(w))
+
+                for i in 0...samples {
+                    let x01 = CGFloat(i) / CGFloat(samples)
+                    let x   = x01 * w
+                    let t   = x01 * .pi * 4
+                    let y01 = abs(sin(t)) * 2 - 1        // folded-ish
+                    let y   = midY - y01 * amp
+                    if i == 0 { wave.move(to: CGPoint(x: x, y: y)) }
+                    else      { wave.addLine(to: CGPoint(x: x, y: y)) }
+                }
+
+                ctx.stroke(
+                    wave,
+                    with: .color(Color.primary.opacity(0.9)),
+                    lineWidth: 2
+                )
+
+                // Output meter on the right
+                let meterWidth: CGFloat = 7
+                let meterRect = CGRect(
+                    x: w - 18,
+                    y: h * 0.16,
+                    width: meterWidth,
+                    height: h * 0.68
+                )
+
+                ctx.stroke(
+                    Path(roundedRect: meterRect, cornerRadius: 3),
+                    with: .color(Color.secondary.opacity(0.45)),
+                    lineWidth: 1
+                )
+
+                let fillFraction: CGFloat = 0.6
+                let fillHeight = meterRect.height * fillFraction
+                let fillRect = CGRect(
+                    x: meterRect.minX + 1.5,
+                    y: meterRect.maxY - fillHeight - 1.5,
+                    width: meterWidth - 3,
+                    height: fillHeight
+                )
+
+                ctx.fill(
+                    Path(roundedRect: fillRect, cornerRadius: 2),
+                    with: .color(Color.accentColor.opacity(0.85))
+                )
+            }
+        }
+    }
+}
+
+
 private struct SettingsLatticePreview: View {
     @EnvironmentObject private var app: AppModel
 
@@ -2345,4 +3223,9 @@ private struct SettingsLatticePreview: View {
         // Keep sound off while preview is visible
         .onAppear { app.latticeAuditionOn = false }
     }
+}
+
+private extension CGPoint {
+    static let topLeading     = CGPoint(x: 0, y: 0)
+    static let bottomTrailing = CGPoint(x: 1, y: 1)
 }

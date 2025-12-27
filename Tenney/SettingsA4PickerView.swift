@@ -22,6 +22,16 @@ struct SettingsA4PickerView: View {
     @AppStorage(SettingsKeys.staffA4Hz) private var staffA4Hz: Double = 440
 
     var onSelectionChanged: ((Double) -> Void)? = nil
+    
+    @Environment(\.tenneyTheme) private var theme
+
+        private var headerGrad: LinearGradient {
+            LinearGradient(
+                colors: [theme.e3, theme.e5],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
 
     private enum Preset: String, CaseIterable, Identifiable {
         case _425 = "425", _440 = "440", _442 = "442", _444 = "444", custom = "custom"
@@ -60,8 +70,8 @@ struct SettingsA4PickerView: View {
             // Style: match Theme cards / titles
             HStack(spacing: 10) {
                 Image(systemName: "tuningfork")
-                    .symbolRenderingMode(.palette)
-                    .foregroundStyle(.blue, .secondary)
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(headerGrad)
                     .imageScale(.large)
                 Text("Equal-Temperament Reference (A4)")
                     .font(.headline)
@@ -149,33 +159,62 @@ private struct A4Card: View {
     let label: String
     let isSelected: Bool
 
+    @Environment(\.tenneyTheme) private var theme
+
+    private var grad: LinearGradient {
+        LinearGradient(
+            colors: [theme.e3, theme.e5],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(isSelected ? Color.accentColor.opacity(0.85)
-                                           : Color.secondary.opacity(0.15),
-                                lineWidth: isSelected ? 2 : 1)
+            // Label in center
+            Text(label)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(
+                    isSelected
+                    ? (theme.isDark ? Color.white : Color.black)
+                    : Color.secondary
                 )
-                .frame(height: 64)
-                .animation(.snappy, value: isSelected)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
 
+            // Checkmark badge (theme gradient)
             if isSelected {
                 Image(systemName: "checkmark.circle.fill")
-                    .symbolRenderingMode(.palette)
-                    .foregroundStyle(Color.accentColor, .white)
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(AnyShapeStyle(grad))
+                    .blendMode(theme.isDark ? .screen : .darken)
                     .padding(8)
                     .transition(.scale.combined(with: .opacity))
                     .symbolEffect(.bounce, value: isSelected)
             }
-
-            Text(label)
-                .font(.subheadline.weight(.semibold))
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }
+        .frame(height: 64)
         .padding(10)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(
+            Group {
+                if #available(iOS 26.0, *) {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(.clear)
+                        .glassEffect(.regular, in: .rect(cornerRadius: 16))
+                } else {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(.ultraThinMaterial)
+                }
+            }
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(
+                    isSelected
+                    ? AnyShapeStyle(grad)
+                    : AnyShapeStyle(Color.secondary.opacity(0.15)),
+                    lineWidth: isSelected ? 1.5 : 1
+                )
+        )
     }
 }
+

@@ -12,6 +12,8 @@ import os
 
 // MARK: - ENTRY POINT: One engine to run them all (MONO out; stereo only for scope)
 final class ToneOutputEngine {
+    private var scopeX: [Float] = []
+    private var scopeY: [Float] = []
 
     // MARK: Singleton
     static let shared = ToneOutputEngine()
@@ -99,47 +101,31 @@ final class ToneOutputEngine {
     @discardableResult
     func sustain(freq: Double, amp: Float) -> VoiceID {
         if !isRunning { startEngineIfNeeded() }
-        // allocate: first inactive else slot 0
-        let slot = voices.firstIndex(where: { !$0.active }) ?? 0
-        var v = voices[slot]
-        let id = nextID; nextID &+= 1
 
-        v.id = id
-        v.active = true
-        v.gain = amp
-        v.env = 0; v.envState = +1
-        v.attackSamps  = max(1, Int((config.attackMs/1000.0)  * sampleRate))
-        v.releaseSamps = max(1, Int((config.releaseMs/1000.0) * sampleRate))
-        v.sr = Float(sampleRate)
-        v.setFreq(Float(freq))
-        voices[slot] = v
+        let id = nextID; nextID &+= 1
+        let cfg = config
+        let sr = sampleRate
+
+        let a = max(1, Int((cfg.attackMs  / 1000.0) * sr))
+        let r = max(1, Int((cfg.releaseMs / 1000.0) * sr))
+
+        enqueue(.sustain(id: id, freq: Float(freq), amp: amp, attackSamps: a, releaseSamps: r))
         return id
     }
 
     func retune(id: VoiceID, to freq: Double, hardSync: Bool = false) {
-        guard let i = voices.firstIndex(where: { $0.id == id && $0.active }) else { return }
-        var v = voices[i]
-        v.setFreq(Float(freq))
-        if hardSync { v.phase = 0 }
-        voices[i] = v
+        enqueue(.retune(id: id, freq: Float(freq), hardSync: hardSync))
     }
 
     func release(id: VoiceID, seconds: Double) {
-        guard let i = voices.firstIndex(where: { $0.id == id && $0.active }) else { return }
-        var v = voices[i]
-        v.envState = -1
-        v.releaseSamps = max(1, Int(seconds * sampleRate))
-        voices[i] = v
+        let rs = max(0.0, seconds)
+        let samps = max(1, Int(rs * sampleRate))
+        enqueue(.release(id: id, releaseSamps: samps))
     }
 
     func stopAll() {
-        if engine.isRunning { engine.pause() }
-        for i in voices.indices {
-            voices[i].active = false
-            voices[i].env = 0
-            voices[i].envState = 0
-        }
-        isRunning = false
+        enqueue(.stopAll)
+        testToneID = nil
     }
 
     // MARK: Optional: stereo scope tap (not audible)
@@ -180,6 +166,33 @@ final class ToneOutputEngine {
             phaseInc = freq / sr
         }
     }
+    
+    private enum VoiceCommand {
+        case sustain(id: Int, freq: Float, amp: Float, attackSamps: Int, releaseSamps: Int)
+        case retune(id: Int, freq: Float, hardSync: Bool)
+        case release(id: Int, releaseSamps: Int)
+        case stopAll
+        case setSampleRate(Float)
+    }
+
+    private var cmdLock = os_unfair_lock_s()
+    private var pendingCmds: [VoiceCommand] = []
+    private var processingCmds: [VoiceCommand] = []   // drained on the audio thread
+
+    @inline(__always) private func enqueue(_ c: VoiceCommand) {
+        os_unfair_lock_lock(&cmdLock)
+        pendingCmds.append(c)
+        os_unfair_lock_unlock(&cmdLock)
+    }
+
+    @inline(__always) private func drainCommands_RT() {
+        // audio thread
+        os_unfair_lock_lock(&cmdLock)
+        swap(&pendingCmds, &processingCmds)
+        os_unfair_lock_unlock(&cmdLock)
+    }
+
+    
 
     private var voices: [Voice] = Array(repeating: Voice(), count: 16) // polyphony=16
     private var nextID: Int = 1
@@ -195,6 +208,59 @@ final class ToneOutputEngine {
 
         sourceNode = AVAudioSourceNode { [weak self] _, _, frameCount, ablPtr -> OSStatus in
             guard let self = self else { return noErr }
+
+            self.drainCommands_RT()
+
+            if !self.processingCmds.isEmpty {
+                for cmd in self.processingCmds {
+                    switch cmd {
+                    case let .setSampleRate(srF):
+                        for i in self.voices.indices {
+                            self.voices[i].sr = srF
+                            self.voices[i].phaseInc = self.voices[i].freq / srF
+                        }
+
+                    case let .sustain(id, freq, amp, attackSamps, releaseSamps):
+                        let slot = self.voices.firstIndex(where: { !$0.active }) ?? 0
+                        var v = self.voices[slot]
+                        v.id = id
+                        v.active = true
+                        v.gain = amp
+                        v.env = 0
+                        v.envState = +1
+                        v.attackSamps = attackSamps
+                        v.releaseSamps = releaseSamps
+                        v.sr = self.voices[slot].sr   // already current
+                        v.setFreq(freq)
+                        self.voices[slot] = v
+
+                    case let .retune(id, freq, hardSync):
+                        if let i = self.voices.firstIndex(where: { $0.id == id && $0.active }) {
+                            var v = self.voices[i]
+                            v.setFreq(freq)
+                            if hardSync { v.phase = 0 }
+                            self.voices[i] = v
+                        }
+
+                    case let .release(id, releaseSamps):
+                        if let i = self.voices.firstIndex(where: { $0.id == id && $0.active }) {
+                            var v = self.voices[i]
+                            v.envState = -1
+                            v.releaseSamps = max(1, releaseSamps)
+                            self.voices[i] = v
+                        }
+
+                    case .stopAll:
+                        for i in self.voices.indices {
+                            self.voices[i].active = false
+                            self.voices[i].env = 0
+                            self.voices[i].envState = 0
+                        }
+                    }
+                }
+                self.processingCmds.removeAll(keepingCapacity: true)
+            }
+
             let n = Int(frameCount)
             let abl = UnsafeMutableAudioBufferListPointer(ablPtr)
             guard abl.count >= 1,
@@ -205,8 +271,11 @@ final class ToneOutputEngine {
             if abl.count >= 2 { R = abl[1].mData?.assumingMemoryBound(to: Float.self); if let R { vDSP_vclr(R, 1, vDSP_Length(n)) } }
 
             // scratch for scope X/Y (not audible)
-            var scopeX = [Float](repeating: 0, count: n)
-            var scopeY = [Float](repeating: 0, count: n)
+            if self.scopeX.count < n {
+                self.scopeX = [Float](repeating: 0, count: n)
+                self.scopeY = [Float](repeating: 0, count: n)
+            }
+
 
             if !self.firstRenderLogged {
                 self.firstRenderLogged = true
@@ -214,7 +283,20 @@ final class ToneOutputEngine {
             }
             if self.voices.allSatisfy({ !$0.active }) {
                 // still provide blank scope
-                if let tap = self.scopeTap { scopeX.withUnsafeBufferPointer { x in scopeY.withUnsafeBufferPointer { y in tap(x.baseAddress!, y.baseAddress!, n) } } }
+                self.scopeX.withUnsafeMutableBufferPointer { xb in
+                    vDSP_vclr(xb.baseAddress!, 1, vDSP_Length(n))
+                }
+                self.scopeY.withUnsafeMutableBufferPointer { yb in
+                    vDSP_vclr(yb.baseAddress!, 1, vDSP_Length(n))
+                }
+                if let tap = self.scopeTap {
+                    self.scopeX.withUnsafeBufferPointer { x in
+                        self.scopeY.withUnsafeBufferPointer { y in
+                            tap(x.baseAddress!, y.baseAddress!, n)
+                        }
+                    }
+                }
+
                 // duplicate mono to R if present
                 if let R { cblas_scopy(Int32(n), L, 1, R, 1) }
                 return noErr
@@ -299,14 +381,15 @@ final class ToneOutputEngine {
                 // keep hardware output mono: copy L to R if present
                 if let R { R[s] += out }
 
-                scopeX[s] = xForScope
-                scopeY[s] = yForScope
+                self.scopeX[s] = xForScope
+                self.scopeY[s] = yForScope
+
             }
 
             // push scope buffers
             if let tap = self.scopeTap {
-                scopeX.withUnsafeBufferPointer { xb in
-                    scopeY.withUnsafeBufferPointer { yb in
+                self.scopeX.withUnsafeBufferPointer { xb in
+                    self.scopeY.withUnsafeBufferPointer { yb in
                         tap(xb.baseAddress!, yb.baseAddress!, n)
                     }
                 }
@@ -337,15 +420,11 @@ final class ToneOutputEngine {
     }
 
     private func handleRouteChange() {
-        // Update sample rate into live voices
         let hw = engine.outputNode.inputFormat(forBus: 0)
         sampleRate = hw.sampleRate > 0 ? hw.sampleRate : 48_000
-        let srF = Float(sampleRate)
-        for i in voices.indices {
-            voices[i].sr = srF
-            voices[i].phaseInc = voices[i].freq / srF
-        }
+        enqueue(.setSampleRate(Float(sampleRate)))
     }
+
 
     // MARK: - DSP helpers (polyBLEP/BLAMP + mirror folder)
 

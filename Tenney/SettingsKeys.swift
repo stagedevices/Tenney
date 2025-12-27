@@ -69,6 +69,12 @@ enum SettingsKeys {
     static let overlay11     = "tenney.ui.overlay11"       // Bool
     static let foldAudible   = "tenney.lattice.foldAud"    // Bool (fold 20–5k)
     
+    static let latticeConnectionMode = "Tenney.Lattice.Connection.Mode" // String: chain|loop|gridPath
+
+    
+    static let builderExportFormats   = "Tenney.Builder.ExportFormats"
+        static let builderExportRootMode  = "Tenney.Builder.ExportRootMode"
+    
     // Stage mode customization
     static let stageDimLevel     = "tenney.stage.dimLevel"        // Double 0.0...1.0 (how dark outside area gets)
     static let stageAccent       = "tenney.stage.accent"          // "system" | "amber" | "red"

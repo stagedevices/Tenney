@@ -36,6 +36,12 @@ enum LatticeGridMode: String, CaseIterable, Identifiable {
 
 struct LatticeView: View {
     
+    @AppStorage(SettingsKeys.latticeConnectionMode)
+    private var latticeConnectionModeRaw: String = LatticeConnectionMode.chain.rawValue
+
+    private var latticeConnectionMode: LatticeConnectionMode {
+        LatticeConnectionMode(rawValue: latticeConnectionModeRaw) ?? .chain
+    }
 
     @AppStorage(SettingsKeys.latticeHexGridMode)
     private var gridModeRaw: String = LatticeGridMode.outlines.rawValue
@@ -466,6 +472,10 @@ struct LatticeView: View {
     }
 
     private func orderedSelectionKeysForPath() -> [LatticeStore.SelectionKey] {
+        // ✅ single, global, chronological order (plane + ghosts)
+        if !store.selectionOrderKeys.isEmpty { return store.selectionOrderKeys }
+
+        // Fallback (only if you haven’t wired the store yet)
         var out: [LatticeStore.SelectionKey] = []
         out.reserveCapacity(store.selectionOrder.count + store.selectionOrderGhosts.count)
         out += store.selectionOrder.map { .plane($0) }
@@ -473,122 +483,220 @@ struct LatticeView: View {
         return out
     }
 
-    private func drawSelectionPath(
-        ctx: inout GraphicsContext,
-        keys: [LatticeStore.SelectionKey],
-        now: Double,
-        pivot: LatticeCoord,
-        shift: [Int:Int],
-        camera: LatticeCamera,
-        zoom: CGFloat,
-        gridStrokeWidth: CGFloat
-    ) {
-        guard keys.count >= 2 else { return }
+    private func gridNeighborDeltas(for gridMode: LatticeGridMode) -> [LatticeCoord] {
+        switch gridMode {
+        case .off:
+            return []
 
-        // Build points + tints in screen space
-        var pts: [CGPoint] = []
-        var cols: [Color] = []
-        pts.reserveCapacity(keys.count)
-        cols.reserveCapacity(keys.count)
+        case .outlines, .triMesh:
+            // Axial-hex neighbors in (e3,e5):
+            // order is the deterministic tie-breaker for BFS.
+            return [
+                .init(e3: +1, e5:  0),
+                .init(e3:  0, e5: +1),
+                .init(e3: +1, e5: -1),
+                .init(e3: -1, e5:  0),
+                .init(e3:  0, e5: -1),
+                .init(e3: -1, e5: +1),
+            ]
 
-        for k in keys {
-            pts.append(selectionScreenPoint(for: k, pivot: pivot, shift: shift, camera: camera))
-            cols.append(selectionTint(for: k, pivot: pivot, shift: shift))
+        @unknown default:
+            return [
+                .init(e3: +1, e5:  0),
+                .init(e3:  0, e5: +1),
+                .init(e3: +1, e5: -1),
+                .init(e3: -1, e5:  0),
+                .init(e3:  0, e5: -1),
+                .init(e3: -1, e5: +1),
+            ]
+        }
+    }
+
+    private func isDrawablePlaneCoord(_ c: LatticeCoord, radius: Int) -> Bool {
+        // Deterministic, stable, and matches the lattice plane sampling domain.
+        abs(c.e3) <= radius && abs(c.e5) <= radius
+    }
+
+    private func hexDistance(_ a: LatticeCoord, _ b: LatticeCoord) -> Int {
+        // axial (q,r) => cube (x,z), y = -x-z
+        let ax = a.e3, az = a.e5
+        let bx = b.e3, bz = b.e5
+        let dx = bx - ax
+        let dz = bz - az
+        let dy = (-bx - bz) - (-ax - az)
+        return max(abs(dx), max(abs(dy), abs(dz)))
+    }
+
+    private func cubeRound(x: Double, y: Double, z: Double) -> (Int, Int, Int) {
+        var rx = Int(x.rounded())
+        var ry = Int(y.rounded())
+        var rz = Int(z.rounded())
+
+        let dx = abs(Double(rx) - x)
+        let dy = abs(Double(ry) - y)
+        let dz = abs(Double(rz) - z)
+
+        if dx > dy && dx > dz {
+            rx = -ry - rz
+        } else if dy > dz {
+            ry = -rx - rz
+        } else {
+            rz = -rx - ry
+        }
+        return (rx, ry, rz)
+    }
+
+    private func lerpD(_ a: Double, _ b: Double, _ t: Double) -> Double {
+        a + (b - a) * t
+    }
+
+    private func shortestGridPath(
+        from start: LatticeCoord,
+        to goal: LatticeCoord,
+        gridMode: LatticeGridMode,
+        radius: Int // kept for call-site compatibility; no longer used
+    ) -> [LatticeCoord]? {
+        guard gridMode != .off else { return nil }
+        if start == goal { return [start] }
+
+        let n = hexDistance(start, goal)
+
+        // Safety cap (prevents pathological “draw 5000 segments” when someone connects very distant nodes)
+        let maxSteps = 320
+        if n > maxSteps { return nil }
+
+        let ax = Double(start.e3), az = Double(start.e5)
+        let bx = Double(goal.e3),  bz = Double(goal.e5)
+
+        // cube coords: (x, y, z) with y = -x-z
+        let ay = -ax - az
+        let by = -bx - bz
+
+        var out: [LatticeCoord] = []
+        out.reserveCapacity(n + 1)
+
+        for i in 0...n {
+            let t = Double(i) / Double(n)
+            let x = lerpD(ax, bx, t)
+            let y = lerpD(ay, by, t)
+            let z = lerpD(az, bz, t)
+
+            let (rx, _, rz) = cubeRound(x: x, y: y, z: z)
+            out.append(.init(e3: rx, e5: rz))
         }
 
-        // Base path: quiet, per-segment gradient
-        // ✅ always thicker than grid
-        let baseWidth: CGFloat = max(gridStrokeWidth + 0.60, (zoom < 70) ? 1.70 : 1.45)
+        // de-dupe consecutive duplicates (rounding can repeat)
+        var dedup: [LatticeCoord] = []
+        dedup.reserveCapacity(out.count)
+        for c in out {
+            if dedup.last != c { dedup.append(c) }
+        }
 
-        for i in 0..<(pts.count - 1) {
+        // guarantee endpoints
+        if dedup.first != start { dedup.insert(start, at: 0) }
+        if dedup.last  != goal  { dedup.append(goal) }
+
+        return dedup
+    }
+
+
+    private func drawSelectionPath(
+         ctx: inout GraphicsContext,
+         keys: [LatticeStore.SelectionKey],
+         now: Double,
+         pivot: LatticeCoord,
+         shift: [Int:Int],
+         camera: LatticeCamera,
+         zoom: CGFloat,
+         gridStrokeWidth: CGFloat
+     ) {
+        guard keys.count > 1 else { return }
+
+        // Keep whatever your current baseline width logic is.
+        // (This line is illustrative; keep your existing baseWidth computation.)
+         let baseWidth: CGFloat = max(1.5, gridStrokeWidth + 1.1)
+        let radius: Int = Int(max(8, min(48, zoom / 5)))
+
+        // Precompute endpoint screen points + endpoint tints (existing helpers).
+        func pt(_ k: LatticeStore.SelectionKey) -> CGPoint {
+            selectionScreenPoint(for: k, pivot: pivot, shift: shift, camera: camera)
+        }
+        func tint(_ k: LatticeStore.SelectionKey) -> Color {
+            selectionTint(for: k, pivot: pivot, shift: shift)
+        }
+
+        // Build ordered pairs per mode (Chain / Loop).
+        var pairs: [(LatticeStore.SelectionKey, LatticeStore.SelectionKey)] = []
+        pairs.reserveCapacity(keys.count)
+
+        for i in 0..<(keys.count - 1) {
+            pairs.append((keys[i], keys[i + 1]))
+        }
+
+        if latticeConnectionMode == .loop, keys.count >= 3 {
+            pairs.append((keys[keys.count - 1], keys[0]))
+        }
+
+        // Stroke helper: EXACT same styling passes as your current per-segment code.
+        @inline(__always)
+        func strokeSegment(a: CGPoint, b: CGPoint, shade: GraphicsContext.Shading) {
             var seg = Path()
-            seg.move(to: pts[i])
-            seg.addLine(to: pts[i + 1])
-            
-            // ✅ halo underlay so it stays visible even when aligned with grid
+            seg.move(to: a)
+            seg.addLine(to: b)
+
+            // Keep these three strokes identical to your current code.
             ctx.stroke(seg, with: .color(Color.black.opacity(0.28)), lineWidth: baseWidth + 1.30)
             ctx.stroke(seg, with: .color(Color.white.opacity(0.18)), lineWidth: baseWidth + 0.70)
-
-            let shade = GraphicsContext.Shading.linearGradient(
-                Gradient(colors: [cols[i].opacity(0.45), cols[i + 1].opacity(0.45)]),
-                startPoint: pts[i],
-                endPoint: pts[i + 1]
-            )
             ctx.stroke(seg, with: shade, lineWidth: baseWidth)
         }
 
-        // Traveling highlight: “specular glint” head (slower when many nodes)
-        var lengths: [CGFloat] = []
-        lengths.reserveCapacity(pts.count - 1)
-        var total: CGFloat = 0
-        for i in 0..<(pts.count - 1) {
-            let d = hypot(pts[i+1].x - pts[i].x, pts[i+1].y - pts[i].y)
-            lengths.append(d)
-            total += d
-        }
-        guard total > 1 else { return }
+        // Render
+        for (aKey, bKey) in pairs {
+            let aPt = pt(aKey)
+            let bPt = pt(bKey)
+            let aTint = tint(aKey)
+            let bTint = tint(bKey)
 
-        let count = pts.count
-        let speedBase: CGFloat = 140 // px/s
-        let speed = speedBase * (count >= 10 ? 0.65 : (count >= 6 ? 0.80 : 1.0))
-        let headLen: CGFloat = (count >= 10 ? 42 : 52)
+            // Default shading matches existing behavior (gradient between endpoints).
+            let endpointShade = GraphicsContext.Shading.linearGradient(
+                Gradient(colors: [aTint, bTint]),
+                startPoint: aPt,
+                endPoint: bPt
+            )
 
-        let dist = CGFloat(now) * speed
-        let head = dist.truncatingRemainder(dividingBy: total)
+            // GRID PATH MODE (ordinal only; never closes unless Loop already did)
+            if latticeConnectionMode == .gridPath,
+               gridMode != .off,
+               case let .plane(aC) = aKey,
+               case let .plane(bC) = bKey,
+               let route = shortestGridPath(from: aC, to: bC, gridMode: gridMode, radius: radius),
+               route.count >= 2 {
 
-        func pointAt(_ s: CGFloat) -> (idx: Int, t: CGFloat) {
-            var acc: CGFloat = 0
-            for (i, L) in lengths.enumerated() {
-                if s <= acc + L {
-                    let tt = (L <= 0.0001) ? 0 : (s - acc) / L
-                    return (i, tt)
+                // Convert routed vertices -> points in the exact same space as nodes.
+                // Route is expressed in lattice vertices; we draw on top of grid edges.
+                var routePts: [CGPoint] = []
+                routePts.reserveCapacity(route.count)
+                for c in route {
+                    routePts.append(pt(.plane(c)))
                 }
-                acc += L
-            }
-            return (max(0, lengths.count - 1), 1)
-        }
 
-        let tailS = max(0, head - headLen)
-        let (hi, ht) = pointAt(head)
-        let (ti, tt) = pointAt(tailS)
-
-        // Draw highlight possibly spanning multiple segments
-        let hlWidth: CGFloat = max(1.1, baseWidth * 0.80)
-        let highlightColor = Color.white.opacity(effectiveIsDark ? 0.55 : 0.35)
-
-        func lerpPoint(_ a: CGPoint, _ b: CGPoint, _ t: CGFloat) -> CGPoint {
-            CGPoint(x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t)
-        }
-
-        if ti == hi {
-            let a = lerpPoint(pts[ti], pts[ti+1], tt)
-            let b = lerpPoint(pts[hi], pts[hi+1], ht)
-            var seg = Path(); seg.move(to: a); seg.addLine(to: b)
-            ctx.stroke(seg, with: .color(highlightColor), lineWidth: hlWidth)
-        } else {
-            // tail partial
-            do {
-                let a = lerpPoint(pts[ti], pts[ti+1], tt)
-                let b = pts[ti+1]
-                var seg = Path(); seg.move(to: a); seg.addLine(to: b)
-                ctx.stroke(seg, with: .color(highlightColor.opacity(0.80)), lineWidth: hlWidth)
-            }
-            // full middles
-            if hi > ti + 1 {
-                for i in (ti+1)..<hi {
-                    var seg = Path(); seg.move(to: pts[i]); seg.addLine(to: pts[i+1])
-                    ctx.stroke(seg, with: .color(highlightColor.opacity(0.55)), lineWidth: hlWidth)
+                // Stroke each routed edge segment using the SAME passes.
+                // Shade is deterministically anchored to the original endpoints A/B.
+                for i in 0..<(routePts.count - 1) {
+                    strokeSegment(a: routePts[i], b: routePts[i + 1], shade: endpointShade)
                 }
+
+                continue
             }
-            // head partial
-            do {
-                let a = pts[hi]
-                let b = lerpPoint(pts[hi], pts[hi+1], ht)
-                var seg = Path(); seg.move(to: a); seg.addLine(to: b)
-                ctx.stroke(seg, with: .color(highlightColor), lineWidth: hlWidth)
-            }
+
+            // FALLBACK (Chain behavior for this pair):
+            // - grid off
+            // - ghosts involved
+            // - route not found
+            strokeSegment(a: aPt, b: bPt, shade: endpointShade)
         }
     }
+
 
     
     private func clamp01(_ x: CGFloat) -> CGFloat { max(0, min(1, x)) }

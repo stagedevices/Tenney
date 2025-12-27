@@ -262,6 +262,7 @@ struct OnboardingWizardView: View {
                     .background(
                         RoundedRectangle(cornerRadius: 16)
                             .fill(Material.thin)
+                        
                             .glassEffect(.regular, in: .rect(cornerRadius: 16))
                     )
                     .contentShape(Rectangle())

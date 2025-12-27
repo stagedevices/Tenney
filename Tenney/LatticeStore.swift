@@ -12,7 +12,18 @@ import UIKit
 
 @MainActor
 final class LatticeStore: ObservableObject {
-    
+    // Add alongside your other selection state
+    @Published var selectionOrderKeys: [SelectionKey] = []
+
+    private func touchOrder(_ key: SelectionKey) {
+        selectionOrderKeys.removeAll { $0 == key }
+        selectionOrderKeys.append(key)
+    }
+
+    private func removeOrder(_ key: SelectionKey) {
+        selectionOrderKeys.removeAll { $0 == key }
+    }
+
 
     // Supply rootHz without reaching into AppModel here. LatticeScreen sets this onAppear.
     static var rootHzProvider: () -> Double = { 415.0 }
@@ -351,14 +362,18 @@ final class LatticeStore: ObservableObject {
     
     // MARK: - Selection (plane)
     func toggleSelection(_ c: LatticeCoord, pushUndo: Bool = true) {
+        let isSelecting = !selected.contains(c)   // final state will be selected?
         let key: SelectionKey = .plane(c)
 
+        if isSelecting { touchOrder(key) }
+        else { removeOrder(key) }
+
+        
         if selected.contains(c) {
             selected.remove(c)
             pendingPlaneAudition[c]?.cancel()
             pendingPlaneAudition.removeValue(forKey: c)
             startSelectionAnim(key, targetOn: false)
-               selected.remove(c)
             if let i = selectionOrder.firstIndex(of: c) { selectionOrder.remove(at: i) }
             if let vid = voiceForCoord[c] {
                 let rel = max(0.05, ToneOutputEngine.shared.config.releaseMs / 1000.0)
@@ -458,7 +473,13 @@ final class LatticeStore: ObservableObject {
     /// Toggle selection for an overlay node identified by absolute monzo {3:e3,5:e5,p:eP}.
     func toggleOverlay(prime p: Int, e3: Int, e5: Int, eP: Int, pushUndo: Bool = true) {
         let g = GhostMonzo(e3: e3, e5: e5, p: p, eP: eP)
+
+        let isSelecting = !selectedGhosts.contains(g) // final state will be selected?
         let key: SelectionKey = .ghost(g)
+
+        if isSelecting { touchOrder(key) }
+        else { removeOrder(key) }
+
         if selectedGhosts.contains(g) {
             startSelectionAnim(key, targetOn: false)
                 selectedGhosts.remove(g)
