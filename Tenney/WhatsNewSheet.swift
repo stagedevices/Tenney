@@ -64,6 +64,7 @@ enum WhatsNewContent {
 
 // MARK: - Sheet
 struct WhatsNewSheet: View {
+    @EnvironmentObject private var app: AppModel
     let items: [WhatsNewItem]
     let primaryAction: () -> Void
 
@@ -131,60 +132,161 @@ struct WhatsNewSheet: View {
                 }
         }
     }
+    private var heroPalette: HeroPalette {
+        // ✅ If you already have explicit theme colors, prefer them:
+        // return .init(primary: app.theme.primary, secondary: app.theme.secondary, accent: app.theme.accent)
+
+        // 🔁 Generic fallback: drive from SwiftUI accentColor (and derive siblings)
+        .init(primary: .accentColor, secondary: nil, accent: nil)
+    }
 
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                heroHeader
-                bigThree
-                featureList
-                footerActions
+        ZStack(alignment: .top) {
+                if #available(iOS 26.0, *) {
+                    SheetTopChromaWash(palette: heroPalette)
+                        .frame(height: 260)                 // “colors the top of the sheet”
+                        .ignoresSafeArea(edges: .top)
+                        .allowsHitTesting(false)
+                }
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        heroHeader
+                        bigThree
+                        featureList
+                        footerActions
+                    }
+                    .padding(16)
+                }
             }
-            .padding(16)
-        }
-        .background(
-            (scheme == .dark ? Color.black : Color.white)
-                .opacity(0.001)
-                .ignoresSafeArea()
-        )
     }
+    
+    @available(iOS 26.0, *)
+    private struct HeroPalette {
+        let primary: Color
+        let secondary: Color?
+        let accent: Color?
+    }
+
+    @available(iOS 26.0, *)
+    private static func meshColors(from palette: HeroPalette, scheme: ColorScheme) -> [Color] {
+        // Convert base colors to UIColors for HSB math
+        let base = UIColor(palette.primary)
+        let sec  = palette.secondary.map { UIColor($0) } ?? base
+        let acc  = palette.accent.map { UIColor($0) } ?? base
+
+        func hot(_ u: UIColor, hueShift: CGFloat, satBoost: CGFloat, briShift: CGFloat, alpha: CGFloat) -> Color {
+            var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+            u.getHue(&h, saturation: &s, brightness: &b, alpha: &a)
+
+            // High-chroma, iOS 26-ish: boost saturation, keep brightness controlled in light mode
+            let nh = (h + hueShift).truncatingRemainder(dividingBy: 1.0)
+            let ns = min(1.0, max(0.0, s * satBoost))
+            let nbBase = b + briShift
+            let nb = scheme == .dark ? min(1.0, max(0.0, nbBase)) : min(0.92, max(0.0, nbBase))
+
+            return Color(uiColor: UIColor(hue: nh, saturation: ns, brightness: nb, alpha: alpha))
+        }
+
+        // Build a 4×4 that “breathes” around the theme hue:
+        // primary = anchor, secondary = counter-hue, accent = highlight
+        let c0 = hot(base, hueShift:  0.00, satBoost: 1.25, briShift:  0.08, alpha: 0.95)
+        let c1 = hot(base, hueShift:  0.04, satBoost: 1.30, briShift:  0.06, alpha: 0.92)
+        let c2 = hot(acc,  hueShift: -0.03, satBoost: 1.35, briShift:  0.04, alpha: 0.88)
+        let c3 = hot(sec,  hueShift:  0.08, satBoost: 1.20, briShift:  0.05, alpha: 0.90)
+
+        let c4 = hot(sec,  hueShift: -0.06, satBoost: 1.25, briShift:  0.03, alpha: 0.86)
+        let c5 = hot(base, hueShift:  0.02, satBoost: 1.35, briShift:  0.02, alpha: 0.84)
+        let c6 = hot(acc,  hueShift:  0.06, satBoost: 1.40, briShift:  0.01, alpha: 0.86)
+        let c7 = hot(sec,  hueShift:  0.00, satBoost: 1.25, briShift:  0.02, alpha: 0.82)
+
+        let c8 = hot(acc,  hueShift: -0.08, satBoost: 1.30, briShift:  0.00, alpha: 0.80)
+        let c9 = hot(sec,  hueShift:  0.05, satBoost: 1.25, briShift: -0.01, alpha: 0.86)
+        let cA = hot(base, hueShift: -0.02, satBoost: 1.35, briShift: -0.01, alpha: 0.84)
+        let cB = hot(acc,  hueShift:  0.03, satBoost: 1.28, briShift:  0.00, alpha: 0.84)
+
+        let cC = hot(base, hueShift:  0.07, satBoost: 1.18, briShift: -0.02, alpha: 0.78)
+        let cD = hot(acc,  hueShift: -0.04, satBoost: 1.22, briShift: -0.02, alpha: 0.74)
+        let cE = hot(sec,  hueShift:  0.02, satBoost: 1.18, briShift: -0.01, alpha: 0.78)
+        let cF = hot(base, hueShift:  0.00, satBoost: 1.15, briShift: -0.03, alpha: 0.76)
+
+        return [c0,c1,c2,c3, c4,c5,c6,c7, c8,c9,cA,cB, cC,cD,cE,cF]
+    }
+
+    
+    @available(iOS 26.0, *)
+    private struct SheetTopChromaWash: View {
+        let palette: HeroPalette
+        @Environment(\.colorScheme) private var scheme
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+        @State private var phase: Float = 0
+
+        private var drift: Float { reduceMotion ? 0 : 0.045 }
+
+        private var points: [SIMD2<Float>] {
+            // 4×4: anchors on edges, lively interior
+            [
+                .init(0.00, 0.00), .init(0.33, 0.00), .init(0.66, 0.00), .init(1.00, 0.00),
+                .init(0.00, 0.33), .init(0.33 + sin(phase)*drift, 0.33), .init(0.66, 0.33 + cos(phase)*drift), .init(1.00, 0.33),
+                .init(0.00, 0.66), .init(0.33, 0.66 + cos(phase)*drift), .init(0.66 + sin(phase)*drift, 0.66), .init(1.00, 0.66),
+                .init(0.00, 1.00), .init(0.33, 1.00), .init(0.66, 1.00), .init(1.00, 1.00),
+            ]
+        }
+
+        var body: some View {
+            ZStack {
+                MeshGradient(
+                    width: 4, height: 4,
+                    points: points,
+                    colors: WhatsNewSheet.meshColors(from: palette, scheme: scheme)
+                )
+                .saturation(1.25)
+                .blur(radius: 10)
+
+                // “specular” lift (iOS-ish sheen, no noise)
+                LinearGradient(
+                  colors: [
+                    .white.opacity(scheme == .dark ? 0.20 : 0.12),
+                    .clear
+                  ],
+                  startPoint: .topLeading,
+                  endPoint: .bottomTrailing
+                )
+                .blendMode(.screen)
+
+            }
+            .task {
+                guard !reduceMotion else { return }
+                withAnimation(.easeInOut(duration: 18).repeatForever(autoreverses: true)) {
+                    phase = .pi * 2
+                }
+            }
+            .mask(
+                    LinearGradient(
+                        stops: [
+                            .init(color: .white, location: 0.00),
+                            .init(color: .white, location: 0.66), // keep top ~2/3 fully on
+                            .init(color: .clear, location: 1.00)  // fade out bottom third
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+        }
+    }
+
 
     // MARK: Header (hero gradient + matched symbol)
     private var heroHeader: some View {
         VStack(alignment: .leading, spacing: 10) {
-            ZStack {
-                // Red→Orange animated gradient blobs (iOS 26)
-                if #available(iOS 26.0, *) {
-                    HeroGradient()
-                        .frame(height: 180)
-                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                        )
-                        .mask(
-                            LinearGradient(
-                                stops: [
-                                    .init(color: .white,              location: 0.00),
-                                    .init(color: .white,              location: 0.65),
-                                    .init(color: .white.opacity(0.6), location: 0.85),
-                                    .init(color: .clear,              location: 1.00),
-                                ],
-                                startPoint: .top, endPoint: .bottom
-                            )
-                        )
-                        .padding(.bottom, -34)
-                        .accessibilityHidden(true)
-                }
-
                 HStack(spacing: 12) {
                     Image(systemName: "sparkles")
                         .font(.system(size: 30, weight: .bold))
                         .imageScale(.large)
                         .foregroundStyle(.white)
                         .matchedGeometryEffect(id: "spark", in: heroNS)
-                        .symbolEffect(.bounce, options: .repeating.speed(0.5), value: animateHero)
+                        .symbolEffect(.bounce, value: animateHero) // consider “once” not repeating
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text("What’s New")
@@ -192,7 +294,7 @@ struct WhatsNewSheet: View {
                             .foregroundStyle(.white)
                         Text("Tenney \(versionString) (build \(buildString))")
                             .font(.subheadline)
-                            .foregroundStyle(.white.opacity(0.9))
+                            .foregroundStyle(.white.opacity(0.90))
                     }
 
                     Spacer()
@@ -205,10 +307,9 @@ struct WhatsNewSheet: View {
                             .foregroundStyle(.white)
                     }
                 }
-                .padding(14)
+                .padding(.top, 6)
+                .onAppear { animateHero = true }
             }
-            .onAppear { animateHero = true }
-        }
     }
 
     // MARK: Big Three (v0.3)
@@ -397,71 +498,42 @@ private struct WhatsNewGlass: ViewModifier {
 }
 
 // MARK: - Hero gradient (red→orange, subtle motion)
-@available(iOS 26.0, *)
+@available(iOS 18.0, *)
 private struct HeroGradient: View {
-    @State private var t: CGFloat = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var phase: Float = 0
+
+    // 3×3 mesh: corners anchored, center drifts slightly
+    private var pts: [SIMD2<Float>] {
+        let d: Float = reduceMotion ? 0 : 0.035
+        return [
+            .init(0.00, 0.00), .init(0.50, 0.00), .init(1.00, 0.00),
+            .init(0.00, 0.50), .init(0.50 + sin(phase)*d, 0.50 + cos(phase)*d), .init(1.00, 0.50),
+            .init(0.00, 1.00), .init(0.50, 1.00), .init(1.00, 1.00),
+        ]
+    }
 
     var body: some View {
-        TimelineView(.animation) { _ in
-            Canvas { ctx, size in
-                ctx.blendMode = .plusLighter
-
-                let red = Color(uiColor: .systemRed)
-                let org = Color(uiColor: .systemOrange)
-                let ylw = Color(uiColor: .systemYellow)
-
-                let w = size.width
-                let h = size.height * 1.35
-                let rBase = min(w, h) * 0.52
-
-                let c1 = CGPoint(x: w*0.25 + cos(t*0.60+0.00)*w*0.08, y: h*0.35 + sin(t*0.70+0.30)*h*0.06)
-                let c2 = CGPoint(x: w*0.75 + cos(t*0.55+1.70)*w*0.09, y: h*0.32 + sin(t*0.60+0.90)*h*0.07)
-                let c3 = CGPoint(x: w*0.52 + cos(t*0.45+2.40)*w*0.07, y: h*0.78 + sin(t*1.00+1.20)*h*0.05)
-                let c4 = CGPoint(x: w*0.10 + cos(t*0.80+0.50)*w*0.10, y: h*0.62 + sin(t*0.85+0.20)*h*0.05)
-                let c5 = CGPoint(x: w*0.92 + cos(t*0.75+2.10)*w*0.06, y: h*0.58 + sin(t*0.95+1.50)*h*0.05)
-
-                let r1 = rBase * (0.95 + 0.06 * sin(t*0.80))
-                let r2 = rBase * (0.85 + 0.06 * sin(t*0.90+1.10))
-                let r3 = rBase * (0.72 + 0.08 * sin(t*1.10+2.00))
-                let r4 = rBase * (0.60 + 0.08 * sin(t*0.70+0.60))
-                let r5 = rBase * (0.55 + 0.07 * sin(t*0.65+1.30))
-
-                let g1 = Gradient(colors: [red.opacity(0.80), red.opacity(0.35), .clear])
-                let g2 = Gradient(colors: [org.opacity(0.75), org.opacity(0.35), .clear])
-                let g3 = Gradient(colors: [red.opacity(0.55), org.opacity(0.30), .clear])
-                let g4 = Gradient(colors: [ylw.opacity(0.45), org.opacity(0.28), .clear])
-                let g5 = Gradient(colors: [red.opacity(0.45), ylw.opacity(0.25), .clear])
-
-                ctx.fill(Path(ellipseIn: .init(x: c1.x - r1, y: c1.y - r1, width: r1*2, height: r1*2)),
-                         with: .radialGradient(g1, center: c1, startRadius: 0, endRadius: r1))
-                ctx.fill(Path(ellipseIn: .init(x: c2.x - r2, y: c2.y - r2, width: r2*2, height: r2*2)),
-                         with: .radialGradient(g2, center: c2, startRadius: 0, endRadius: r2))
-                ctx.fill(Path(ellipseIn: .init(x: c3.x - r3, y: c3.y - r3, width: r3*2, height: r3*2)),
-                         with: .radialGradient(g3, center: c3, startRadius: 0, endRadius: r3))
-                ctx.fill(Path(ellipseIn: .init(x: c4.x - r4, y: c4.y - r4, width: r4*2, height: r4*2)),
-                         with: .radialGradient(g4, center: c4, startRadius: 0, endRadius: r4))
-                ctx.fill(Path(ellipseIn: .init(x: c5.x - r5, y: c5.y - r5, width: r5*2, height: r5*2)),
-                         with: .radialGradient(g5, center: c5, startRadius: 0, endRadius: r5))
-
-                // Pointillist grain (denser, larger)
-                let dots = 1200
-                for i in 0..<dots {
-                    let fx = sin((CGFloat(i)*12.9898) + t*0.35)
-                    let fy = sin((CGFloat(i)*78.233)  + t*0.33 + 1.1)
-                    let px = (fx*0.5+0.5) * w
-                    let py = (fy*0.5+0.5) * h
-                    let s  = 1.0 + 1.2 * abs(sin(CGFloat(i)*3.1 + t))
-                    let a  = 0.06 + 0.06 * abs(cos(CGFloat(i)*1.7 + t*0.6))
-                    let rect = CGRect(x: px, y: py, width: s, height: s).insetBy(dx: -0.5, dy: -0.5)
-                    ctx.fill(Path(ellipseIn: rect), with: .color(.white.opacity(a)))
-                }
-            }
+        MeshGradient(
+            width: 3, height: 3,
+            points: pts,
+            colors: [
+                .red.opacity(0.55),    .orange.opacity(0.40), .red.opacity(0.30),
+                .orange.opacity(0.35), .pink.opacity(0.25),   .orange.opacity(0.30),
+                .red.opacity(0.35),    .orange.opacity(0.28), .red.opacity(0.45),
+            ]
+        )
+        .overlay { // gentle vignette to keep edges quiet
+            LinearGradient(colors: [.black.opacity(0.18), .clear],
+                           startPoint: .top, endPoint: .bottom)
         }
-        .onAppear {
-            withAnimation(.linear(duration: 12).repeatForever(autoreverses: false)) { t = 2 * .pi }
+        .task {
+            guard !reduceMotion else { return }
+            withAnimation(.linear(duration: 24).repeatForever(autoreverses: true)) { phase = .pi * 2 }
         }
     }
 }
+
 
 // MARK: - Mini previews (v0.3)
 

@@ -298,7 +298,7 @@ struct AudioRoutingSnapshot: Equatable {
 
 struct StudioConsoleView: View {
     
-    
+    @State private var settingsHeaderBaselineMinY: CGFloat? = nil
     @AppStorage(SettingsKeys.latticeConnectionMode)
     private var latticeConnectionModeRaw: String = LatticeConnectionMode.chain.rawValue
 
@@ -442,50 +442,7 @@ struct StudioConsoleView: View {
     
     
     // MARK: - Scroll offset (reliable; UIKit KVO)
-    private struct ScrollOffsetReader: UIViewRepresentable {
-        var onChange: (CGFloat) -> Void
-
-        func makeUIView(context: Context) -> OffsetProbeView {
-            let v = OffsetProbeView()
-            v.onChange = onChange
-            return v
-        }
-
-        func updateUIView(_ uiView: OffsetProbeView, context: Context) {
-            uiView.onChange = onChange
-            uiView.startIfNeeded()
-        }
-
-        final class OffsetProbeView: UIView {
-            var onChange: ((CGFloat) -> Void)?
-            private var observation: NSKeyValueObservation?
-
-            override func didMoveToWindow() {
-                super.didMoveToWindow()
-                startIfNeeded()
-            }
-
-            func startIfNeeded() {
-                guard observation == nil else { return }
-                guard let sv = findEnclosingScrollView() else { return }
-
-                observation = sv.observe(\.contentOffset, options: [.initial, .new]) { [weak self] sv, _ in
-                    self?.onChange?(sv.contentOffset.y)
-                }
-            }
-
-            private func findEnclosingScrollView() -> UIScrollView? {
-                var v: UIView? = self
-                while let cur = v {
-                    if let sv = cur as? UIScrollView { return sv }
-                    v = cur.superview
-                }
-                return nil
-            }
-
-            deinit { observation?.invalidate() }
-        }
-    }
+    
 
 
     // MARK: - Chip / Tile primitives (match Theme + Pro Audio visual language)
@@ -1112,6 +1069,13 @@ struct StudioConsoleView: View {
         // private func setWave(_ w: ToneOutputEngine.GlobalWave) { ... }
     }
 
+    @State private var settingsHeaderPinned: CGFloat = 0
+    @State private var settingsHeaderProgress: CGFloat = 0
+
+    private struct SettingsHeaderMinYKey: PreferenceKey {
+        static var defaultValue: CGFloat = 0
+        static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+    }
 
     private struct LatticeUIControlsPager: View {
         @Binding var latticeConnectionModeRaw: String
@@ -1963,37 +1927,92 @@ struct StudioConsoleView: View {
     }
 
 
+    // MARK: - Sticky Settings header (shared)
+    private struct SettingsHeaderBar: View {
+        let progress: CGFloat          // 0 expanded → 1 collapsed
+        let hSizeClass: UserInterfaceSizeClass?
+        let isDark: Bool
 
+        private func lerp(_ a: CGFloat, _ b: CGFloat, _ t: CGFloat) -> CGFloat { a + (b - a) * t }
+
+        var body: some View {
+            let p = progress
+
+            let titleBig: CGFloat   = (hSizeClass == .compact ? 34 : 30)
+            let titleSmall: CGFloat = 24
+            let titleSize = lerp(titleBig, titleSmall, p)
+
+            let subBig: CGFloat   = 16
+            let subSmall: CGFloat = 13
+            let subSize = lerp(subBig, subSmall, p)
+
+            VStack(alignment: .leading, spacing: lerp(6, 3, p)) {
+                Text("Settings")
+                    .font(.system(size: titleSize, weight: .bold))
+                    .foregroundStyle(isDark ? Color.white : Color.black)
+                    .lineLimit(1)
+
+                Text("Tuner & Lattice Algorithm Configs")
+                    .font(.system(size: subSize, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+
+                Divider()
+                    .opacity(p * 0.9)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, lerp(16, 10, p))
+            .padding(.bottom, lerp(8, 4, p))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.ultraThinMaterial)
+            .transaction { $0.animation = nil }
+        }
+    }
+
+    
     // MARK: - Split content
     private var contentStack: some View {
         ZStack {
             backgroundGlass
-            // AFTER
-            VStack(alignment: .leading, spacing: 14) {
-                headerView
 
-                ScrollView {
-                    gridView
-                        .background(
-                            ScrollOffsetReader { y in
-                                let y0   = max(0, y)
-                                let tRaw = min(max(y0 / headerCollapseRange, 0), 1)
+            let theme = ThemeRegistry.theme(
+                LatticeThemeID(rawValue: latticeThemeID) ?? .classicBO,
+                dark: effectiveIsDark
+            )
 
-                                // Ease-out so it “gives” early, then settles (more HIG-like than linear)
-                                let t = 1 - pow(1 - tRaw, 1.6)
-
-                                if abs(settingsHeaderProgress - t) > 0.012 {
-                                     settingsHeaderProgress = t
-                                 }                            }
-                            .frame(width: 0, height: 0)
-                        )
-                }
-
+            ScrollView {
+                // ✅ header participates in scroll geometry, then pins itself
+                SettingsHeaderBar(progress: settingsHeaderProgress, hSizeClass: hSizeClass, isDark: effectiveIsDark)
+                    .background(
+                        GeometryReader { geo in
+                            Color.clear.preference(
+                                key: SettingsHeaderMinYKey.self,
+                                value: geo.frame(in: .named("settings.scroll")).minY
+                            )
+                        }
+                    )
+                    .offset(y: settingsHeaderPinned)
+                    .zIndex(50)
+                gridView
+            }
+            .coordinateSpace(name: "settings.scroll")
+            .onPreferenceChange(SettingsHeaderMinYKey.self) { measuredMinY in
+                // Remove our own offset from the measurement to avoid feedback loops
+                let effectiveMinY = measuredMinY - settingsHeaderPinned
+                if settingsHeaderBaselineMinY == nil { settingsHeaderBaselineMinY = effectiveMinY }
+                let base = settingsHeaderBaselineMinY ?? effectiveMinY
+                let raw = effectiveMinY - base // 0 at rest, negative as you scroll down
+                let pin = max(0, -raw)
+                settingsHeaderPinned = pin
+                settingsHeaderProgress = min(1, pin / headerCollapseRange)
 
             }
+
             inkOverlay
         }
     }
+
 
     private var headerView: some View {
         let p = settingsHeaderProgress
@@ -2144,6 +2163,7 @@ struct StudioConsoleView: View {
 
 
         @State private var lastEffectiveIsDark: Bool = false
+        
 
         var body: some View {
             Color.clear
@@ -2671,7 +2691,6 @@ struct StudioConsoleView: View {
         }
     }
     
-    @State private var settingsHeaderProgress: CGFloat = 0   // 0 expanded → 1 collapsed
     private let headerCollapseRange: CGFloat = 72
     private func lerp(_ a: CGFloat, _ b: CGFloat, _ t: CGFloat) -> CGFloat { a + (b - a) * t }
 

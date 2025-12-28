@@ -20,25 +20,44 @@ import simd
 import SwiftUI
 
 final class LissajousRenderer: NSObject, MTKViewDelegate {
-    // MARK: - Config
-    struct Config {
-        var samplesPerCurve: Int = 4096
-        var strokeWidth: Float = 1.5
-        var gridDivs: Int = 8
-        var showGrid: Bool = true
-        var showAxes: Bool = true
-        var globalAlpha: Float = 1.0
-
-        // Pro knobs
-        var favorSmallIntegerClosure: Bool = true
-        var maxDenSnap: Int = 24
-
-        var dotMode: Bool = false
-        var dotSize: Float = 2.0
-
-        var persistenceEnabled: Bool = true
-        var halfLifeSeconds: Float = 0.6 // phosphor decay feel
+    private func ensureLivePointBufferCapacity(_ pointCount: Int) {
+        let needBytes = max(1, pointCount) * MemoryLayout<VSIn>.stride
+        if livePointBuffer == nil || livePointBuffer!.length < needBytes {
+            livePointBuffer = device.makeBuffer(length: max(needBytes, 4096), options: .storageModeShared)
+        }
     }
+
+    private let ring = ScopeRingBuffer(capacity: 4096)
+    private var livePointBuffer: MTLBuffer?
+    private var livePointCount: Int = 0
+
+    // MARK: - Config
+    enum Mode { case live, synthetic }
+
+        struct Config: Equatable {
+            var mode: Mode = .live
+
+            // Live scope
+            var sampleCount: Int = 768
+
+            // Synthetic curve
+            var samplesPerCurve: Int = 4096
+            var strokeWidth: Float = 1.5
+            var gridDivs: Int = 8
+            var showGrid: Bool = true
+            var showAxes: Bool = true
+            var globalAlpha: Float = 1.0
+
+            var favorSmallIntegerClosure: Bool = true
+            var maxDenSnap: Int = 24
+
+            var dotMode: Bool = false
+            var dotSize: Float = 2.0
+
+            // Persistence
+            var persistenceEnabled: Bool = true
+            var halfLifeSeconds: Float = 0.6
+        }
     struct Ratio { var num: Int; var den: Int; var octave: Int }
 
     // Inputs
@@ -95,6 +114,11 @@ final class LissajousRenderer: NSObject, MTKViewDelegate {
         buildDepth()
         buildQuad()
         buildSampler()
+        ToneOutputEngine.shared.scopeTap = { [weak self] x, y, count in
+            guard let self else { return }
+            self.ring.push(x: x, y: y, count: count)
+        }
+
     }
 
     private func buildPipelines(view: MTKView) {
@@ -308,10 +332,35 @@ final class LissajousRenderer: NSObject, MTKViewDelegate {
         let dt = max(1.0 / Double(view.preferredFramesPerSecond), now - lastFrameTime)
         lastFrameTime = now
 
-        if needsRebuildCurve { rebuildCurve() }
-        if needsRebuildGrid  { rebuildGrid(size: view.drawableSize) }
+        if config.mode == .synthetic, needsRebuildCurve { rebuildCurve() }
+        if needsRebuildGrid { rebuildGrid(size: view.drawableSize) }
+
 
         guard let cmd = queue.makeCommandBuffer() else { return }
+        
+        if config.mode == .live {
+            let pts = ring.snapshot(max: config.sampleCount)
+            livePointCount = pts.count
+            ensureLivePointBufferCapacity(livePointCount)
+
+            func rgba(_ c: Color, alpha: CGFloat) -> SIMD4<Float> {
+                #if canImport(UIKit)
+                let u = UIColor(c); var r: CGFloat=0,g: CGFloat=0,b: CGFloat=0,a: CGFloat=0
+                u.getRed(&r, green: &g, blue: &b, alpha: &a)
+                return SIMD4(Float(r), Float(g), Float(b), Float(alpha))
+                #else
+                return SIMD4(1,1,1,Float(alpha))
+                #endif
+            }
+            let stroke = rgba(theme.path, alpha: 0.95)
+
+            let ptr = livePointBuffer!.contents().bindMemory(to: VSIn.self, capacity: max(1, livePointCount))
+            for i in 0..<livePointCount {
+                ptr[i] = VSIn(pos: pts[i], color: stroke)
+            }
+        }
+
+
 
         // -------- OFFSCREEN (single-sample) --------
         if config.persistenceEnabled {
@@ -341,7 +390,8 @@ final class LissajousRenderer: NSObject, MTKViewDelegate {
             }
 
             // (2) draw curve into scratchTex
-            if let vb = vbuf, let out = scratchTex {
+            let curveVB: MTLBuffer? = (config.mode == .live ? livePointBuffer : vbuf)
+            if let vb = curveVB, let out = scratchTex {
                 let rpd = MTLRenderPassDescriptor()
                 rpd.colorAttachments[0].texture = out
                 rpd.colorAttachments[0].loadAction  = .load
@@ -379,7 +429,7 @@ final class LissajousRenderer: NSObject, MTKViewDelegate {
             enc.setFragmentSamplerState(linearSampler, index: 0)
             enc.setVertexBuffer(quadVBuf, offset: 0, index: 0)
             enc.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
-        } else if let vb = vbuf {
+        } else if let vb = (config.mode == .live ? livePointBuffer : vbuf) {
             // (A) direct draw to screen when persistence is off (MSAA)
             enc.setDepthStencilState(depth)
             enc.setRenderPipelineState(linePSO_MSAA)                 // <— MSAA

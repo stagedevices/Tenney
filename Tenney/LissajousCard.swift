@@ -10,13 +10,13 @@ import SwiftUI
 import MetalKit
 
 struct LissajousCard: View {
+    let activeSignals: [ToneOutputEngine.ScopeSignal]   // ordered
     @Environment(\.tenneyTheme) private var theme
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     let rootHz: Double
-    let chosenRatios: [RatioRef]
 
     // persisted prefs
     @AppStorage("Lissa.samples") private var samplesPerCurve: Int = 4096
@@ -31,7 +31,6 @@ struct LissajousCard: View {
     @AppStorage("Lissa.snap") private var snapSmall: Bool = true
     @AppStorage("Lissa.maxDen") private var maxDen: Int = 24
 
-    @State private var assignXY: (RatioRef, RatioRef)?
     @State private var showSettings = false
 
     // helpers
@@ -43,88 +42,111 @@ struct LissajousCard: View {
         while Double(num)/Double(den) < 1.0 { num &*= 2 }
         let g = gcd(num, den); return "\(num/g)/\(den/g)"
     }
-    private func autoAssignXY(from items: [RatioRef]) -> (RatioRef, RatioRef) {
-        if items.count <= 1 { let a = items.first ?? .init(p: 1, q: 1, octave: 0, monzo: [:]); return (a,a) }
-        var best:(Double,Int,Int)?=nil
-        func freq(_ r: RatioRef)->Double{
-            var n=r.p,d=r.q; while Double(n)/Double(d) >= 2 { d&*=2 }; while Double(n)/Double(d)<1 { n&*=2 }
-            let base = Double(n)/Double(d); return rootHz * pow(2.0, Double(r.octave)) * base
-        }
-        for i in 0..<(items.count-1) {
-            for j in (i+1)..<items.count {
-                let r = freq(items[i])/freq(items[j])
-                let score = 1.0 / abs(log2(r) + 1e-6) // prefer near-integer-ish
-                if best == nil || score > best!.0 { best = (score,i,j) }
-            }
-        }
-        let i = best!.1, j = best!.2
-        return (items[i], items[j])
+    private enum ScopeLabel {
+        case idle
+        case one(label: String)
+        case two(x: String, y: String)
+        case many(x: String, y: String)
     }
+
+    private var scopeLabel: ScopeLabel {
+        switch activeSignals.count {
+        case 0:
+            return .idle
+        case 1:
+            return .one(label: activeSignals[0].label)
+        case 2:
+            return .two(x: activeSignals[0].label, y: activeSignals[1].label)
+        default:
+            // round-robin
+            let x = activeSignals.enumerated().compactMap { $0.offset % 2 == 0 ? $0.element.label : nil }
+            let y = activeSignals.enumerated().compactMap { $0.offset % 2 == 1 ? $0.element.label : nil }
+            return .many(x: "Σ(" + x.joined(separator: ",") + ")", y: "Σ(" + y.joined(separator: ",") + ")")
+        }
+    }
+    @State private var showScopeSettings = false
+    @State private var scopeRenderMode: LissajousRenderer.Mode = .live   // NEW enum in renderer
+
+    private var scopeControls: some View {
+        HStack(spacing: 8) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    scopeRenderMode = (scopeRenderMode == .live ? .synthetic : .live)
+                }
+            } label: {
+                Label(scopeRenderMode == .live ? "Live" : "Math", systemImage: "slider.horizontal.3")
+                    .font(.caption2.weight(.semibold))
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(.ultraThinMaterial, in: Capsule(style: .continuous))
+            .overlay(Capsule(style: .continuous).stroke(Color.secondary.opacity(0.12), lineWidth: 1))
+        }
+        .padding(10)
+    }
+
+    private func axisChip(_ text: String) -> some View {
+        Text(text)
+            .font(.caption2)
+            .foregroundStyle(.secondary.opacity(0.9))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(.thinMaterial, in: Capsule(style: .continuous))
+            .overlay(Capsule(style: .continuous).stroke(Color.secondary.opacity(0.12), lineWidth: 1))
+    }
+
+    private var axisChips: some View {
+        HStack(spacing: 8) {
+            switch scopeLabel {
+            case .idle:
+                axisChip("X —")
+                axisChip("Y —")
+            case .one(let label):
+                axisChip("X  \(label)")
+                axisChip("Y  \(label) (+90°)")
+            case .two(let x, let y):
+                axisChip("X  \(x)")
+                axisChip("Y  \(y)")
+            case .many(let x, let y):
+                axisChip("X  \(x)")
+                axisChip("Y  \(y)")
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+    }
+
 
     var body: some View {
         ZStack {
-            // Card chrome (HIG "liquid glass")
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(reduceTransparency ? Color(.secondarySystemBackground)
-                                         : .gray)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .strokeBorder(.white.opacity(scheme == .dark ? 0.12 : 0.18), lineWidth: 1)
-                )
-                .shadow(color: .black.opacity(scheme == .dark ? 0.30 : 0.08), radius: 12, y: 6)
-
-            LissajousMetalView(
-                theme: theme,
-                rootHz: rootHz,
-                pair: {
-                    if let p = assignXY { return (asResult(p.0), asResult(p.1)) }
-                    if chosenRatios.isEmpty {
-                        let a = RatioRef(p: 1, q: 1, octave: 0, monzo: [:]); return (asResult(a), asResult(a))
-                    }
-                    let a = autoAssignXY(from: chosenRatios); return (asResult(a.0), asResult(a.1))
-                }(),
-                config: LissajousRenderer.Config(
-                    samplesPerCurve: samplesPerCurve,
-                    strokeWidth: Float(strokeWidth),
-                    gridDivs: gridDivs,
-                    showGrid: showGrid,
-                    showAxes: showAxes,
-                    globalAlpha: 1.0,
-                    favorSmallIntegerClosure: snapSmall,
-                    maxDenSnap: maxDen,
-                    dotMode: dotMode,
-                    dotSize: Float(dotSize),
-                    persistenceEnabled: reduceMotion ? false : persistenceEnabled,
-                    halfLifeSeconds: Float(halfLife)
-                )
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .overlay(axesOverlay)
-            .overlay(gearButton, alignment: .topTrailing)
+            GlassCard(corner: 16) {
+                ZStack(alignment: .topLeading) {
+                    // plot “preview window” inside the card
+                    LissajousMetalView(
+                        theme: theme,
+                        rootHz: rootHz,
+                        config: LissajousRenderer.Config(
+                            mode: scopeRenderMode,
+                            sampleCount: 768,
+                            persistenceEnabled: true,
+                            halfLifeSeconds: 0.6
+                        )
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .padding(12) // match Settings preview padding
+                    .overlay(alignment: .topTrailing) { scopeControls }
+                    .overlay(alignment: .bottomLeading) { axisChips }
+                }
+            }
         }
-        .onChange(of: chosenRatios) { _ in assignXY = autoAssignXY(from: chosenRatios) }
-        .onAppear { assignXY = autoAssignXY(from: chosenRatios) }
+        .onChange(of: activeSignals) { newSignals in
+            ToneOutputEngine.shared.setScopeMode(.liveActiveSignals(newSignals))
+        }
+        .onAppear { ToneOutputEngine.shared.setScopeMode(.liveActiveSignals(activeSignals))
+        }
+        .onDisappear { ToneOutputEngine.shared.setScopeMode(.liveActiveSignals([]))  }
         .sheet(isPresented: $showSettings) { settingsSheet }
         .accessibilityLabel("Lissajous Oscilloscope")
-    }
-
-    // Axis labels
-    private var axesOverlay: some View {
-        VStack {
-            HStack {
-                Text(assignXY.map { "X  \(ratioString($0.0))" } ?? "X —")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(theme.labelSecondary)
-                Spacer()
-            }.padding([.leading, .top], 10)
-            Spacer()
-            HStack {
-                Text(assignXY.map { "Y  \(ratioString($0.1))" } ?? "Y —")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(theme.labelSecondary)
-                Spacer()
-            }.padding([.leading, .bottom], 10)
-        }.allowsHitTesting(false)
     }
 
     // Settings
@@ -187,7 +209,8 @@ struct LissajousCard: View {
 private struct LissajousMetalView: UIViewRepresentable {
     let theme: LatticeTheme
     let rootHz: Double
-    let pair: (RatioResult, RatioResult)
+    let pair: (RatioResult, RatioResult) = (.init(num: 1, den: 1, octave: 0),
+                                           .init(num: 1, den: 1, octave: 0))
     let config: LissajousRenderer.Config
 
     func makeUIView(context: Context) -> MTKView {

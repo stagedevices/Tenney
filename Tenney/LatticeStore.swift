@@ -393,7 +393,7 @@ final class LatticeStore: ObservableObject {
 
                     let f = self.exactFreq(for: c)
                     let amp = self.amplitude(for: c)
-                    let id = ToneOutputEngine.shared.sustain(freq: f, amp: amp)
+                    let id = ToneOutputEngine.shared.sustain(freq: f, amp: amp, owner: .lattice, attackMs: 8, releaseMs: 60)
                     self.voiceForCoord[c] = id
                     self.lastTriggerAt[c] = Date()
 
@@ -433,13 +433,13 @@ final class LatticeStore: ObservableObject {
         for c in selectionOrder {
             let f = exactFreq(for: c)
             let amp = amplitude(for: c)
-            let id = ToneOutputEngine.shared.sustain(freq: f, amp: amp)
+            let id = ToneOutputEngine.shared.sustain(freq: f, amp: amp, owner: .lattice, attackMs: 8, releaseMs: 60)
             voiceForCoord[c] = id
         }
         for g in selectionOrderGhosts {
             let f = exactFreq(for: g)
             let amp = amplitude(for: g)
-            let id = ToneOutputEngine.shared.sustain(freq: f, amp: amp)
+            let id = ToneOutputEngine.shared.sustain(freq: f, amp: amp, owner: .lattice, attackMs: 8, releaseMs: 60)
             voiceForGhost[g] = id
         }
     }
@@ -459,7 +459,7 @@ final class LatticeStore: ObservableObject {
         guard auditionEnabled, selected.contains(c), voiceForCoord[c] == nil else { return }
         let f = exactFreq(for: c)
         let amp = amplitude(for: c)
-        let id = ToneOutputEngine.shared.sustain(freq: f, amp: amp)
+        let id = ToneOutputEngine.shared.sustain(freq: f, amp: amp, owner: .lattice, attackMs: 8, releaseMs: 60)
         voiceForCoord[c] = id
     }
 
@@ -507,7 +507,7 @@ final class LatticeStore: ObservableObject {
 
                     let f = self.exactFreq(for: g)
                     let amp = self.amplitude(for: g)
-                    let id = ToneOutputEngine.shared.sustain(freq: f, amp: amp)
+                    let id = ToneOutputEngine.shared.sustain(freq: f, amp: amp, owner: .lattice, attackMs: 8, releaseMs: 60)
                     self.voiceForGhost[g] = id
                     self.lastTriggerAtGhost[g] = Date()
 
@@ -761,20 +761,20 @@ final class LatticeStore: ObservableObject {
                         self.selectionOrder.append(unison)
                         let f = self.exactFreq(for: unison)
                         let amp = self.amplitude(for: unison)
-                        let id = ToneOutputEngine.shared.sustain(freq: f, amp: amp)
+                        let id = ToneOutputEngine.shared.sustain(freq: f, amp: amp, owner: .lattice, attackMs: 8, releaseMs: 60)
                         self.voiceForCoord[unison] = id
                     } else {
                         // Start sustained tones for all current selections.
                         for c in self.selectionOrder {
                             let f = self.exactFreq(for: c)
                             let amp = self.amplitude(for: c)
-                            let id = ToneOutputEngine.shared.sustain(freq: f, amp: amp)
+                            let id = ToneOutputEngine.shared.sustain(freq: f, amp: amp, owner: .lattice, attackMs: 8, releaseMs: 60)
                             self.voiceForCoord[c] = id
                         }
                         for g in self.selectionOrderGhosts {
                             let f = self.exactFreq(for: g)
                             let amp = self.amplitude(for: g)
-                            let id = ToneOutputEngine.shared.sustain(freq: f, amp: amp)
+                            let id = ToneOutputEngine.shared.sustain(freq: f, amp: amp, owner: .lattice, attackMs: 8, releaseMs: 60)
                             self.voiceForGhost[g] = id
                         }
                     }

@@ -12,6 +12,17 @@ import os
 
 // MARK: - ENTRY POINT: One engine to run them all (MONO out; stereo only for scope)
 final class ToneOutputEngine {
+    private let scopeStateLock = NSLock()
+    private var scopeMode: ScopeMode = .liveActiveSignals([])
+    private var scopePendingFadeSamples: Int = 0
+
+    private var scopePrevAssign: ([Int],[Int]) = ([],[])  // (xIDs, yIDs)
+    private var scopeNextAssign: ([Int],[Int]) = ([],[])
+    private var scopeIdlePhase: Double = 0
+    
+    private var scopeEpoch: UInt32 = 0
+    private var scopeEpochRT: UInt32 = 0
+
     private var scopeX: [Float] = []
     private var scopeY: [Float] = []
 
@@ -71,6 +82,19 @@ final class ToneOutputEngine {
         return -14.0
     }
 
+    private func releaseAll(excluding owners: Set<VoiceOwner>, seconds: Double) {
+            let ids = metaAll().compactMap { (id, m) -> VoiceID? in
+                owners.contains(m.owner) ? nil : id
+            }
+            for id in ids { release(id: id, seconds: seconds) }
+        }
+    
+        private func releaseAll(owner: VoiceOwner, seconds: Double) {
+            let ids = metaAll().compactMap { (id, m) -> VoiceID? in
+                (m.owner == owner) ? id : nil
+           }
+           for id in ids { release(id: id, seconds: seconds) }
+        }
     // Do NOT mutate from render thread.
         // Backed by a tiny lock to avoid tearing while the render thread snapshots config.
         var config: Config {
@@ -93,6 +117,26 @@ final class ToneOutputEngine {
     // MARK: Public API (robust)
     // Voice handle typealias for clarity
     typealias VoiceID = Int
+    
+    enum VoiceOwner: String, Codable { case lattice, builder, testTone, other }
+
+    struct VoiceSnapshot: Hashable {
+        let freq: Double
+        let amp: Float
+        let owner: VoiceOwner
+    }
+
+    private struct VoiceMeta {
+        var freq: Double
+        var amp: Float
+        var owner: VoiceOwner
+    }
+
+    private var metaLock = os_unfair_lock_s()
+    private var metaByID: [VoiceID: VoiceMeta] = [:]
+
+    // Builder suspend stash (what we restore on dismiss)
+    private var builderSuspended: [VoiceSnapshot] = []
 
         private func loadPersistedConfigIfPresent() {
             guard let data = UserDefaults.standard.data(forKey: SettingsKeys.toneConfigJSON),
@@ -121,7 +165,8 @@ final class ToneOutputEngine {
     @discardableResult
     func start(frequency: Double) -> VoiceID {
         if !isRunning { startEngineIfNeeded() }
-        let id = sustain(freq: frequency, amp: 0.18)
+        let id = sustain(freq: frequency, amp: 0.18, owner: .testTone, attackMs: 8, releaseMs: 40)
+
         testToneID = id
         return id
     }
@@ -133,45 +178,146 @@ final class ToneOutputEngine {
         if let id = testToneID {
             retune(id: id, to: f, hardSync: false)
         } else {
-            testToneID = sustain(freq: f, amp: 0.18)
+            testToneID = sustain(freq: f, amp: 0.18, owner: .testTone, attackMs: 8, releaseMs: 40)
+
         }
     }
 
     /// Low-level voice control
     @discardableResult
     func sustain(freq: Double, amp: Float) -> VoiceID {
+        sustain(freq: freq, amp: amp, owner: .other, attackMs: nil, releaseMs: nil)
+    }
+    @discardableResult
+    func sustain(
+        freq: Double,
+        amp: Float,
+        owner: VoiceOwner,
+        attackMs: Double?,
+        releaseMs: Double?
+    ) -> VoiceID {
         if !isRunning { startEngineIfNeeded() }
 
         let id = nextID; nextID &+= 1
         let cfg = config
         let sr = sampleRate
 
-        let a = max(1, Int((cfg.attackMs  / 1000.0) * sr))
-        let r = max(1, Int((cfg.releaseMs / 1000.0) * sr))
+        let aMs = attackMs ?? cfg.attackMs
+        let rMs = releaseMs ?? cfg.releaseMs
+
+        let a = max(1, Int((aMs / 1000.0) * sr))
+        let r = max(1, Int((rMs / 1000.0) * sr))
 
         enqueue(.sustain(id: id, freq: Float(freq), amp: amp, attackSamps: a, releaseSamps: r))
+        metaSet(id, VoiceMeta(freq: freq, amp: amp, owner: owner))
         return id
     }
+    
+    func snapshotActiveVoices(excluding owners: Set<VoiceOwner> = []) -> [VoiceSnapshot] {
+        metaAll()
+            .filter { !owners.contains($0.1.owner) }
+            .map { (_, m) in VoiceSnapshot(freq: m.freq, amp: m.amp, owner: m.owner) }
+    }
+
+    /// Called when Builder sheet appears.
+    /// Fades out anything currently playing (typically lattice + maybe test tone),
+    /// but does NOT touch the AVAudioSession.
+    func builderWillPresent() {
+        releaseAll(excluding: [.builder], seconds: 0.02)
+    }
+
+    /// Called when Builder sheet dismisses.
+    /// Fades out builder pad voices, then restores the pre-builder snapshot.
+    func builderDidDismiss() {
+        releaseAll(owner: .builder, seconds: 0.04)
+    }
+
+
 
     func retune(id: VoiceID, to freq: Double, hardSync: Bool = false) {
         enqueue(.retune(id: id, freq: Float(freq), hardSync: hardSync))
+        if let m = metaAll().first(where: { $0.0 == id })?.1 {
+            metaSet(id, VoiceMeta(freq: freq, amp: m.amp, owner: m.owner))
+        }
+
     }
 
     func release(id: VoiceID, seconds: Double) {
         let rs = max(0.0, seconds)
         let samps = max(1, Int(rs * sampleRate))
         enqueue(.release(id: id, releaseSamps: samps))
+        
     }
 
     func stopAll() {
         enqueue(.stopAll)
+        os_unfair_lock_lock(&metaLock)
+        metaByID.removeAll(keepingCapacity: true)
+        os_unfair_lock_unlock(&metaLock)
+
         testToneID = nil
     }
+    
+    // MARK: - Live XY scope routing (pads/voices -> X/Y)
+    private func scopeAssign(from ordered: [ScopeSignal]) -> ([Int],[Int]) {
+        let ids = ordered.map(\.voiceID)
+
+        switch ids.count {
+        case 0:
+            return ([], [])
+        case 1:
+            // Special circle mode: still “one source”, but we treat as (same voice, quadrature)
+            return ([ids[0]], [ids[0]])
+        case 2:
+            return ([ids[0]], [ids[1]])
+        default:
+            var x: [Int] = []
+            var y: [Int] = []
+            x.reserveCapacity((ids.count+1)/2)
+            y.reserveCapacity(ids.count/2)
+            for (i, id) in ids.enumerated() {
+                if i % 2 == 0 { x.append(id) } else { y.append(id) }
+            }
+            return (x, y)
+        }
+    }
+
+    public struct ScopeSignal: Hashable {
+        public let voiceID: Int
+        public let label: String   // e.g. "Pad 3" (UI uses this)
+        public init(voiceID: Int, label: String) { self.voiceID = voiceID; self.label = label }
+    }
+
+    public enum ScopeMode: Equatable {
+        case liveActiveSignals([ScopeSignal])   // ordered, stable
+        case syntheticRatios                    // existing lissajous closure path (optional)
+    }
+
+    public func setScopeMode(_ mode: ScopeMode) {
+        scopeStateLock.lock()
+        scopeMode = mode
+        scopePendingFadeSamples = Int(sampleRate * 0.20) // ~200ms crossfade
+        scopeEpoch &+= 1
+        scopeStateLock.unlock()
+    }
+
 
     // MARK: Optional: stereo scope tap (not audible)
     // Called once per render with two read-only buffers for X/Y display (length = frames).
     // Hardware output remains MONO.
     var scopeTap: ((_ x: UnsafePointer<Float>, _ y: UnsafePointer<Float>, _ count: Int) -> Void)?
+
+    
+    @inline(__always) private func metaSet(_ id: VoiceID, _ m: VoiceMeta) {
+        os_unfair_lock_lock(&metaLock); metaByID[id] = m; os_unfair_lock_unlock(&metaLock)
+    }
+    @inline(__always) private func metaRemove(_ id: VoiceID) {
+        os_unfair_lock_lock(&metaLock); metaByID.removeValue(forKey: id); os_unfair_lock_unlock(&metaLock)
+    }
+    @inline(__always) private func metaAll() -> [(VoiceID, VoiceMeta)] {
+        os_unfair_lock_lock(&metaLock); defer { os_unfair_lock_unlock(&metaLock) }
+        return Array(metaByID)
+    }
 
     // MARK: Internals
 
@@ -193,6 +339,9 @@ final class ToneOutputEngine {
         var freq: Float = 440
         var phase: Float = 0                 // [0,1)
         var phaseInc: Float = 440/48_000     // cycles/sample
+        
+        var scopePhase: Float = 0
+        var scopePhaseInc: Float = 440/48_000
 
         // envelope
         var gain: Float = 0.18
@@ -204,6 +353,7 @@ final class ToneOutputEngine {
         mutating func setFreq(_ f: Float) {
             freq = max(0, f)
             phaseInc = freq / sr
+            scopePhaseInc = freq / sr
         }
     }
     
@@ -236,9 +386,27 @@ final class ToneOutputEngine {
 
     private var voices: [Voice] = Array(repeating: Voice(), count: 16) // polyphony=16
     private var nextID: Int = 1
+    @inline(__always)
+    private func frequencyForVoiceID(_ id: Int) -> Float {
+        for v in voices where v.active && v.id == id { return v.freq }
+        return 0
+    }
+
+    @inline(__always)
+    private func fastSoftClip(_ x: Float) -> Float {
+        // Cheap symmetric soft clip (cubic), then hard clamp
+        // y = x - x^3/3 for |x|<=1
+        var y = x
+        if y > 1 { y = 1 }
+        if y < -1 { y = -1 }
+        return y - (y * y * y) * (1.0 / 3.0)
+    }
 
     // MARK: Engine boot (mono out; robust session/route handling)
     private func startEngineIfNeeded() {
+#if os(iOS) || targetEnvironment(macCatalyst)
+try? AVAudioSession.sharedInstance().setActive(true, options: [])
+#endif
         guard !isRunning else { return }
 
         // Use hardware format
@@ -270,7 +438,7 @@ final class ToneOutputEngine {
                         v.envState = +1
                         v.attackSamps = attackSamps
                         v.releaseSamps = releaseSamps
-                        v.sr = self.voices[slot].sr   // already current
+                        v.sr = self.voices[slot].sr
                         v.setFreq(freq)
                         self.voices[slot] = v
 
@@ -305,30 +473,34 @@ final class ToneOutputEngine {
             let abl = UnsafeMutableAudioBufferListPointer(ablPtr)
             guard abl.count >= 1,
                   let L = abl[0].mData?.assumingMemoryBound(to: Float.self) else { return noErr }
-            // MONO: zero L, mirror to R later if needed
-            vDSP_vclr(L, 1, vDSP_Length(n))
-            var R: UnsafeMutablePointer<Float>? = nil
-            if abl.count >= 2 { R = abl[1].mData?.assumingMemoryBound(to: Float.self); if let R { vDSP_vclr(R, 1, vDSP_Length(n)) } }
 
-            // scratch for scope X/Y (not audible)
+            var R: UnsafeMutablePointer<Float>? = nil
+            if abl.count >= 2 {
+                R = abl[1].mData?.assumingMemoryBound(to: Float.self)
+            }
+
             if self.scopeX.count < n {
                 self.scopeX = [Float](repeating: 0, count: n)
                 self.scopeY = [Float](repeating: 0, count: n)
             }
 
-
             if !self.firstRenderLogged {
                 self.firstRenderLogged = true
                 print("[ToneOutput] render pull: frames=\(n) ch=\(abl.count) sr=\(Int(self.sampleRate))")
             }
+
+            // Fast idle: silence + blank scope
             if self.voices.allSatisfy({ !$0.active }) {
-                // still provide blank scope
+                vDSP_vclr(L, 1, vDSP_Length(n))
+                if let R { vDSP_vclr(R, 1, vDSP_Length(n)) }
+
                 self.scopeX.withUnsafeMutableBufferPointer { xb in
                     vDSP_vclr(xb.baseAddress!, 1, vDSP_Length(n))
                 }
                 self.scopeY.withUnsafeMutableBufferPointer { yb in
                     vDSP_vclr(yb.baseAddress!, 1, vDSP_Length(n))
                 }
+
                 if let tap = self.scopeTap {
                     self.scopeX.withUnsafeBufferPointer { x in
                         self.scopeY.withUnsafeBufferPointer { y in
@@ -337,22 +509,66 @@ final class ToneOutputEngine {
                     }
                 }
 
-                // duplicate mono to R if present
-                if let R { cblas_scopy(Int32(n), L, 1, R, 1) }
                 return noErr
             }
 
-            // Precompute globals
+            // Globals
             let cfg = self.config
             let outGain = powf(10.0, cfg.outputGain_dB / 20.0)
             let drive  = powf(10.0, cfg.drive_dB / 20.0)
             let foldA  = max(0.0, cfg.foldAmount)
 
-            // Render per sample (simple, branchless enough; 16 voices is fine @ 48k)
+            let fadeTotal = max(1, Int(self.sampleRate * 0.20))
+
+            var localMode: ScopeMode
+            var fadeLeft: Int
+            var prevAssign: ([Int],[Int])
+            var nextAssign: ([Int],[Int])
+            var epoch: UInt32
+
+            self.scopeStateLock.lock()
+            localMode  = self.scopeMode
+            fadeLeft   = self.scopePendingFadeSamples
+            prevAssign = self.scopePrevAssign
+            nextAssign = self.scopeNextAssign
+            epoch      = self.scopeEpoch
+            self.scopeStateLock.unlock()
+
+            @inline(__always) func containsID(_ ids: [Int], _ id: Int) -> Bool {
+                for x in ids { if x == id { return true } }
+                return false
+            }
+
+            if fadeLeft > 0, case .liveActiveSignals(let sigs) = localMode {
+                let next = self.scopeAssign(from: sigs)
+                if nextAssign.0 != next.0 || nextAssign.1 != next.1 {
+                    prevAssign = nextAssign
+                    nextAssign = next
+                }
+            }
+
+            
+            if epoch != self.scopeEpochRT {
+                self.scopeEpochRT = epoch
+                self.scopeIdlePhase = 0
+
+                for i in self.voices.indices {
+                    if !self.voices[i].active { continue }
+                    let id = self.voices[i].id
+                    if containsID(prevAssign.0, id) ||
+                        containsID(prevAssign.1, id) ||
+                        containsID(nextAssign.0, id) ||
+                        containsID(nextAssign.1, id) {
+                        self.voices[i].scopePhase = 0
+                    }
+                }
+            }
+
             for s in 0..<n {
                 var mix: Float = 0
-                var xForScope: Float = 0
-                var yForScope: Float = 0
+
+                var xA: Float = 0, yA: Float = 0, xB: Float = 0, yB: Float = 0
+                var xAC = 0, yAC = 0, xBC = 0, yBC = 0
 
                 for i in self.voices.indices {
                     if !self.voices[i].active { continue }
@@ -362,71 +578,103 @@ final class ToneOutputEngine {
                     let aInc: Float = (v.attackSamps > 0) ? 1.0 / Float(v.attackSamps)  : 1.0
                     let rDec: Float = (v.releaseSamps > 0) ? 1.0 / Float(v.releaseSamps) : 1.0
                     switch v.envState {
-                    case +1: v.env += aInc; if v.env >= 1 { v.env = 1; v.envState = 0 }
-                    case -1: v.env -= rDec; if v.env <= 0 { v.env = 0; v.active = false; self.voices[i] = v; continue }
-                    default: break
+                    case +1:
+                        v.env += aInc
+                        if v.env >= 1 { v.env = 1; v.envState = 0 }
+                    case -1:
+                        v.env -= rDec
+                        if v.env <= 0 {
+                            v.env = 0
+                            v.active = false
+                            self.voices[i] = v
+                            continue
+                        }
+                    default:
+                        break
                     }
 
-                    // Oscillator core: foldedSine / triangle (BLAMP) / saw (BLEP)
+                    // Oscillator
                     var y: Float = 0
                     switch cfg.wave {
                     case .foldedSine:
-                        // Buchla-style mirror folder: pre-drive, mirror wrap (periodic sawtooth reflect)
-                        // 1) drive into sine
-                        let sPhase = v.phase
-                        let raw = sinf(2.0 * Float.pi * sPhase) * drive
-                        // 2) mirror fold around ±1 with repeated reflections
-                        y = mirrorFold(raw, folds: foldA)
+                        let raw = sinf(2.0 * Float.pi * v.phase) * drive
+                        y = self.mirrorFold(raw, folds: foldA)
                     case .triangle:
-                        y = triBLAMP(phase: v.phase, dphi: v.phaseInc)
+                        y = self.triBLAMP(phase: v.phase, dphi: v.phaseInc)
                     case .saw:
-                        y = sawBLEP(phase: v.phase, dphi: v.phaseInc)
+                        y = self.sawBLEP(phase: v.phase, dphi: v.phaseInc)
                     }
 
-                    // advance phase
+                    // Advance phase
                     var ph = v.phase + v.phaseInc
                     if ph >= 1 { ph -= 1 }
                     v.phase = ph
 
-                    // accumulate
                     let samp = y * v.gain * v.env
-                    mix += samp    // ← replace mix &+= samp
+                    mix += samp
 
-                    // scope pair: simple quadrature from same phase (nice lissajous)
-                    // X = cos, Y = sin (of the current voice’s phase)
-                    if xForScope == 0 && yForScope == 0 {
-                        let ang = 2.0 * Float.pi * v.phase
-                        xForScope = cosf(ang)
-                        yForScope = sinf(ang)
-                    }
+                    // Deterministic scope signal (independent of audio oscillator phase)
+                    let scopeWave = sinf(2.0 * Float.pi * v.scopePhase)
+                    var sph = v.scopePhase + v.scopePhaseInc
+                    if sph >= 1 { sph -= 1 }
+                    v.scopePhase = sph
+                    let scopeSamp = scopeWave * v.gain * v.env
+
+                    if containsID(prevAssign.0, v.id) { xA += scopeSamp; xAC += 1 }
+                    if containsID(prevAssign.1, v.id) { yA += scopeSamp; yAC += 1 }
+                    if containsID(nextAssign.0, v.id) { xB += scopeSamp; xBC += 1 }
+                    if containsID(nextAssign.1, v.id) { yB += scopeSamp; yBC += 1 }
 
                     self.voices[i] = v
                 }
 
-                // Mono out gain
-                var out = mix * outGain
+                if xAC > 0 { xA *= (1.0 / Float(xAC)) }
+                if yAC > 0 { yA *= (1.0 / Float(yAC)) }
+                if xBC > 0 { xB *= (1.0 / Float(xBC)) }
+                if yBC > 0 { yB *= (1.0 / Float(yBC)) }
 
-                // Soft limiter (symmetric tanh-ish) if enabled
-                if cfg.limiterOn {
-                    // Fast cubic soft clip
-                    let absx = fabsf(out)
-                    if absx > 0.95 {
-                        let sign: Float = (out >= 0) ? 1 : -1
-                        let t = min(1.0, (absx - 0.95) * 20.0)
-                        out = sign * (0.95 + (1 - (1 - t)*(1 - t)) * 0.05)
-                    }
+                let t: Float = (fadeLeft > 0) ? (1.0 - Float(fadeLeft) / Float(fadeTotal)) : 1.0
+                var xForScope = xA + (xB - xA) * t
+                var yForScope = yA + (yB - yA) * t
+
+                // 0 pads idle trace
+                if case .liveActiveSignals(let sigs) = localMode, sigs.isEmpty {
+                    let amp: Double = 0.06
+                    self.scopeIdlePhase += (2.0 * Double.pi) * (0.35 / Double(self.sampleRate))
+                    if self.scopeIdlePhase > 2.0 * Double.pi { self.scopeIdlePhase -= 2.0 * Double.pi }
+                    xForScope = Float(amp * sin(self.scopeIdlePhase))
+                    yForScope = Float(amp * cos(self.scopeIdlePhase))
                 }
 
-                L[s] += out
-                // keep hardware output mono: copy L to R if present
-                if let R { R[s] += out }
+                // 1 pad circle mode
+                if case .liveActiveSignals(let sigs) = localMode, sigs.count == 1 {
+                    let f = self.frequencyForVoiceID(sigs[0].voiceID)
+                    self.scopeIdlePhase += (2.0 * Double.pi) * (Double(f) / Double(self.sampleRate))
+                    if self.scopeIdlePhase > 2.0 * Double.pi { self.scopeIdlePhase -= 2.0 * Double.pi }
+                    let amp: Double = 0.85
+                    xForScope = Float(amp * sin(self.scopeIdlePhase))
+                    yForScope = Float(amp * cos(self.scopeIdlePhase))
+                }
 
+                xForScope = self.fastSoftClip(xForScope)
+                yForScope = self.fastSoftClip(yForScope)
                 self.scopeX[s] = xForScope
                 self.scopeY[s] = yForScope
 
+                let outSample = mix * outGain
+                let outClipped = cfg.limiterOn ? self.fastSoftClip(outSample) : outSample
+                L[s] = outClipped
+                if let R { R[s] = outClipped }
+
+                if fadeLeft > 0 { fadeLeft -= 1 }
             }
 
-            // push scope buffers
+            self.scopeStateLock.lock()
+            self.scopePendingFadeSamples = fadeLeft
+            self.scopePrevAssign = prevAssign
+            self.scopeNextAssign = nextAssign
+            self.scopeStateLock.unlock()
+
             if let tap = self.scopeTap {
                 self.scopeX.withUnsafeBufferPointer { xb in
                     self.scopeY.withUnsafeBufferPointer { yb in
@@ -449,14 +697,17 @@ final class ToneOutputEngine {
         do {
             try engine.start()
             isRunning = true
+#if os(iOS) || targetEnvironment(macCatalyst)
             token = NotificationCenter.default.addObserver(
                 forName: AVAudioSession.routeChangeNotification,
                 object: AVAudioSession.sharedInstance(),
                 queue: .main
             ) { [weak self] _ in self?.handleRouteChange() }
+#endif
         } catch {
             print("[ToneOutput] start error: \(error)")
         }
+                
     }
 
     private func handleRouteChange() {

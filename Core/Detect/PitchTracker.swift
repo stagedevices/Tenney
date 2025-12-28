@@ -351,10 +351,15 @@ final class PitchTracker {
         let input = engine.inputNode
         let bus = 0
         input.removeTap(onBus: bus) // idempotent
-        let fmt = input.outputFormat(forBus: bus)
-        log.debug("Input tap format: ch=\(fmt.channelCount, privacy: .public) sr=\(fmt.sampleRate, privacy: .public) kind=\(String(describing: fmt.commonFormat), privacy: .public)")
+        let inFmt = input.outputFormat(forBus: bus)
+        let tapFmt = AVAudioFormat(commonFormat: .pcmFormatFloat32,
+                                   sampleRate: inFmt.sampleRate,
+                                   channels: 1,
+                                   interleaved: false)
+        log.debug("Input tap format(in): ch=\(inFmt.channelCount, privacy: .public) sr=\(inFmt.sampleRate, privacy: .public) kind=\(String(describing: inFmt.commonFormat), privacy: .public)")
+        log.debug("Input tap format(tap): ch=\(tapFmt?.channelCount ?? 0, privacy: .public) sr=\(tapFmt?.sampleRate ?? 0, privacy: .public) interleaved=\(tapFmt?.isInterleaved == true ? "Y" : "N", privacy: .public) kind=\(String(describing: tapFmt?.commonFormat), privacy: .public)")
         // Use a modest buffer; ring snapshots handle windowing for DSP
-        input.installTap(onBus: bus, bufferSize: 1024, format: fmt) { [weak self] buffer, _ in
+        input.installTap(onBus: bus, bufferSize: 1024, format: tapFmt) { [weak self] buffer, _ in
             self?.handleTapBuffer(buffer)
         }
         tapInstalled = true

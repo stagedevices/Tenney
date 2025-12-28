@@ -26,6 +26,7 @@ import CoreGraphics
 struct LatticeScreen: View {
     @StateObject private var store = LatticeStore()
     @Environment(\.scenePhase) private var scenePhase
+    @EnvironmentObject private var app: AppModel
     
     @AppStorage(SettingsKeys.latticeAlwaysRecenterOnQuit)
         private var latticeAlwaysRecenterOnQuit: Bool = false
@@ -57,6 +58,13 @@ struct LatticeScreen: View {
                     }
                 }
             }
+            .onChange(of: app.builderPresented) { presented in
+                           if presented {
+                               store.stopAllLatticeVoices(hard: false)
+                           } else {
+                               store.reAuditionSelectionIfNeeded()
+                           }
+                       }
             .onDisappear {
                 store.stopSelectionAudio(hard: true)
                store.stopAllLatticeVoices(hard: true)

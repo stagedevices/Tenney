@@ -9,6 +9,7 @@
 #include <metal_stdlib>
 using namespace metal;
 
+
 // ---- Shared structs ---------------------------------------------------------
 struct VSIn {
     float2 pos;

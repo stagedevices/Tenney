@@ -41,6 +41,15 @@ struct ScaleBuilderScreen: View {
         }
     }
     
+    private var scopeSignals: [ToneOutputEngine.ScopeSignal] {
+        // stable pad order: by pad index
+        let ordered = voiceForIndex.keys.sorted()
+        return ordered.compactMap { idx in
+            guard let vid = voiceForIndex[idx] else { return nil }
+            return .init(voiceID: vid, label: "Pad \(idx + 1)")
+        }
+    }
+
     // MARK: - State
     
     @State private var padOctaveOffset: [Int: Int] = [:]
@@ -169,6 +178,8 @@ struct ScaleBuilderScreen: View {
             }
             .onAppear {
                 // Pause tuner mic while in Builder (restored on exit)
+                app.builderPresented = true
+                ToneOutputEngine.shared.builderWillPresent()
                 app.setMicActive(false)
                 pausedMicForBuilder = true
                 
@@ -207,6 +218,8 @@ struct ScaleBuilderScreen: View {
             }
             // Release all latched voices when the sheet closes
             .onDisappear {
+                ToneOutputEngine.shared.builderDidDismiss()
+                app.builderPresented = false
                 stopAllPadVoices()
                 // restore sound toggle if it was off before
                 if !enteredWithSoundOn { soundOn = false }
@@ -383,9 +396,10 @@ struct ScaleBuilderScreen: View {
                 ) {
                     // Lissajous oscilloscope (spans both columns)
                     LissajousCard(
-                        rootHz: store.payload.rootHz,
-                        chosenRatios: store.degrees
+                        activeSignals: scopeSignals,
+                        rootHz: store.payload.rootHz
                     )
+
                     .frame(minHeight: 220)                // iPhone; grows on iPad naturally
                     .gridCellColumns(2)                   // span both columns
                     .accessibilityIdentifier("LissajousCard")
@@ -889,7 +903,7 @@ struct ScaleBuilderScreen: View {
             if let id = voiceForIndex[idx] {
                 ToneOutputEngine.shared.retune(id: id, to: f, hardSync: false)
             } else {
-                let id = ToneOutputEngine.shared.sustain(freq: f, amp: Float(safeAmp))
+                let id = ToneOutputEngine.shared.sustain(freq: f, amp: Float(safeAmp), owner: .builder, attackMs: 4, releaseMs: 40)
                 voiceForIndex[idx] = id
             }
         }
@@ -998,7 +1012,7 @@ struct ScaleBuilderScreen: View {
                 let (cn, cd) = canonicalPQUnit(ratio.p, ratio.q)
                 let off = padOctaveOffset[idx, default: 0]
                 let f = foldToAudible(root * (Double(cn) / Double(cd)) * pow(2.0, Double(ratio.octave + off)))
-                let voiceID = ToneOutputEngine.shared.sustain(freq: f, amp: Float(safeAmp))
+                let voiceID = ToneOutputEngine.shared.sustain(freq: f, amp: Float(safeAmp), owner: .builder, attackMs: 4, releaseMs: 40)
                 voiceForIndex[idx] = voiceID
             }
         }
@@ -1007,7 +1021,6 @@ struct ScaleBuilderScreen: View {
             for id in voiceForIndex.values {
                 ToneOutputEngine.shared.release(id: id, seconds: 0.03)
             }
-            ToneOutputEngine.shared.stopAll() // belt-and-suspenders
             voiceForIndex.removeAll()
             latched.removeAll()
         }
@@ -1021,13 +1034,12 @@ struct ScaleBuilderScreen: View {
                     // canonicalize to [1,2) so previews never jump to 3/1 etc.
                     let (cn, cd) = canonicalPQUnit(r.p, r.q)
                     let f = foldToAudible(root * (Double(cn) / Double(cd)))
-                    if soundOn {
-                        _ = ToneOutputEngine.shared.sustain(freq: f, amp: Float(safeAmp))
-                    }
+                    guard soundOn else { return }
+
+                    let voiceID = ToneOutputEngine.shared.sustain(freq: f, amp: Float(safeAmp), owner: .builder, attackMs: 4, releaseMs: 40)
+
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
-                        // soft release
-                        // (We don’t track IDs here; short envelopes overlap acceptably for a preview.)
-                        ToneOutputEngine.shared.stopAll()
+                        ToneOutputEngine.shared.release(id: voiceID, seconds: 0.06)
                     }
                 }
             }
