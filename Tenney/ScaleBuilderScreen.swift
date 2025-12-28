@@ -387,25 +387,24 @@ struct ScaleBuilderScreen: View {
         private var pads: some View {
             // Large tap zones for performance; two columns by default
             ScrollView {
-                LazyVGrid(
-                    columns: [
-                        GridItem(.flexible(minimum: 140), spacing: 10),
-                        GridItem(.flexible(minimum: 140), spacing: 10)
-                    ],
-                    spacing: 10
-                ) {
-                    // Lissajous oscilloscope (spans both columns)
+                VStack(spacing: 10) {
                     LissajousCard(
                         activeSignals: scopeSignals,
                         rootHz: store.payload.rootHz
                     )
-
-                    .frame(minHeight: 220)                // iPhone; grows on iPad naturally
-                    .gridCellColumns(2)                   // span both columns
+                    .frame(maxWidth: .infinity, minHeight: 220)
                     .accessibilityIdentifier("LissajousCard")
-                    
-                    ForEach(Array(store.degrees.enumerated()), id: \.offset) { idx, r in
-                        padButton(idx: idx, r: r)
+
+                    LazyVGrid(
+                        columns: [
+                            GridItem(.flexible(minimum: 140), spacing: 10),
+                            GridItem(.flexible(minimum: 140), spacing: 10)
+                        ],
+                        spacing: 10
+                    ) {
+                        ForEach(Array(store.degrees.enumerated()), id: \.offset) { idx, r in
+                            padButton(idx: idx, r: r)
+                        }
                     }
                 }
             }

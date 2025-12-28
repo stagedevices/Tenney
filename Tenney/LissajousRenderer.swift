@@ -36,6 +36,7 @@ final class LissajousRenderer: NSObject, MTKViewDelegate {
     private var livePointBuffer: MTLBuffer?
     private var liveRibbonBuffer: MTLBuffer?
     private var livePointCount: Int = 0
+    private var liveRibbonVertexCount: Int = 0
 
     // MARK: - Config
     enum Mode { case live, synthetic }
@@ -469,7 +470,10 @@ final class LissajousRenderer: NSObject, MTKViewDelegate {
         
         if config.mode == .live {
             let pts = ring.snapshot(max: config.sampleCount)
+
             livePointCount = pts.count
+            liveRibbonVertexCount = (pts.count >= 2) ? (pts.count * 2) : 0
+
             ensureLivePointBufferCapacity(livePointCount)
 
             func rgba(_ c: Color, alpha: CGFloat) -> SIMD4<Float> {
@@ -483,11 +487,17 @@ final class LissajousRenderer: NSObject, MTKViewDelegate {
             }
             let stroke = rgba(theme.path, alpha: 0.95)
 
-            let ptr = livePointBuffer!.contents().bindMemory(to: VSIn.self, capacity: max(1, livePointCount))
-            for i in 0..<livePointCount {
-                ptr[i] = VSIn(pos: pts[i], color: stroke)
+            let pptr = livePointBuffer!.contents().bindMemory(to: VSIn.self, capacity: max(1, livePointCount))
+            if livePointCount > 0 {
+                for i in 0..<livePointCount { pptr[i] = VSIn(pos: pts[i], color: stroke) }
             }
-            buildLiveRibbonStrip(points: pts)
+
+            if pts.count >= 2 {
+                buildLiveRibbonStrip(points: pts)
+            } else {
+                // optional: keep buffer but ensure we won't draw it
+                // liveRibbonBuffer = nil
+            }
         }
 
 
@@ -535,13 +545,24 @@ final class LissajousRenderer: NSObject, MTKViewDelegate {
                 if config.dotMode {
                     enc.setRenderPipelineState(linePSO_NoMSAA)            // <— NO MSAA
                     enc.setVertexBuffer(vb, offset: 0, index: 0)
-                    let count = vb.length / MemoryLayout<VSIn>.stride
-                    enc.drawPrimitives(type: .point, vertexStart: 0, vertexCount: count)
+                    let count = (config.mode == .live)
+                        ? livePointCount
+                        : (vb.length / MemoryLayout<VSIn>.stride)
+
+                    if count > 0 {
+                        enc.drawPrimitives(type: .point, vertexStart: 0, vertexCount: count)
+                    }
                 } else if let ribbonVB = curveRibbonVB {
                     enc.setRenderPipelineState(ribbonPSO_NoMSAA)
                     enc.setVertexBuffer(ribbonVB, offset: 0, index: 0)
-                    let count = ribbonVB.length / MemoryLayout<RibbonVertex>.stride
-                    enc.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: count)
+                    let count = (config.mode == .live)
+                        ? liveRibbonVertexCount
+                        : (ribbonVB.length / MemoryLayout<RibbonVertex>.stride)
+
+                    // triangleStrip needs at least 4 verts here (2 points → 4 ribbon verts)
+                    if count >= 4 {
+                        enc.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: count)
+                    }
                 }
                 enc.endEncoding()
             }
@@ -574,13 +595,23 @@ final class LissajousRenderer: NSObject, MTKViewDelegate {
             if config.dotMode {
                 enc.setRenderPipelineState(linePSO_MSAA)                 // <— MSAA
                 enc.setVertexBuffer(vb, offset: 0, index: 0)
-                let count = vb.length / MemoryLayout<VSIn>.stride
-                enc.drawPrimitives(type: .point, vertexStart: 0, vertexCount: count)
+                let count = (config.mode == .live)
+                    ? livePointCount
+                    : (vb.length / MemoryLayout<VSIn>.stride)
+
+                if count > 0 {
+                    enc.drawPrimitives(type: .point, vertexStart: 0, vertexCount: count)
+                }
             } else if let ribbonVB = (config.mode == .live ? liveRibbonBuffer : ribbonBuf) {
                 enc.setRenderPipelineState(ribbonPSO_MSAA)
                 enc.setVertexBuffer(ribbonVB, offset: 0, index: 0)
-                let count = ribbonVB.length / MemoryLayout<RibbonVertex>.stride
-                enc.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: count)
+                let count = (config.mode == .live)
+                    ? liveRibbonVertexCount
+                    : (ribbonVB.length / MemoryLayout<RibbonVertex>.stride)
+
+                if count >= 4 {
+                    enc.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: count)
+                }
             }
         }
 
