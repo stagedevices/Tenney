@@ -334,6 +334,10 @@ struct StudioConsoleView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var hSizeClass
     @Environment(\.colorScheme) private var systemScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    @State private var oscMode: LissajousRenderer.Mode = .synthetic
 
     private var effectiveIsDark: Bool {
         (themeStyleRaw == "dark") || (themeStyleRaw == "system" && systemScheme == .dark)
@@ -374,8 +378,49 @@ struct StudioConsoleView: View {
     @AppStorage(SettingsKeys.latticeHexGridMajorEvery)
     private var gridMajorEvery: Int = 2
 
+    // Oscilloscope
+    @AppStorage(SettingsKeys.lissaSamples) private var lissaSamplesPerCurve: Int = 4096
+    @AppStorage(SettingsKeys.lissaGridDivs) private var lissaGridDivs: Int = 8
+    @AppStorage(SettingsKeys.lissaShowGrid) private var lissaShowGrid: Bool = true
+    @AppStorage(SettingsKeys.lissaShowAxes) private var lissaShowAxes: Bool = true
+    @AppStorage(SettingsKeys.lissaStrokeWidth) private var lissaRibbonWidth: Double = 1.5
+    @AppStorage(SettingsKeys.lissaDotMode) private var lissaDotMode: Bool = false
+    @AppStorage(SettingsKeys.lissaDotSize) private var lissaDotSize: Double = 2.0
+    @AppStorage(SettingsKeys.lissaPersistence) private var lissaPersistenceEnabled: Bool = true
+    @AppStorage(SettingsKeys.lissaHalfLife) private var lissaHalfLife: Double = 0.6
+    @AppStorage(SettingsKeys.lissaSnap) private var lissaSnapSmall: Bool = true
+    @AppStorage(SettingsKeys.lissaMaxDen) private var lissaMaxDen: Int = 24
+    @AppStorage(SettingsKeys.lissaLiveSamples) private var lissaLiveSamples: Int = 768
+    @AppStorage(SettingsKeys.lissaGlobalAlpha) private var lissaGlobalAlpha: Double = 1.0
+
     private var gridMode: LatticeGridMode {
         LatticeGridMode(rawValue: gridModeRaw) ?? .outlines
+    }
+
+    private var oscEffectiveFPS: Int { reduceMotion ? 30 : 60 }
+    private var oscEffectivePersistence: Bool { reduceTransparency ? false : lissaPersistenceEnabled }
+    private var oscEffectiveHalfLife: Double { reduceTransparency ? 0.35 : lissaHalfLife }
+    private var oscEffectiveAlpha: Double { reduceTransparency ? min(lissaGlobalAlpha, 0.6) : lissaGlobalAlpha }
+    private var oscEffectiveLiveSamples: Int { reduceMotion ? max(64, Int(Double(lissaLiveSamples) * 0.6)) : lissaLiveSamples }
+    private var oscPreviewConfig: LissajousRenderer.Config {
+        LissajousRenderer.Config(
+            mode: oscMode,
+            sampleCount: oscEffectiveLiveSamples,
+            preferredFPS: oscEffectiveFPS,
+            samplesPerCurve: oscMode == .synthetic ? lissaSamplesPerCurve : oscEffectiveLiveSamples,
+            ribbonWidth: Float(lissaRibbonWidth),
+            gridDivs: lissaGridDivs,
+            showGrid: lissaShowGrid,
+            showAxes: lissaShowAxes,
+            globalAlpha: Float(oscEffectiveAlpha),
+            edgeAA: 1.0,
+            favorSmallIntegerClosure: lissaSnapSmall,
+            maxDenSnap: lissaMaxDen,
+            dotMode: lissaDotMode,
+            dotSize: Float(lissaDotSize),
+            persistenceEnabled: oscEffectivePersistence,
+            halfLifeSeconds: Float(oscEffectiveHalfLife)
+        )
     }
     
     private static func migrateLegacyGridSettingsIfNeeded() {
@@ -2059,6 +2104,7 @@ struct StudioConsoleView: View {
         LazyVGrid(columns: columns, spacing: 14) {
             whatsNewSection
             latticeUISection
+            oscilloscopeSection
             stageSection
             defaultViewSection
             // labelingSection
@@ -2274,6 +2320,130 @@ struct StudioConsoleView: View {
     private var styleChoice: ThemeStyleChoice { ThemeStyleChoice(rawValue: themeStyleRaw) ?? .system }
     private var isExplicitDarkStyle: Bool { styleChoice == .dark }
     private var isAutoAndCurrentlyDark: Bool { styleChoice == .system && systemScheme == .dark }
+
+    @ViewBuilder private var oscilloscopeSection: some View {
+        glassCard(
+            icon: "waveform.path.ecg",
+            title: "Oscilloscope",
+            subtitle: "Lissajous preview + pro controls"
+        ) {
+            VStack(alignment: .leading, spacing: 12) {
+                let theme = ThemeRegistry.theme(
+                    LatticeThemeID(rawValue: latticeThemeID) ?? .classicBO,
+                    dark: effectiveIsDark
+                )
+                Group {
+                    if #available(iOS 26.0, *) {
+                        GlassEffectContainer {
+                            LissajousMetalView(
+                                theme: theme,
+                                rootHz: model.rootHz,
+                                config: oscPreviewConfig
+                            )
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        }
+                        .glassEffect(.regular, in: .rect(cornerRadius: 12))
+                    } else {
+                        LissajousMetalView(
+                            theme: theme,
+                            rootHz: model.rootHz,
+                            config: oscPreviewConfig
+                        )
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                }
+                .frame(height: 180)
+
+                HStack(spacing: 8) {
+                    Picker("Mode", selection: $oscMode) {
+                        Text("Live").tag(LissajousRenderer.Mode.live)
+                        Text("Math").tag(LissajousRenderer.Mode.synthetic)
+                    }
+                    .pickerStyle(.segmented)
+                }
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Toggle("Show grid", isOn: $lissaShowGrid)
+                    Toggle("Show axes", isOn: $lissaShowAxes)
+
+                    HStack {
+                        Text("Grid divisions")
+                        Spacer()
+                        Stepper("\(lissaGridDivs)", value: $lissaGridDivs, in: 2...16)
+                    }
+
+                    HStack {
+                        Text("Ribbon width")
+                        Slider(value: $lissaRibbonWidth, in: 0.5...4.0)
+                        Text("\(lissaRibbonWidth, specifier: \"%.1f\")")
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Toggle("Dot-only mode", isOn: $lissaDotMode)
+                    if lissaDotMode {
+                        HStack {
+                            Text("Dot size")
+                            Slider(value: $lissaDotSize, in: 1...6)
+                            Text("\(lissaDotSize, specifier: \"%.0f\")")
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    HStack {
+                        Text("Live density")
+                        Slider(value: Binding(
+                            get: { Double(lissaLiveSamples) },
+                            set: { lissaLiveSamples = Int($0) }
+                        ), in: 128...2048)
+                        Text("\(lissaLiveSamples)")
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
+
+                    HStack {
+                        Text("Curve samples")
+                        Slider(value: Binding(
+                            get: { Double(lissaSamplesPerCurve) },
+                            set: { lissaSamplesPerCurve = Int($0) }
+                        ), in: 512...8192)
+                        Text("\(lissaSamplesPerCurve)")
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Toggle("Persistence", isOn: $lissaPersistenceEnabled)
+                    if lissaPersistenceEnabled {
+                        HStack {
+                            Text("Half-life")
+                            Slider(value: $lissaHalfLife, in: 0.2...2.0)
+                            Text("\(lissaHalfLife, specifier: \"%.2f\")s")
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    HStack {
+                        Text("Global alpha")
+                        Slider(value: $lissaGlobalAlpha, in: 0.2...1.0)
+                        Text("\(lissaGlobalAlpha, specifier: \"%.2f\")")
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Toggle("Favor small-integer closure", isOn: $lissaSnapSmall)
+                    HStack {
+                        Text("Max denominator")
+                        Stepper("\(lissaMaxDen)", value: $lissaMaxDen, in: 6...64)
+                    }
+                }
+            }
+            .font(.callout)
+        }
+    }
 
     @ViewBuilder private var stageSection: some View {
         glassCard(
