@@ -19,19 +19,19 @@ struct LissajousCard: View {
     let rootHz: Double
 
     // persisted prefs
-    @AppStorage("Lissa.samples") private var samplesPerCurve: Int = 4096
-    @AppStorage("Lissa.gridDivs") private var gridDivs: Int = 8
-    @AppStorage("Lissa.showGrid") private var showGrid: Bool = true
-    @AppStorage("Lissa.showAxes") private var showAxes: Bool = true
-    @AppStorage("Lissa.strokeWidth") private var strokeWidth: Double = 1.5
-    @AppStorage("Lissa.dotMode") private var dotMode: Bool = false
-    @AppStorage("Lissa.dotSize") private var dotSize: Double = 2.0
-    @AppStorage("Lissa.persistence") private var persistenceEnabled: Bool = true
-    @AppStorage("Lissa.halfLife") private var halfLife: Double = 0.6
-    @AppStorage("Lissa.snap") private var snapSmall: Bool = true
-    @AppStorage("Lissa.maxDen") private var maxDen: Int = 24
-
-    @State private var showSettings = false
+    @AppStorage(SettingsKeys.lissaSamples) private var samplesPerCurve: Int = 4096
+    @AppStorage(SettingsKeys.lissaGridDivs) private var gridDivs: Int = 8
+    @AppStorage(SettingsKeys.lissaShowGrid) private var showGrid: Bool = true
+    @AppStorage(SettingsKeys.lissaShowAxes) private var showAxes: Bool = true
+    @AppStorage(SettingsKeys.lissaStrokeWidth) private var ribbonWidth: Double = 1.5
+    @AppStorage(SettingsKeys.lissaDotMode) private var dotMode: Bool = false
+    @AppStorage(SettingsKeys.lissaDotSize) private var dotSize: Double = 2.0
+    @AppStorage(SettingsKeys.lissaPersistence) private var persistenceEnabled: Bool = true
+    @AppStorage(SettingsKeys.lissaHalfLife) private var halfLife: Double = 0.6
+    @AppStorage(SettingsKeys.lissaSnap) private var snapSmall: Bool = true
+    @AppStorage(SettingsKeys.lissaMaxDen) private var maxDen: Int = 24
+    @AppStorage(SettingsKeys.lissaLiveSamples) private var liveSamples: Int = 768
+    @AppStorage(SettingsKeys.lissaGlobalAlpha) private var globalAlpha: Double = 1.0
 
     // helpers
     private func asResult(_ r: RatioRef) -> RatioResult { .init(num: r.p, den: r.q, octave: r.octave) }
@@ -64,7 +64,6 @@ struct LissajousCard: View {
             return .many(x: "Σ(" + x.joined(separator: ",") + ")", y: "Σ(" + y.joined(separator: ",") + ")")
         }
     }
-    @State private var showScopeSettings = false
     @State private var scopeRenderMode: LissajousRenderer.Mode = .live   // NEW enum in renderer
 
     private var scopeControls: some View {
@@ -116,6 +115,38 @@ struct LissajousCard: View {
         .padding(12)
     }
 
+    private var effectiveFPS: Int { reduceMotion ? 30 : 60 }
+    private var effectivePersistence: Bool { reduceTransparency ? false : persistenceEnabled }
+    private var effectiveHalfLife: Double { reduceTransparency ? 0.35 : halfLife }
+    private var effectiveAlpha: Double { reduceTransparency ? min(globalAlpha, 0.6) : globalAlpha }
+    private var effectiveLiveSamples: Int { reduceMotion ? max(64, Int(Double(liveSamples) * 0.6)) : liveSamples }
+    private var effectiveSampleCountForMode: Int {
+        switch scopeRenderMode {
+        case .live: return effectiveLiveSamples
+        case .synthetic: return samplesPerCurve
+        }
+    }
+
+    private var previewConfig: LissajousRenderer.Config {
+        LissajousRenderer.Config(
+            mode: scopeRenderMode,
+            sampleCount: effectiveLiveSamples,
+            preferredFPS: effectiveFPS,
+            samplesPerCurve: effectiveSampleCountForMode,
+            ribbonWidth: Float(ribbonWidth),
+            gridDivs: gridDivs,
+            showGrid: showGrid,
+            showAxes: showAxes,
+            globalAlpha: Float(effectiveAlpha),
+            edgeAA: 1.0,
+            favorSmallIntegerClosure: snapSmall,
+            maxDenSnap: maxDen,
+            dotMode: dotMode,
+            dotSize: Float(dotSize),
+            persistenceEnabled: effectivePersistence,
+            halfLifeSeconds: Float(effectiveHalfLife)
+        )
+    }
 
     var body: some View {
         ZStack {
@@ -125,12 +156,7 @@ struct LissajousCard: View {
                     LissajousMetalView(
                         theme: theme,
                         rootHz: rootHz,
-                        config: LissajousRenderer.Config(
-                            mode: scopeRenderMode,
-                            sampleCount: 768,
-                            persistenceEnabled: true,
-                            halfLifeSeconds: 0.6
-                        )
+                        config: previewConfig
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .padding(12) // match Settings preview padding
@@ -145,98 +171,6 @@ struct LissajousCard: View {
         .onAppear { ToneOutputEngine.shared.setScopeMode(.liveActiveSignals(activeSignals))
         }
         .onDisappear { ToneOutputEngine.shared.setScopeMode(.liveActiveSignals([]))  }
-        .sheet(isPresented: $showSettings) { settingsSheet }
         .accessibilityLabel("Lissajous Oscilloscope")
-    }
-
-    // Settings
-    private var gearButton: some View {
-        Button { showSettings = true } label: {
-            Image(systemName: "slider.horizontal.3")
-                .font(.system(size: 14, weight: .semibold))
-                .padding(8)
-                .background(.ultraThinMaterial, in: Circle())
-        }
-        .padding(10)
-        .accessibilityLabel("Lissajous settings")
-    }
-
-    private var settingsSheet: some View {
-        NavigationView {
-            Form {
-                Section(header: Text("Display")) {
-                    Toggle("Grid", isOn: $showGrid)
-                    Toggle("Axes", isOn: $showAxes)
-                    Stepper("Grid divisions: \(gridDivs)", value: $gridDivs, in: 2...16)
-                    HStack {
-                        Text("Stroke")
-                        Slider(value: $strokeWidth, in: 0.5...3.0)
-                        Text("\(strokeWidth, specifier: "%.1f")")
-                            .monospacedDigit().foregroundStyle(.secondary)
-                    }
-                    Toggle("Dot-only mode", isOn: $dotMode)
-                    if dotMode {
-                        HStack {
-                            Text("Dot size")
-                            Slider(value: $dotSize, in: 1...6)
-                            Text("\(dotSize, specifier: "%.0f")").monospacedDigit().foregroundStyle(.secondary)
-                        }
-                    }
-                }
-                Section(header: Text("Phosphor")) {
-                    Toggle("Persistence", isOn: $persistenceEnabled)
-                    HStack {
-                        Text("Half-life")
-                        Slider(value: $halfLife, in: 0.2...2.0)
-                        Text("\(halfLife, specifier: "%.2f")s")
-                            .monospacedDigit().foregroundStyle(.secondary)
-                    }
-                }
-                Section(header: Text("Closure")) {
-                    Toggle("Favor small-integer closure", isOn: $snapSmall)
-                    Stepper("Max denominator: \(maxDen)", value: $maxDen, in: 6...64)
-                }
-            }
-            .navigationTitle("XY Lissajous")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showSettings = false } } }
-        }
-        .presentationDetents([.medium, .large])
-    }
-}
-
-// MARK: - MTKView bridge
-private struct LissajousMetalView: UIViewRepresentable {
-    let theme: LatticeTheme
-    let rootHz: Double
-    let pair: (RatioResult, RatioResult) = (.init(num: 1, den: 1, octave: 0),
-                                           .init(num: 1, den: 1, octave: 0))
-    let config: LissajousRenderer.Config
-
-    func makeUIView(context: Context) -> MTKView {
-        let v = MTKView()
-        v.isPaused = false
-        v.enableSetNeedsDisplay = false
-        v.preferredFramesPerSecond = 60
-        context.coordinator.attach(to: v)
-        return v
-    }
-    func updateUIView(_ uiView: MTKView, context: Context) {
-        let r = context.coordinator.renderer!
-        r.setTheme(theme)
-        r.setRatios(
-            x: .init(num: pair.0.num, den: pair.0.den, octave: pair.0.octave),
-            y: .init(num: pair.1.num, den: pair.1.den, octave: pair.1.octave),
-            rootHz: rootHz
-        )
-        r.setConfig { $0 = config } // apply full config atomically
-    }
-    func makeCoordinator() -> Coordinator { Coordinator() }
-    final class Coordinator: NSObject {
-        var renderer: LissajousRenderer?
-        func attach(to view: MTKView) {
-            renderer = LissajousRenderer(mtkView: view)
-            view.delegate = renderer
-        }
     }
 }
