@@ -396,30 +396,35 @@ struct StudioConsoleView: View {
         LatticeGridMode(rawValue: gridModeRaw) ?? .outlines
     }
 
-    private var oscEffectiveFPS: Int { reduceMotion ? 30 : 60 }
-    private var oscEffectivePersistence: Bool { reduceTransparency ? false : lissaPersistenceEnabled }
-    private var oscEffectiveHalfLife: Double { reduceTransparency ? 0.35 : lissaHalfLife }
-    private var oscEffectiveAlpha: Double { reduceTransparency ? min(lissaGlobalAlpha, 0.6) : lissaGlobalAlpha }
-    private var oscEffectiveLiveSamples: Int { reduceMotion ? max(64, Int(Double(lissaLiveSamples) * 0.6)) : lissaLiveSamples }
+    private var oscEffectiveValues: LissajousPreviewConfigBuilder.EffectiveValues {
+        LissajousPreviewConfigBuilder.effectiveValues(
+            liveSamples: lissaLiveSamples,
+            globalAlpha: lissaGlobalAlpha,
+            dotSize: lissaDotSize,
+            persistenceEnabled: lissaPersistenceEnabled,
+            halfLife: lissaHalfLife,
+            reduceMotion: reduceMotion,
+            reduceTransparency: reduceTransparency
+        )
+    }
     private var oscPreviewConfig: LissajousRenderer.Config {
-        LissajousRenderer.Config(
-            mode: .live,
-            sampleCount: oscEffectiveLiveSamples,
-            preferredFPS: oscEffectiveFPS,
-            samplesPerCurve: oscEffectiveLiveSamples,
-            ribbonWidth: Float(lissaRibbonWidth),
+        LissajousPreviewConfigBuilder.makeConfig(
+            liveSamples: lissaLiveSamples,
+            samplesPerCurve: lissaSamplesPerCurve,
             gridDivs: lissaGridDivs,
             showGrid: lissaShowGrid,
             showAxes: lissaShowAxes,
-            globalAlpha: Float(oscEffectiveAlpha),
-            edgeAA: 1.0,
-            favorSmallIntegerClosure: lissaSnapSmall,
-            maxDenSnap: lissaMaxDen,
-            dotMode: true,
-            dotSize: Float(lissaDotSize),
-            persistenceEnabled: oscEffectivePersistence,
-            halfLifeSeconds: Float(oscEffectiveHalfLife)
-        )
+            ribbonWidth: lissaRibbonWidth,
+            dotMode: lissaDotMode,
+            dotSize: lissaDotSize,
+            globalAlpha: lissaGlobalAlpha,
+            persistenceEnabled: lissaPersistenceEnabled,
+            halfLife: lissaHalfLife,
+            snapSmall: lissaSnapSmall,
+            maxDen: lissaMaxDen,
+            reduceMotion: reduceMotion,
+            reduceTransparency: reduceTransparency
+        ).config
     }
     
     // MARK: - Settings-only dummy oscilloscope preview (no audio engine / no Metal)
@@ -2488,41 +2493,20 @@ struct StudioConsoleView: View {
                     LatticeThemeID(rawValue: latticeThemeID) ?? .classicBO,
                     dark: effectiveIsDark
                 )
-                Group {
-                    if #available(iOS 26.0, *) {
-                        GlassEffectContainer {
-                            SettingsLissajousPreview(
-                                e3: theme.e3,
-                                e5: theme.e5,
-                                samples: oscEffectiveLiveSamples,
-                                gridDivs: lissaGridDivs,
-                                showGrid: lissaShowGrid,
-                                showAxes: lissaShowAxes,
-                                strokeWidth: lissaRibbonWidth,
-                                dotMode: lissaDotMode,
-                                dotSize: lissaDotSize,
-                                globalAlpha: oscEffectiveAlpha
-                            )
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        }
-                        .glassEffect(.regular, in: .rect(cornerRadius: 12))
-                    } else {
-                        SettingsLissajousPreview(
-                            e3: theme.e3,
-                            e5: theme.e5,
-                            samples: oscEffectiveLiveSamples,
-                            gridDivs: lissaGridDivs,
-                            showGrid: lissaShowGrid,
-                            showAxes: lissaShowAxes,
-                            strokeWidth: lissaRibbonWidth,
-                            dotMode: lissaDotMode,
-                            dotSize: lissaDotSize,
-                            globalAlpha: oscEffectiveAlpha
-                        )
-                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    }
+                LissajousPreviewFrame(contentPadding: 0, showsFill: false) {
+                    SettingsLissajousPreview(
+                        e3: theme.e3,
+                        e5: theme.e5,
+                        samples: oscEffectiveValues.liveSamples,
+                        gridDivs: lissaGridDivs,
+                        showGrid: lissaShowGrid,
+                        showAxes: lissaShowAxes,
+                        strokeWidth: lissaRibbonWidth,
+                        dotMode: lissaDotMode,
+                        dotSize: oscEffectiveValues.dotSize,
+                        globalAlpha: oscEffectiveValues.alpha
+                    )
                 }
-                .frame(height: 180)
 
 
                 Divider()

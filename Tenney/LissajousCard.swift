@@ -24,6 +24,7 @@ struct LissajousCard: View {
     @AppStorage(SettingsKeys.lissaShowGrid) private var showGrid: Bool = true
     @AppStorage(SettingsKeys.lissaShowAxes) private var showAxes: Bool = true
     @AppStorage(SettingsKeys.lissaStrokeWidth) private var ribbonWidth: Double = 1.5
+    @AppStorage(SettingsKeys.lissaDotMode) private var dotMode: Bool = false
     @AppStorage(SettingsKeys.lissaDotSize) private var dotSize: Double = 2.0
     @AppStorage(SettingsKeys.lissaPersistence) private var persistenceEnabled: Bool = true
     @AppStorage(SettingsKeys.lissaHalfLife) private var halfLife: Double = 0.6
@@ -95,47 +96,37 @@ struct LissajousCard: View {
         .padding(12)
     }
 
-    private var effectiveFPS: Int { reduceMotion ? 30 : 60 }
-    private var effectivePersistence: Bool { reduceTransparency ? false : persistenceEnabled }
-    private var effectiveHalfLife: Double { reduceTransparency ? 0.35 : halfLife }
-    private var effectiveAlpha: Double { reduceTransparency ? min(globalAlpha, 0.6) : globalAlpha }
-    private var effectiveLiveSamples: Int { reduceMotion ? max(64, Int(Double(liveSamples) * 0.6)) : liveSamples }
-
     private var previewConfig: LissajousRenderer.Config {
-        LissajousRenderer.Config(
-            mode: .live,
-            sampleCount: effectiveLiveSamples,
-            preferredFPS: effectiveFPS,
+        LissajousPreviewConfigBuilder.makeConfig(
+            liveSamples: liveSamples,
             samplesPerCurve: samplesPerCurve,
-            ribbonWidth: Float(ribbonWidth),
             gridDivs: gridDivs,
             showGrid: showGrid,
             showAxes: showAxes,
-            globalAlpha: Float(effectiveAlpha),
-            edgeAA: 1.0,
-            favorSmallIntegerClosure: snapSmall,
-            maxDenSnap: maxDen,
-            dotMode: true,
-            dotSize: Float(dotSize),
-            persistenceEnabled: effectivePersistence,
-            halfLifeSeconds: Float(effectiveHalfLife)
-        )
+            ribbonWidth: ribbonWidth,
+            dotMode: dotMode,
+            dotSize: dotSize,
+            globalAlpha: globalAlpha,
+            persistenceEnabled: persistenceEnabled,
+            halfLife: halfLife,
+            snapSmall: snapSmall,
+            maxDen: maxDen,
+            reduceMotion: reduceMotion,
+            reduceTransparency: reduceTransparency
+        ).config
     }
 
     var body: some View {
-        ZStack {
-            GlassCard(corner: 16) {
-                ZStack(alignment: .topLeading) {
-                    // plot “preview window” inside the card
-                    LissajousMetalView(
-                        theme: theme,
-                        rootHz: rootHz,
-                        config: previewConfig
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .padding(12) // match Settings preview padding
-                    .overlay(alignment: .bottomLeading) { axisChips }
-                }
+        LissajousPreviewFrame {
+            ZStack(alignment: .bottomLeading) {
+                LissajousMetalView(
+                    theme: theme,
+                    rootHz: rootHz,
+                    config: previewConfig
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                axisChips
             }
         }
         .onChange(of: activeSignals) { newSignals in

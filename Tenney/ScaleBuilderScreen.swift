@@ -392,7 +392,7 @@ struct ScaleBuilderScreen: View {
                         activeSignals: scopeSignals,
                         rootHz: store.payload.rootHz
                     )
-                    .frame(maxWidth: .infinity, minHeight: 220)
+                    .frame(maxWidth: .infinity, minHeight: 180)
                     .accessibilityIdentifier("LissajousCard")
 
                     LazyVGrid(
