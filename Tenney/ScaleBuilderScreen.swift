@@ -9,8 +9,38 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 import AVFoundation
-
+    
 struct ScaleBuilderScreen: View {
+    @AppStorage(SettingsKeys.lissaGridDivs)   private var lissaGridDivs: Int = 8
+    @AppStorage(SettingsKeys.lissaShowGrid)   private var lissaShowGrid: Bool = true
+    @AppStorage(SettingsKeys.lissaShowAxes)   private var lissaShowAxes: Bool = true
+    @AppStorage(SettingsKeys.lissaStrokeWidth) private var lissaRibbonWidth: Double = 1.5
+    @AppStorage(SettingsKeys.lissaDotMode)    private var lissaDotMode: Bool = false
+    @AppStorage(SettingsKeys.lissaDotSize)    private var lissaDotSize: Double = 2.0
+    @AppStorage(SettingsKeys.lissaLiveSamples) private var lissaLiveSamples: Int = 768
+    @AppStorage(SettingsKeys.lissaGlobalAlpha) private var lissaGlobalAlpha: Double = 1.0
+    @AppStorage(SettingsKeys.latticeThemeID) private var latticeThemeID: String = LatticeThemeID.classicBO.rawValue
+    @AppStorage(SettingsKeys.latticeThemeStyle) private var themeStyleRaw: String = ThemeStyleChoice.system.rawValue
+
+    @Environment(\.colorScheme) private var systemScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    private var effectiveIsDark: Bool {
+        (themeStyleRaw == "dark") || (themeStyleRaw == "system" && systemScheme == .dark)
+    }
+
+    private var oscEffectiveValues: LissajousPreviewConfigBuilder.EffectiveValues {
+        LissajousPreviewConfigBuilder.effectiveValues(
+            liveSamples: lissaLiveSamples,
+            globalAlpha: lissaGlobalAlpha,
+            dotSize: lissaDotSize,
+            persistenceEnabled: true,          // Builder preview is Canvas-only; keep Settings behavior
+            halfLife: 0.6,                     // (value irrelevant here; EffectiveValues just gates alpha/dots)
+            reduceMotion: reduceMotion,
+            reduceTransparency: reduceTransparency
+        )
+    }
+
     // MARK: - Export config types
     
     private struct ExportFormat: OptionSet {
@@ -40,6 +70,28 @@ struct ScaleBuilderScreen: View {
             }
         }
     }
+    
+    private var builderLissajousRatios: (x: (n: Int, d: Int)?, y: (n: Int, d: Int)?) {
+        // Prefer most-recent selection (selectedPad) first, then the rest in stable order.
+        var ids: [Int] = []
+        if let sel = selectedPad, latched.contains(sel) { ids.append(sel) }
+        ids.append(contentsOf: latched.sorted().filter { $0 != selectedPad })
+
+        guard let first = ids.first else { return (nil, nil) }
+
+        func tuple(for idx: Int) -> (n: Int, d: Int) {
+            let base = store.degrees[idx]
+            let off = padOctaveOffset[idx, default: 0]
+            let baked = ratioWithPadOffsetBaked(base, offset: off)
+            let (cn, cd) = canonicalPQUnit(baked.p, baked.q)
+            return (n: cn, d: cd)
+        }
+
+        let x = tuple(for: first)
+        let y: (n: Int, d: Int) = (ids.count >= 2) ? tuple(for: ids[1]) : x
+        return (x: x, y: y)
+    }
+
     
     private var scopeSignals: [ToneOutputEngine.ScopeSignal] {
         // stable pad order: by pad index
@@ -123,6 +175,7 @@ struct ScaleBuilderScreen: View {
     
     var body: some View {
         ZStack(alignment: .topTrailing) {
+            Color(.systemBackground).ignoresSafeArea()   //  baseline
             VStack(spacing: 12) {
                 header
                 
@@ -388,12 +441,33 @@ struct ScaleBuilderScreen: View {
             // Large tap zones for performance; two columns by default
             ScrollView {
                 VStack(spacing: 10) {
-                    LissajousCard(
-                        activeSignals: scopeSignals,
-                        rootHz: store.payload.rootHz
+                    let theme = ThemeRegistry.theme(
+                        LatticeThemeID(rawValue: latticeThemeID) ?? .classicBO,
+                        dark: effectiveIsDark
                     )
+
+                    let xy = builderLissajousRatios
+
+                    LissajousPreviewFrame(contentPadding: 0, showsFill: false) {
+                        LissajousCanvasPreview(
+                            e3: theme.e3,
+                            e5: theme.e5,
+                            samples: oscEffectiveValues.liveSamples,
+                            gridDivs: lissaGridDivs,
+                            showGrid: lissaShowGrid,
+                            showAxes: lissaShowAxes,
+                            strokeWidth: lissaRibbonWidth,
+                            dotMode: lissaDotMode,
+                            dotSize: oscEffectiveValues.dotSize,
+                            globalAlpha: oscEffectiveValues.alpha,
+                            idleMode: .empty,
+                            xRatio: xy.x,
+                            yRatio: xy.y
+                        )
+                    }
                     .frame(maxWidth: .infinity, minHeight: 180)
                     .accessibilityIdentifier("LissajousCard")
+
 
                     LazyVGrid(
                         columns: [

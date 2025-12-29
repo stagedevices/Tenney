@@ -160,15 +160,10 @@ struct LatticeView: View {
                 return TenneyDistanceNode(screen: screen, exps: exps)
             }
         }
+        guard keys.count == 2 else { return [] }
 
-        // If exactly two selected keys, use both; otherwise use first + last as the "distance endpoints".
-        if keys.count == 1 {
-            guard let n0 = node(for: keys[0]) else { return [] }
-            return [n0]
-        } else {
-            guard let n0 = node(for: keys.first!), let n1 = node(for: keys.last!) else { return [] }
-            return [n0, n1]
-        }
+        guard let n0 = node(for: keys[0]), let n1 = node(for: keys[1]) else { return [] }
+        return [n0, n1]
     }
 
 
