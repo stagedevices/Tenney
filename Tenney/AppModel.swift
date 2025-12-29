@@ -23,6 +23,7 @@ final class AppModel: ObservableObject {
     @Published var builderPresented: Bool = false
     private var _recenterObserver: NSObjectProtocol?
     init() {
+    
         _recenterObserver = NotificationCenter.default.addObserver(
             forName: UIApplication.willResignActiveNotification,
             object: nil,
@@ -32,6 +33,8 @@ final class AppModel: ObservableObject {
             UserDefaults.standard.set(true, forKey: SettingsKeys.latticeRecenterPending)
         }
         AppModelLocator.shared = self
+        let done = UserDefaults.standard.bool(forKey: SettingsKeys.setupWizardDone)
+            self.showOnboardingWizard = !done
     }
     
     deinit {

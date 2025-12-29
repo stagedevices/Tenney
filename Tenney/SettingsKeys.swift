@@ -49,7 +49,12 @@ enum SettingsKeys {
     static let a4Choice      = "tenney.tuner.a4Choice"     // "440" | "442" | "custom"
     static let a4CustomHz    = "tenney.tuner.a4CustomHz"   // Double
     static let staffA4Hz     = "tenney.tuner.staffA4Hz"    // Double (cached, used by NotationFormatter)
-    
+    // Tuner UI style (Zen Gauge vs Chrono Dial)
+    static let tunerViewStyle = "Tenney.Tuner.ViewStyle"
+
+    // Confidence / needle behavior
+    static let tunerNeedleHoldMode = "Tenney.Tuner.NeedleHoldMode"
+
     // First-run wizard
         static let hasRunSetupV1   = "Tenney.Setup.HasRunV1"
         static let startDefaultTab = "Tenney.Setup.StartDefaultTab" // "lattice" / "tuner"
@@ -71,7 +76,7 @@ enum SettingsKeys {
     
     static let latticeConnectionMode = "Tenney.Lattice.Connection.Mode" // String: chain|loop|gridPath
     static let builderExportCustomA4Hz = "Tenney.Builder.ExportCustomA4Hz"
-
+    static let latticeSoundEnabled = "Tenney.Latticetice.SoundEnabled"
     
     static let builderExportFormats   = "Tenney.Builder.ExportFormats"
         static let builderExportRootMode  = "Tenney.Builder.ExportRootMode"

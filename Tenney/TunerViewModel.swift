@@ -9,6 +9,10 @@ import Combine
 import AVFoundation
 @MainActor
 final class TunerViewModel: ObservableObject {
+    private func asResult(_ r: Ratio) -> RatioResult {
+        RatioResult(num: r.n, den: r.d, octave: 0)
+    }
+
     // Stage text
     @Published var displayRatio: String = "—"
     @Published var centsText: String = "—"
@@ -28,9 +32,25 @@ final class TunerViewModel: ObservableObject {
     @Published var useTestTone: Bool = false {
         didSet { tracker.setTestTone(enabled: useTestTone, hz: 220.0) }
     }
+    
+    @Published var lastHzValue: Double = 0
+    @Published var nearestTarget: RatioResult? = nil
+    @Published var nearestCentsValue: Double = 0
+    @Published var confidenceValue: Double = 0
+    @Published var isFarValue: Bool = false
+
 
     private let tracker: PitchTracker
     private let resolver = RatioResolver()
+    
+    private func confidenceFromRMS(_ rms: Float) -> Double {
+        // RMS is linear 0..1-ish; tune these bounds for your input chain.
+        let x = Double(rms)
+        let lo = 0.008
+        let hi = 0.060
+        return max(0, min(1, (x - lo) / (hi - lo)))
+    }
+
 
     init(tracker: PitchTracker = PitchTracker(strictness: .performance)) {
         // Configure detection
@@ -44,7 +64,9 @@ final class TunerViewModel: ObservableObject {
                         self.handle(hz: hz, monotonic: t)
                     },
                     onMetrics: { [weak self] rms in
-                        self?.inputRMS = rms
+                        guard let self else { return }
+                        self.inputRMS = rms
+                        self.confidenceValue = self.confidenceFromRMS(rms)
                     }
                 )
 
@@ -62,10 +84,36 @@ final class TunerViewModel: ObservableObject {
     deinit { tracker.shutdown() }
 
     private func handle(hz: Double, monotonic: Double) {
-            let (r, cents, alts) = resolver.resolve(frequencyHz: hz, monotonicTime: monotonic)
-        displayRatio = "\(r.n)/\(r.d)"
-                centsText = String(format: "%+0.1f cents", cents)
-                hzText = String(format: "%0.2f Hz", hz)
-                altRatios = alts.map { "\($0.n)/\($0.d)" }
+        lastHzValue = hz
+
+        // Keep existing resolver call; but prefer an overload that returns RatioResult + alts as RatioResult.
+        let (r0, cents0, alts0) = resolver.resolve(frequencyHz: hz, monotonicTime: monotonic)
+        let r = asResult(r0)
+        let alts = alts0.map(asResult)
+
+        // Start from resolver’s primary result.
+        var best = (target: r, cents: cents0)
+
+        // If resolver provides alternates, pick the one that minimizes |cents|.
+        if !alts.isEmpty {
+            for a in alts {
+                let cAlt = signedCents(actualHz: hz, rootHz: rootHz, target: a)
+                if abs(cAlt) < abs(best.cents) {
+                    best = (a, cAlt)
+                }
+            }
         }
+
+        nearestTarget = best.target
+        nearestCentsValue = best.cents
+
+        // “too far” threshold (post-selection)
+        isFarValue = abs(best.cents) > 120
+
+        displayRatio = "\(best.target.num)/\(best.target.den)"
+        centsText = String(format: "%+0.1f cents", best.cents)
+        hzText = String(format: "%0.2f Hz", hz)
+        altRatios = alts.map { "\($0.num)/\($0.den)" }
+    }
+
 }

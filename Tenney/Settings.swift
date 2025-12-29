@@ -295,9 +295,44 @@ struct AudioRoutingSnapshot: Equatable {
     }
 }
 
+// Neutral / white glass circle for back button
+ private struct GlassWhiteCircle: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .background(
+                Group {
+                    if #available(iOS 26.0, *) {
+                        Circle()
+                            .fill(.clear)
+                            .glassEffect(
+                                .regular,
+                                in: Circle()
+                            )
+                    } else {
+                        Circle()
+                            .fill(.ultraThinMaterial)
+                    }
+                }
+            )
+            .overlay(
+                Circle()
+                    .stroke(Color.secondary.opacity(0.16), lineWidth: 1)
+            )
+    }
+}
+
+private extension View {
+    func glassWhiteCircle() -> some View {
+        self.modifier(GlassWhiteCircle())
+    }
+}
 
 struct StudioConsoleView: View {
-    
+    @State private var homeQuery: String = ""
+
+    @AppStorage(SettingsKeys.latticeSoundEnabled)
+    private var latticeSoundEnabled: Bool = true
+
     @State private var settingsHeaderBaselineMinY: CGFloat? = nil
     @AppStorage(SettingsKeys.latticeConnectionMode)
     private var latticeConnectionModeRaw: String = LatticeConnectionMode.chain.rawValue
@@ -427,6 +462,53 @@ struct StudioConsoleView: View {
         ).config
     }
     
+    @State private var activeCategory: SettingsCategory? = nil // nil = home screen
+    private let catAnim = Animation.easeInOut(duration: 0.22)
+
+    
+    private enum SettingsCategory: String, CaseIterable, Identifiable {
+        var pageTitle: String {
+            switch self {
+            case .lattice:      return "Lattice UI"
+            case .oscilloscope: return "Oscilloscope"
+            case .stage:        return "Stage Mode"
+            case .audio:        return "Audio Engine & Headroom"
+            case .general:      return "General"
+            }
+        }
+
+        var pageSubtitle: String {
+            switch self {
+            case .lattice:      return "View, grid, theme, distance"
+            case .oscilloscope: return "Lissajous preview + pro controls"
+            case .stage:        return "Dim, accent, performance behavior"
+            case .audio:        return "Devices, tone, envelope, limiter"
+            case .general:      return "Setup, tuning, defaults, about"
+            }
+        }
+
+        case lattice, oscilloscope, stage, audio, general
+        var id: String { rawValue }
+        var title: String {
+            switch self {
+            case .lattice:      return "Lattice UI"
+            case .oscilloscope: return "Oscilloscope"
+            case .stage:        return "Stage Mode"
+            case .audio:        return "Audio Engine"
+            case .general:      return "General"
+            }
+        }
+        var icon: String {
+            switch self {
+            case .lattice:      return "hexagon"
+            case .oscilloscope: return "waveform.path.ecg"
+            case .stage:        return "rectangle.on.rectangle.angled"
+            case .audio:        return "waveform.and.mic"
+            case .general:      return "gearshape"
+            }
+        }
+    }
+
     
 
     fileprivate static func tenneyGCD(_ a: Int, _ b: Int) -> Int {
@@ -502,12 +584,106 @@ struct StudioConsoleView: View {
         if snapped != gridStrength { gridStrength = snapped }
     }
     
-    
-    // MARK: - Scroll offset (reliable; UIKit KVO)
-    
+    private struct SubpageTopBar: View {
+        let title: String
+        let subtitle: String
+        @Environment(\.tenneyTheme) private var theme
+
+        var body: some View {
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(title)
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(theme.isDark ? Color.white : Color.black)
+                    .lineLimit(1)
+
+                Text(subtitle)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+            }
+            .multilineTextAlignment(.trailing)
+        }
+    }
+
+    private struct GlassChoiceChip: View {
+        let title: String
+        let systemImage: String
+        let selected: Bool
+        let tap: () -> Void
+
+        @Environment(\.tenneyTheme) private var theme
+
+        private var grad: LinearGradient {
+            LinearGradient(colors: [theme.e3, theme.e5], startPoint: .topLeading, endPoint: .bottomTrailing)
+        }
+
+        var body: some View {
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                tap()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: systemImage)
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(selected ? AnyShapeStyle(grad) : AnyShapeStyle(Color.secondary))
+                        .blendMode(selected ? (theme.isDark ? .screen : .darken) : .normal)
+                        .frame(width: 18)
+                        .contentTransition(.symbolEffect(.replace))
+
+                    Text(title)
+                        .font(.footnote.weight(selected ? .semibold : .regular))
+                        .foregroundStyle(selected ? (theme.isDark ? Color.white : Color.black) : Color.secondary)
+                        .lineLimit(2) // ✅ allow 2 lines if needed
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity)
+                .background(selected ? AnyShapeStyle(.thinMaterial) : AnyShapeStyle(.ultraThinMaterial), in: Capsule())
+                .overlay(
+                    Capsule().stroke(
+                        selected ? AnyShapeStyle(grad) : AnyShapeStyle(Color.secondary.opacity(0.12)),
+                        lineWidth: 1
+                    )
+                )
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .symbolEffect(.bounce, value: selected)
+        }
+    }
+
+//MARK: - Search
+    private func fuzzyMatch(_ q: String, in s: String) -> Bool {
+        let q = q.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if q.isEmpty { return true }
+        let s = s.lowercased()
+
+        // fast path: substring
+        if s.contains(q) { return true }
+
+        // subsequence fuzzy: "osc" matches "Oscilloscope"
+        var i = s.startIndex
+        for ch in q {
+            guard let found = s[i...].firstIndex(of: ch) else { return false }
+            i = s.index(after: found)
+        }
+        return true
+    }
+
+    private var filteredHomeCategories: [SettingsCategory] {
+        let q = homeQuery
+        if q.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return SettingsCategory.allCases
+        }
+        return SettingsCategory.allCases.filter { cat in
+            fuzzyMatch(q, in: cat.title) || fuzzyMatch(q, in: homeSummary(for: cat))
+        }
+    }
 
 
     // MARK: - Chip / Tile primitives (match Theme + Pro Audio visual language)
+    
     private struct DetentChip: View {
         let title: String
         let systemImage: String
@@ -649,7 +825,493 @@ struct StudioConsoleView: View {
     }
 
 
-    
+    private enum OscilloscopePage: String, CaseIterable, Identifiable {
+        case view, trace, persistence, snapping
+        var id: String { rawValue }
+        var title: String {
+            switch self {
+            case .view:        return "View"
+            case .trace:       return "Trace"
+            case .persistence: return "Persistence"
+            case .snapping:    return "Snapping"
+            }
+        }
+    }
+
+    private struct OscilloscopeControlsPager: View {
+        // View
+        @Binding var showGrid: Bool
+        @Binding var showAxes: Bool
+        @Binding var gridDivs: Int
+
+        // Trace
+        @Binding var ribbonWidth: Double
+        @Binding var dotMode: Bool
+        @Binding var dotSize: Double
+        @Binding var liveSamples: Int
+        @Binding var globalAlpha: Double
+
+        // Persistence
+        @Binding var persistenceEnabled: Bool
+        @Binding var halfLife: Double
+
+        // Snapping
+        @Binding var snapSmall: Bool
+        @Binding var maxDen: Int
+
+        @Environment(\.tenneyTheme) private var theme
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+        @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+        private var pageGrad: LinearGradient {
+            LinearGradient(
+                colors: [theme.e3, theme.e5],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+
+        @State private var page: OscilloscopePage = .view
+        private let pageAnim = Animation.easeInOut(duration: 0.22)
+
+        // Smooth height animation (same trick as Lattice UI)
+        @State private var panelHeights: [OscilloscopePage: CGFloat] = [:]
+        @State private var panelHeight: CGFloat = 0
+
+        private struct PanelHeightKey: PreferenceKey {
+            static var defaultValue: CGFloat = 0
+            static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+        }
+
+        private struct MeasuredPage<Content: View>: View {
+            let id: OscilloscopePage
+            @Binding var active: OscilloscopePage
+            @Binding var heights: [OscilloscopePage: CGFloat]
+            @Binding var currentHeight: CGFloat
+            let pageAnim: Animation
+            @ViewBuilder var content: () -> Content
+
+            var body: some View {
+                content()
+                    .fixedSize(horizontal: false, vertical: true)
+                    .background(
+                        GeometryReader { geo in
+                            Color.clear.preference(key: PanelHeightKey.self, value: geo.size.height)
+                        }
+                    )
+                    .onPreferenceChange(PanelHeightKey.self) { h in
+                        guard h > 0 else { return }
+                        heights[id] = h
+                        guard active == id else { return }
+                        if abs(currentHeight - h) > 0.5 {
+                            withAnimation(pageAnim) { currentHeight = h }
+                        } else {
+                            currentHeight = h
+                        }
+                    }
+            }
+        }
+
+        private func icon(for p: OscilloscopePage) -> String {
+            switch p {
+            case .view:        return "square.grid.3x3"
+            case .trace:       return "waveform"
+            case .persistence: return "clock.arrow.circlepath"
+            case .snapping:    return "number"
+            }
+        }
+
+        private func onOff(_ v: Bool) -> String { v ? "On" : "Off" }
+
+        private var viewSummary: String {
+            "Grid: \(onOff(showGrid)) · Axes: \(onOff(showAxes)) · Divs: \(gridDivs)"
+        }
+
+        private var traceSummary: String {
+            let w = String(format: "%.1f", ribbonWidth)
+            let a = String(format: "%.2f", globalAlpha)
+            return "Width: \(w) · Dots: \(onOff(dotMode)) · Live: \(liveSamples) · α \(a)"
+        }
+
+        private var persistenceSummary: String {
+            let hl = String(format: "%.2f", halfLife)
+            let rm = reduceMotion ? " · Reduce Motion" : ""
+            let rt = reduceTransparency ? " · Reduce Transparency" : ""
+            return "On: \(onOff(persistenceEnabled)) · Half-life: \(hl)s\(rm)\(rt)"
+        }
+
+        private var snappingSummary: String {
+            "Favor small closure: \(onOff(snapSmall)) · Max den: \(maxDen)"
+        }
+
+        private func summary(for p: OscilloscopePage) -> String {
+            switch p {
+            case .view:        return viewSummary
+            case .trace:       return traceSummary
+            case .persistence: return persistenceSummary
+            case .snapping:    return snappingSummary
+            }
+        }
+
+        private func switchTo(_ p: OscilloscopePage) {
+            guard page != p else { return }
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            if let h = panelHeights[p], h > 0 { panelHeight = h }
+            withAnimation(pageAnim) { page = p }
+        }
+
+        @ViewBuilder private func pageChip(_ p: OscilloscopePage) -> some View {
+            let active = (page == p)
+
+            Button { switchTo(p) } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: icon(for: p))
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(
+                            active ? AnyShapeStyle(pageGrad) : AnyShapeStyle(Color.secondary)
+                        )
+                        .blendMode(active ? (theme.isDark ? .screen : .darken) : .normal)
+                        .frame(width: 18)
+                        .contentTransition(.symbolEffect(.replace))
+
+                    Text(p.title)
+                        .font(.footnote.weight(active ? .semibold : .regular))
+                        .foregroundStyle(
+                            active ? (theme.isDark ? Color.white : Color.black) : Color.secondary
+                        )
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity)
+                .background(
+                    active ? AnyShapeStyle(.thinMaterial) : AnyShapeStyle(.ultraThinMaterial),
+                    in: Capsule()
+                )
+                .overlay(
+                    Capsule().stroke(
+                        active ? AnyShapeStyle(pageGrad) : AnyShapeStyle(Color.secondary.opacity(0.12)),
+                        lineWidth: 1
+                    )
+                )
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .symbolEffect(.bounce, value: active)
+        }
+
+        private var pageSwitcher: some View {
+            VStack(alignment: .leading, spacing: 8) {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 10) {
+                        pageChip(.view)
+                        pageChip(.trace)
+                        pageChip(.persistence)
+                        pageChip(.snapping)
+                    }
+                    VStack(spacing: 10) {
+                        HStack(spacing: 10) { pageChip(.view); pageChip(.trace) }
+                        HStack(spacing: 10) { pageChip(.persistence); pageChip(.snapping) }
+                    }
+                }
+
+                Text(summary(for: page))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .padding(.horizontal, 6)
+                    .contentTransition(.opacity)
+                    .animation(.easeOut(duration: 0.14), value: page)
+            }
+            .padding(6)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
+            )
+        }
+
+        private struct PageHeader: View {
+            let title: String
+            let systemImage: String
+            @Environment(\.tenneyTheme) private var theme
+
+            private var headerGradient: LinearGradient {
+                LinearGradient(colors: [theme.e3, theme.e5], startPoint: .topLeading, endPoint: .bottomTrailing)
+            }
+
+            var body: some View {
+                HStack(spacing: 10) {
+                    Image(systemName: systemImage)
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(headerGradient)
+                        .blendMode(theme.isDark ? .screen : .darken)
+                        .frame(width: 22)
+
+                    Text(title)
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(theme.isDark ? Color.white : Color.black)
+                }
+                .padding(.bottom, 2)
+            }
+        }
+
+        private func panelContainer<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+            content()
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
+                )
+        }
+
+        // Small “left/right” pill steppers (same visual family as MajorEveryStepperChip)
+        private struct IntStepperChip: View {
+            let title: String
+            let systemImage: String
+            @Binding var value: Int
+            let range: ClosedRange<Int>
+
+            private func step(_ dir: Int) {
+                value = max(range.lowerBound, min(range.upperBound, value + dir))
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            }
+
+            var body: some View {
+                HStack(spacing: 10) {
+                    Button { withAnimation(.snappy) { step(-1) } } label: {
+                        Image(systemName: "chevron.left")
+                            .frame(width: 34, height: 34)
+                            .background(.ultraThinMaterial, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+
+                    HStack(spacing: 8) {
+                        Image(systemName: systemImage)
+                            .symbolRenderingMode(.hierarchical)
+
+                        ViewThatFits(in: .horizontal) {
+                            Text("\(title): \(value)")
+                            Text("\(title) \(value)")
+                        }
+                        .font(.footnote.weight(.semibold))
+                        .monospacedDigit()
+                        .lineLimit(1)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .layoutPriority(1)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .overlay(Capsule().stroke(Color.secondary.opacity(0.12), lineWidth: 1))
+
+                    Button { withAnimation(.snappy) { step(+1) } } label: {
+                        Image(systemName: "chevron.right")
+                            .frame(width: 34, height: 34)
+                            .background(.ultraThinMaterial, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+
+        // Pages
+        private var viewPage: some View {
+            VStack(alignment: .leading, spacing: 12) {
+                PageHeader(title: "View", systemImage: icon(for: .view))
+
+                HStack(spacing: 10) {
+                    StageToggleChip(
+                        title: "Grid",
+                        systemNameOn: "square.grid.3x3.fill",
+                        systemNameOff: "square.grid.3x3",
+                        isOn: $showGrid
+                    )
+                    StageToggleChip(
+                        title: "Axes",
+                        systemNameOn: "ruler.fill",
+                        systemNameOff: "ruler",
+                        isOn: $showAxes
+                    )
+                }
+
+                IntStepperChip(title: "Grid divs", systemImage: "number", value: $gridDivs, range: 2...16)
+
+                Text("These affect both the Oscilloscope preview and Builder Lissajous.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+
+        private var tracePage: some View {
+            VStack(alignment: .leading, spacing: 12) {
+                PageHeader(title: "Trace", systemImage: icon(for: .trace))
+
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Text("Ribbon width")
+                        Spacer()
+                        Text(verbatim: String(format: "%.1f", ribbonWidth))
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
+                    Slider(value: $ribbonWidth, in: 0.5...4.0)
+                }
+
+                HStack(spacing: 10) {
+                    StageToggleChip(
+                        title: "Dots",
+                        systemNameOn: "circle.fill",
+                        systemNameOff: "circle",
+                        isOn: $dotMode
+                    )
+                }
+
+                if dotMode {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text("Dot size")
+                            Spacer()
+                            Text(verbatim: String(format: "%.1f", dotSize))
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
+                        }
+                        Slider(value: $dotSize, in: 1.0...6.0)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Text("Live density")
+                        Spacer()
+                        Text("\(liveSamples)")
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
+                    Slider(
+                        value: Binding(get: { Double(liveSamples) }, set: { liveSamples = Int($0) }),
+                        in: 128...2048
+                    )
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Text("Global alpha")
+                        Spacer()
+                        Text(verbatim: String(format: "%.2f", globalAlpha))
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
+                    Slider(value: $globalAlpha, in: 0.2...1.0)
+                }
+            }
+        }
+
+        private var persistencePage: some View {
+            VStack(alignment: .leading, spacing: 12) {
+                PageHeader(title: "Persistence", systemImage: icon(for: .persistence))
+
+                StageToggleChip(
+                    title: "Enabled",
+                    systemNameOn: "clock.arrow.circlepath",
+                    systemNameOff: "clock",
+                    isOn: $persistenceEnabled
+                )
+
+                if persistenceEnabled {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text("Half-life")
+                            Spacer()
+                            Text(verbatim: "\(String(format: "%.2f", halfLife))s")
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
+                        }
+                        Slider(value: $halfLife, in: 0.2...2.0)
+                    }
+                }
+
+                Text("Reduce Motion / Reduce Transparency may lower effective persistence.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+
+        private var snappingPage: some View {
+            VStack(alignment: .leading, spacing: 12) {
+                PageHeader(title: "Snapping", systemImage: icon(for: .snapping))
+
+                StageToggleChip(
+                    title: "Favor small closure",
+                    systemNameOn: "checkmark.seal.fill",
+                    systemNameOff: "checkmark.seal",
+                    isOn: $snapSmall
+                )
+
+                IntStepperChip(title: "Max den", systemImage: "number", value: $maxDen, range: 6...64)
+
+                Text("Used by the closure heuristics when rendering or inferring ratios.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+
+        private var pagedPanel: some View {
+            ZStack(alignment: .topLeading) {
+                switch page {
+                case .view:
+                    panelContainer {
+                        MeasuredPage(id: .view, active: $page, heights: $panelHeights, currentHeight: $panelHeight, pageAnim: pageAnim) {
+                            viewPage
+                        }
+                    }
+                    .id("osc.panel.view")
+                    .transition(.opacity)
+
+                case .trace:
+                    panelContainer {
+                        MeasuredPage(id: .trace, active: $page, heights: $panelHeights, currentHeight: $panelHeight, pageAnim: pageAnim) {
+                            tracePage
+                        }
+                    }
+                    .id("osc.panel.trace")
+                    .transition(.opacity)
+
+                case .persistence:
+                    panelContainer {
+                        MeasuredPage(id: .persistence, active: $page, heights: $panelHeights, currentHeight: $panelHeight, pageAnim: pageAnim) {
+                            persistencePage
+                        }
+                    }
+                    .id("osc.panel.persistence")
+                    .transition(.opacity)
+
+                case .snapping:
+                    panelContainer {
+                        MeasuredPage(id: .snapping, active: $page, heights: $panelHeights, currentHeight: $panelHeight, pageAnim: pageAnim) {
+                            snappingPage
+                        }
+                    }
+                    .id("osc.panel.snapping")
+                    .transition(.opacity)
+                }
+            }
+            .frame(height: panelHeight > 0 ? panelHeight : nil, alignment: .topLeading)
+            .clipped()
+            .animation(pageAnim, value: page)
+            .animation(pageAnim, value: panelHeight)
+        }
+
+        var body: some View {
+            VStack(alignment: .leading, spacing: 12) {
+                pageSwitcher
+                pagedPanel
+            }
+        }
+    }
+
     private struct AudioEnginePager: View {
         @Binding var cfg: ToneOutputEngine.Config
         @Binding var safeAmp: Double
@@ -1138,10 +1800,16 @@ struct StudioConsoleView: View {
         static var defaultValue: CGFloat = 0
         static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
     }
+    
+    
 
+
+    
     private struct LatticeUIControlsPager: View {
-        @Binding var latticeConnectionModeRaw: String
+        @State private var parallaxOffset: CGFloat = 0
 
+        @Binding var latticeConnectionModeRaw: String
+        @Binding var soundOn: Bool   // ✅ add
         @Environment(\.tenneyTheme) private var theme
 
         private var pageGrad: LinearGradient {
@@ -1434,6 +2102,12 @@ struct StudioConsoleView: View {
                         systemNameOff: "viewfinder.circle",
                         isOn: $alwaysRecenter
                     )
+                    StageToggleChip(
+                            title: "Sound",
+                            systemNameOn: "speaker.wave.2.fill",
+                            systemNameOff: "speaker.slash",
+                            isOn: $soundOn
+                        )
                 }
 
                 ZoomPresetStepperControl(
@@ -1605,6 +2279,7 @@ struct StudioConsoleView: View {
         }
 
         private var gridPage: some View {
+            
             VStack(alignment: .leading, spacing: 12) {
                 PageHeader(title: "View", systemImage: icon(for: .view))
 
@@ -1618,6 +2293,15 @@ struct StudioConsoleView: View {
 
                             GridStrengthStepperChip(strength: $gridStrength)
                         }
+                        .onAppear {
+                            if #available(iOS 26.0, *) {
+                                withAnimation(.easeInOut(duration: 3).repeatForever(autoreverses: true)) {
+                                    parallaxOffset = 6
+                                }
+                            }
+                        }
+                        .onDisappear { parallaxOffset = 0 }
+
                         .onAppear { snapGridStrengthIfNeeded() }
                         .onChange(of: gridStrength) { _ in snapGridStrengthIfNeeded() }
 
@@ -1896,6 +2580,54 @@ struct StudioConsoleView: View {
                         .navigationBarBackButtonHidden(true)
                         .toolbar(.hidden, for: .navigationBar)
                 }
+                .overlay(alignment: .topLeading) {
+                    if activeCategory != nil {
+                        Button {
+                            withAnimation(catAnim) { activeCategory = nil }
+                        } label: {
+                            Image(systemName: "chevron.backward")
+                                .font(.headline.weight(.semibold))
+                                .frame(width: 40, height: 40)
+                                .contentShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .glassWhiteCircle()
+                        .padding(.top, 20)
+                        .padding(.leading, 20)
+                        .transition(.opacity)
+                    }
+                }
+                .overlay(alignment: .topTrailing) {
+                    if activeCategory == nil {
+                        Button {
+                            dismiss()
+                        } label: {
+                            ZStack {
+                                Circle()
+                                    .modifier(GlassBlueCircle()) // ✅ reuse same blue glass modifier
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 18, weight: .bold))
+                                    .foregroundStyle(.white)
+                            }
+                            .frame(width: 44, height: 44)
+                            .contentShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.top, 20)
+                        .padding(.trailing, 20)
+                        .transition(.opacity)
+                    }
+                }
+
+                .overlay(alignment: .topTrailing) {
+                    if let cat = activeCategory {
+                        SubpageTopBar(title: cat.pageTitle, subtitle: cat.pageSubtitle)
+                            .padding(.top, 22)
+                            .padding(.trailing, 20)
+                            .transition(.opacity)
+                    }
+                }
+
                 .environment(
                     \.tenneyTheme,
                 ThemeRegistry.theme(
@@ -1903,6 +2635,7 @@ struct StudioConsoleView: View {
                     dark: effectiveIsDark
                 )
             )
+                
             .statusBar(hidden: stageHideStatus)
             .preferredColorScheme(settingsScheme)
             .sheet(isPresented: $showWhatsNewSheet, onDismiss: {
@@ -1988,50 +2721,6 @@ struct StudioConsoleView: View {
         }
     }
 
-
-    // MARK: - Sticky Settings header (shared)
-    private struct SettingsHeaderBar: View {
-        let progress: CGFloat          // 0 expanded → 1 collapsed
-        let hSizeClass: UserInterfaceSizeClass?
-        let isDark: Bool
-
-        private func lerp(_ a: CGFloat, _ b: CGFloat, _ t: CGFloat) -> CGFloat { a + (b - a) * t }
-
-        var body: some View {
-            let p = progress
-
-            let titleBig: CGFloat   = (hSizeClass == .compact ? 34 : 30)
-            let titleSmall: CGFloat = 24
-            let titleSize = lerp(titleBig, titleSmall, p)
-
-            let subBig: CGFloat   = 16
-            let subSmall: CGFloat = 13
-            let subSize = lerp(subBig, subSmall, p)
-
-            VStack(alignment: .leading, spacing: lerp(6, 3, p)) {
-                Text("Settings")
-                    .font(.system(size: titleSize, weight: .bold))
-                    .foregroundStyle(isDark ? Color.white : Color.black)
-                    .lineLimit(1)
-
-                Text("Tuner & Lattice Algorithm Configs")
-                    .font(.system(size: subSize, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
-
-                Divider()
-                    .opacity(p * 0.9)
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, lerp(16, 10, p))
-            .padding(.bottom, lerp(8, 4, p))
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.ultraThinMaterial)
-            .transaction { $0.animation = nil }
-        }
-    }
-
     
     // MARK: - Split content
     private var contentStack: some View {
@@ -2044,18 +2733,6 @@ struct StudioConsoleView: View {
             )
 
             ScrollView {
-                // ✅ header participates in scroll geometry, then pins itself
-                SettingsHeaderBar(progress: settingsHeaderProgress, hSizeClass: hSizeClass, isDark: effectiveIsDark)
-                    .background(
-                        GeometryReader { geo in
-                            Color.clear.preference(
-                                key: SettingsHeaderMinYKey.self,
-                                value: geo.frame(in: .named("settings.scroll")).minY
-                            )
-                        }
-                    )
-                    .offset(y: settingsHeaderPinned)
-                    .zIndex(50)
                 gridView
             }
             .coordinateSpace(name: "settings.scroll")
@@ -2114,25 +2791,328 @@ struct StudioConsoleView: View {
         .transaction { $0.animation = nil }
     }
 
-
-
-
     private var gridView: some View {
-        LazyVGrid(columns: columns, spacing: 14) {
-            whatsNewSection
-            latticeUISection
-            oscilloscopeSection
-            stageSection
-            defaultViewSection
-            // labelingSection
-            // overlaysSection
-            soundSection          // now the Type A Audio Engine section
-            tuningSection
-            quickSetupCard
-            aboutSection
+        ZStack {
+            if activeCategory == nil {
+                homeScreen
+                    .transition(.opacity)
+            } else if let cat = activeCategory {
+                ScrollView {
+                    VStack(spacing: 16) {
+                        categoryContent(for: cat)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 18)
+                   .padding(.top, 84)     // clears back button + top bar
+                   .padding(.bottom, 20)
+                }
+                .transition(.opacity)
+            }
         }
-        .padding(.vertical, 14)
-        .padding(.horizontal, 14)
+        .animation(catAnim, value: activeCategory)
+    }
+
+    private var homeScreen: some View {
+        VStack(spacing: 14) {
+
+            // tighter header (less dead space)
+            HStack(alignment: .firstTextBaseline) {
+                Text("Settings")
+                    .font(.largeTitle.bold())
+                Spacer()
+            }
+
+            // ✅ full-width search field (fuzzy)
+            HStack(spacing: 10) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+
+                TextField("Search settings", text: $homeQuery)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+
+                if !homeQuery.isEmpty {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        withAnimation(.snappy) { homeQuery = "" }
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .font(.callout)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
+            )
+
+            // grid (tighter spacing, filtered)
+            LazyVGrid(
+                columns: columns,
+                spacing: 14
+            ) {
+                // Full-width large tiles (stacked vertically)
+                ForEach(filteredHomeCategories.filter { $0 == .lattice || $0 == .oscilloscope }) { cat in
+                    GlassSelectTile(
+                        title: cat.title,
+                        icon: cat.icon,
+                        subtitle: homeSummary(for: cat),
+                        badgeText: (cat == .oscilloscope && whatsNewIsUnread) ? "NEW" : nil,
+                        isFullWidth: true
+                    ) {
+                        withAnimation(catAnim) { activeCategory = cat }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 180)
+                    .gridCellColumns(columns.count) // spans entire width, even on iPad
+                }
+
+                // Remaining categories (regular grid)
+                ForEach(filteredHomeCategories.filter { ![.lattice, .oscilloscope].contains($0) }) { cat in
+                    GlassSelectTile(
+                        title: cat.title,
+                        icon: cat.icon,
+                        subtitle: homeSummary(for: cat),
+                        badgeText: (cat == .oscilloscope && whatsNewIsUnread) ? "NEW" : nil
+                    ) {
+                        withAnimation(catAnim) { activeCategory = cat }
+                    }
+                }
+            }
+
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 18)
+    }
+
+
+    // MARK: - Home tile summaries (for the SettingsCategory grid)
+    private func homeSummary(for cat: SettingsCategory) -> String {
+
+        func onOff(_ v: Bool) -> String { v ? "On" : "Off" }
+
+        func nodeCode(_ raw: String) -> String {
+            switch NodeSizeChoice(rawValue: raw) ?? .m {
+            case .s:     return "S"
+            case .m:     return "M"
+            case .mplus: return "M+"
+            case .l:     return "L"
+            }
+        }
+
+        func gridName(_ raw: String) -> String {
+            switch LatticeGridMode(rawValue: raw) ?? .outlines {
+            case .off:      return "Off"
+            case .outlines: return "Hex"
+            case .triMesh:  return "Tri"
+            @unknown default:
+                return "Hex"
+            }
+        }
+
+        func waveLabel(_ wave: ToneOutputEngine.GlobalWave) -> String {
+            audioWaveOptions.first(where: { $0.wave == wave })?.label ?? "Custom"
+        }
+
+        switch cat {
+        case .lattice:
+            let labelsPct = Int((StudioConsoleView.nearestDetent(labelDensity, in: StudioConsoleView.labelDensityDetents) * 100).rounded())
+            return "Theme: \(latticeThemeID) · Grid: \(gridName(gridModeRaw)) · Nodes: \(nodeCode(nodeSize)) · Labels: \(labelsPct)%"
+
+        case .oscilloscope:
+            let w = String(format: "%.1f", lissaRibbonWidth)
+            return "Grid: \(onOff(lissaShowGrid)) · Live: \(lissaLiveSamples) · Width: \(w) · Persist: \(onOff(lissaPersistenceEnabled))"
+
+        case .stage:
+            let style = ThemeStyleChoice(rawValue: themeStyleRaw) ?? .system
+            let dimLocked = (style == .dark) || (style == .system && systemScheme == .dark)
+            let dimText = dimLocked ? "Dim: Locked" : "Dim: \(Int((stageDimLevel * 100).rounded()))%"
+            let accent = stageAccent.capitalized
+            return "\(dimText) · Accent: \(accent) · Minimal: \(onOff(stageMinimalUI))"
+
+        case .audio:
+            let safePct = Int((StudioConsoleView.nearestDetent(safeAmp, in: StudioConsoleView.safeAmpDetents) * 100).rounded())
+            return "Wave: \(waveLabel(cfg.wave)) · Limiter: \(onOff(cfg.limiterOn)) · Safe: \(safePct)%"
+
+        case .general:
+            return "A4: \(Int(a4Staff.rounded())) Hz · Default: \(defaultView.capitalized)"
+        }
+    }
+
+    
+    @ViewBuilder private func categoryContent(for cat: SettingsCategory) -> some View {
+        switch cat {
+        case .lattice:      latticeUISection
+        case .oscilloscope: oscilloscopeSection
+        case .stage:        stageSection
+        case .audio:        soundSection
+        case .general:
+            VStack(spacing: 14) {
+                quickSetupCard
+                tuningSection
+                defaultViewSection
+                whatsNewSection
+                aboutSection
+            }
+        }
+    }
+    
+    private struct GlassSelectTile: View {
+        let title: String
+        var icon: String? = nil
+        var subtitle: String? = nil
+        var badgeText: String? = nil
+        var isOn: Bool = false
+        var isFullWidth: Bool = false
+        let tap: () -> Void
+
+        @Environment(\.tenneyTheme) private var theme
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+        @State private var pressed = false
+
+        private var grad: LinearGradient {
+            LinearGradient(colors: [theme.e3, theme.e5],
+                           startPoint: .topLeading,
+                           endPoint: .bottomTrailing)
+        }
+
+        @Environment(\.scrollProgress) private var scrollProgress
+        @State private var parallaxOffset: CGFloat = 0
+
+        @ViewBuilder private var embellishment: some View {
+            let dim = 1.0 - (scrollProgress * 0.25)
+            let parallax = reduceMotion ? 0 : parallaxOffset
+
+            switch title {
+            case "Lattice UI":
+                SettingsLatticePreview()
+                    .environment(\.latticePreviewMode, true)
+                    .environment(\.latticePreviewHideChips, true)
+                    .allowsHitTesting(false)
+                    .disabled(true)
+                    .opacity(dim * 0.6)
+                    .blur(radius: scrollProgress * 2)
+                    .offset(y: parallax)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .padding(6)
+                    .animation(.easeInOut(duration: 0.3), value: scrollProgress)
+
+            case "Oscilloscope":
+                LissajousCanvasPreview(
+                    e3: theme.e3,
+                    e5: theme.e5,
+                    samples: 256,
+                    gridDivs: 8,
+                    showGrid: true,
+                    showAxes: false,
+                    strokeWidth: 1.2,
+                    dotMode: false,
+                    dotSize: 1.5,
+                    globalAlpha: 0.9
+                )
+                .opacity(dim * 0.6)
+                .blur(radius: scrollProgress * 2)
+                .offset(y: parallax)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .padding(6)
+                .animation(.easeInOut(duration: 0.3), value: scrollProgress)
+
+            default:
+                EmptyView()
+            }
+        }
+
+
+        var body: some View {
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                tap()
+            } label: {
+                ZStack(alignment: .topTrailing) {
+                    // background glass
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(isOn ? .thinMaterial : .ultraThinMaterial)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .stroke(
+                                    isOn ? AnyShapeStyle(grad)
+                                         : AnyShapeStyle(Color.secondary.opacity(0.12)),
+                                    lineWidth: 1
+                                )
+                        )
+                        // ✅ subtle glass shadow
+                        .shadow(color: Color.black.opacity(0.1), radius: 12, x: 0, y: 6)
+                        .shadow(color: Color.white.opacity(theme.isDark ? 0.05 : 0.15), radius: 4, x: 0, y: -2)
+
+                    // optional embellishment render
+                    if isFullWidth {
+                        embellishment
+                    }
+
+                    // textual content overlay
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(alignment: .center, spacing: 10) {
+                            if let icon {
+                                Image(systemName: icon)
+                                    .font(.title3.weight(.semibold))
+                                    .foregroundStyle(AnyShapeStyle(grad))
+                                    .blendMode(theme.isDark ? .screen : .darken)
+                                    .frame(width: 22)
+                            }
+
+                            Text(title)
+                                .font(isFullWidth ? .title3.bold() : .headline.weight(.semibold))
+                                .foregroundStyle(theme.isDark ? Color.white : Color.black)
+                                .lineLimit(1)
+
+                            Spacer()
+
+                            if isOn {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .imageScale(.small)
+                                    .symbolRenderingMode(.hierarchical)
+                                    .foregroundStyle(AnyShapeStyle(grad))
+                                    .blendMode(theme.isDark ? .screen : .darken)
+                                    .transition(.opacity)
+                            }
+                        }
+
+                        if let subtitle {
+                            Text(subtitle)
+                                .font(isFullWidth ? .footnote : .caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .padding(isFullWidth ? 18 : 14)
+
+                    // badge
+                    if let badgeText {
+                        Text(badgeText)
+                            .font(.caption2.weight(.black))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(.thinMaterial, in: Capsule())
+                            .foregroundStyle(.secondary)
+                            .padding(10)
+                    }
+                }
+                .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .scaleEffect((pressed && !reduceMotion) ? 0.985 : 1)
+            }
+            .buttonStyle(.plain)
+            .pressEvents { down in
+                if reduceMotion { return }
+                withAnimation(.easeOut(duration: 0.12)) { pressed = down }
+            }
+        }
     }
 
     @ToolbarContentBuilder
@@ -2340,15 +3320,17 @@ struct StudioConsoleView: View {
 
     @ViewBuilder private var oscilloscopeSection: some View {
         glassCard(
-            icon: "waveform.path.ecg",
-            title: "Oscilloscope",
-            subtitle: "Lissajous preview + pro controls"
+            icon: "",
+            title: "",
+            subtitle: ""
         ) {
             VStack(alignment: .leading, spacing: 12) {
                 let theme = ThemeRegistry.theme(
                     LatticeThemeID(rawValue: latticeThemeID) ?? .classicBO,
                     dark: effectiveIsDark
                 )
+
+                // ✅ static preview window (same “preview then pager” pattern as Lattice UI)
                 LissajousPreviewFrame(contentPadding: 0, showsFill: false) {
                     LissajousCanvasPreview(
                         e3: theme.e3,
@@ -2364,75 +3346,32 @@ struct StudioConsoleView: View {
                     )
                 }
 
-
-                Divider()
-
-                VStack(alignment: .leading, spacing: 10) {
-                    Toggle("Show grid", isOn: $lissaShowGrid)
-                    Toggle("Show axes", isOn: $lissaShowAxes)
-
-                    HStack {
-                        Text("Grid divisions")
-                        Spacer()
-                        Stepper("\(lissaGridDivs)", value: $lissaGridDivs, in: 2...16)
-                    }
-
-                    HStack {
-                        Text("Ribbon width")
-                        Slider(value: $lissaRibbonWidth, in: 0.5...4.0)
-                        Text(verbatim: String(format: "%.1f", lissaRibbonWidth))
-                            .monospacedDigit()
-                            .foregroundStyle(.secondary)
-                    }
-
-                    
-
-                    HStack {
-                        Text("Live density")
-                        Slider(value: Binding(
-                            get: { Double(lissaLiveSamples) },
-                            set: { lissaLiveSamples = Int($0) }
-                        ), in: 128...2048)
-                        Text("\(lissaLiveSamples)")
-                            .monospacedDigit()
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Toggle("Persistence", isOn: $lissaPersistenceEnabled)
-                    if lissaPersistenceEnabled {
-                        HStack {
-                            Text("Half-life")
-                            Slider(value: $lissaHalfLife, in: 0.2...2.0)
-                            Text(verbatim: "\(String(format: "%.2f", lissaHalfLife))s")
-                                .monospacedDigit()
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-
-                    HStack {
-                        Text("Global alpha")
-                        Slider(value: $lissaGlobalAlpha, in: 0.2...1.0)
-                        Text(verbatim: String(format: "%.2f", lissaGlobalAlpha))
-                            .monospacedDigit()
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Toggle("Favor small-integer closure", isOn: $lissaSnapSmall)
-                    HStack {
-                        Text("Max denominator")
-                        Stepper("\(lissaMaxDen)", value: $lissaMaxDen, in: 6...64)
-                    }
-                }
+                // ✅ pager + panel controls (matches Lattice UI)
+                OscilloscopeControlsPager(
+                    showGrid: $lissaShowGrid,
+                    showAxes: $lissaShowAxes,
+                    gridDivs: $lissaGridDivs,
+                    ribbonWidth: $lissaRibbonWidth,
+                    dotMode: $lissaDotMode,
+                    dotSize: $lissaDotSize,
+                    liveSamples: $lissaLiveSamples,
+                    globalAlpha: $lissaGlobalAlpha,
+                    persistenceEnabled: $lissaPersistenceEnabled,
+                    halfLife: $lissaHalfLife,
+                    snapSmall: $lissaSnapSmall,
+                    maxDen: $lissaMaxDen
+                )
             }
             .font(.callout)
         }
     }
 
+
     @ViewBuilder private var stageSection: some View {
         glassCard(
-            icon: "rectangle.on.rectangle.angled",
-            title: "Stage Mode",
-            subtitle: "Dim, accent, performance behavior"
+            icon: "",
+            title: "",
+            subtitle: ""
         ) {
             let dimLocked = isExplicitDarkStyle || isAutoAndCurrentlyDark
 
@@ -2642,14 +3581,24 @@ struct StudioConsoleView: View {
             title: "Default Screen",
             subtitle: "Which screen opens on launch"
         ) {
-            HStack(spacing: 12) {
-                GlassSelectTile(title: "Lattice", isOn: defaultView == "lattice") {
+            HStack(spacing: 10) {
+                GlassChoiceChip(
+                    title: "Lattice",
+                    systemImage: "hexagon",
+                    selected: defaultView == "lattice"
+                ) {
                     withAnimation(.snappy) { defaultView = "lattice" }
                 }
-                GlassSelectTile(title: "Tuner", isOn: defaultView == "tuner") {
+
+                GlassChoiceChip(
+                    title: "Tuner",
+                    systemImage: "tuningfork",
+                    selected: defaultView == "tuner"
+                ) {
                     withAnimation(.snappy) { defaultView = "tuner" }
                 }
             }
+
             Text("Matches the first-run setup. Reorders the Utility Bar so your default is on the left.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
@@ -2660,12 +3609,13 @@ struct StudioConsoleView: View {
 
     @ViewBuilder private var latticeUISection: some View {
         glassCard(
-            icon: "hexagon",
-            title: "Lattice UI",
-            subtitle: "View, grid, theme, distance"
+            icon: "",
+            title: "",
+            subtitle: ""
         ) {
             LatticeUIControlsPager(
                 latticeConnectionModeRaw: $latticeConnectionModeRaw,
+                soundOn: $latticeSoundEnabled,
                 nodeSizeRaw: $nodeSize,
                 labelDensity: $labelDensity,
                 guidesOn: $guidesOn,
@@ -2852,9 +3802,9 @@ struct StudioConsoleView: View {
 
     @ViewBuilder private var soundSection: some View {
         glassCard(
-            icon: "waveform.and.mic",
-            title: "Audio Engine & Headroom",
-            subtitle: "Devices, tone, envelope, limiter"
+            icon: "",
+            title: "",
+            subtitle: ""
         ) {
             AudioEnginePager(cfg: $cfg, safeAmp: $safeAmp)
         }
@@ -3155,11 +4105,17 @@ struct StudioConsoleView: View {
         subtitle: String? = nil,
         @ViewBuilder _ content: () -> some View
     ) -> some View {
+       let hasHeader = !title.isEmpty
+           || !(subtitle?.isEmpty ?? true)
+           || !systemName.isEmpty
         VStack(alignment: .leading, spacing: 12) {
-            SectionHeader(systemName: systemName, title: title, subtitle: subtitle)
+           if hasHeader {
+               SectionHeader(systemName: systemName, title: title, subtitle: subtitle)
+           }
             content()
         }
         .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             Group {
                 if #available(iOS 26.0, *) {
@@ -3434,3 +4390,20 @@ private extension CGPoint {
     static let topLeading     = CGPoint(x: 0, y: 0)
     static let bottomTrailing = CGPoint(x: 1, y: 1)
 }
+
+private extension View {
+    func pressEvents(_ onChange: @escaping (Bool) -> Void) -> some View {
+        simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in onChange(true) }
+                .onEnded { _ in onChange(false) }
+        )
+    }
+}
+ 
+extension EnvironmentValues { var scrollProgress: CGFloat {
+    get { self[ScrollProgressKey.self] }
+    set { self[ScrollProgressKey.self] = newValue }
+}
+}
+private struct ScrollProgressKey: EnvironmentKey { static let defaultValue: CGFloat = 0 }

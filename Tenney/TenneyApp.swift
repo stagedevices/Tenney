@@ -8,10 +8,17 @@
 import SwiftUI
 import AVFAudio
 
+
 @main
 struct TenneyApp: App {
     
-    
+    private func seedLatticeSoundDefaultIfNeeded() {
+        let ud = UserDefaults.standard
+        if ud.object(forKey: SettingsKeys.latticeSoundEnabled) == nil {
+            ud.set(true, forKey: SettingsKeys.latticeSoundEnabled)
+        }
+    }
+
     @AppStorage(SettingsKeys.latticeThemeStyle)
     private var themeStyleRaw: String = ThemeStyleChoice.system.rawValue
 
@@ -27,6 +34,7 @@ struct TenneyApp: App {
     @StateObject private var appModel = AppModel()
 
     init() {
+        seedLatticeSoundDefaultIfNeeded()
         configureAudioSessionFromDefaults()
     }
 

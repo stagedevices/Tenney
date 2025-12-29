@@ -82,3 +82,17 @@ final class RatioResolver {
         return Array(scored.prefix(maxCount)).map { $0.0 }
     }
 }
+
+func resolve(frequencyHz: Double, monotonicTime: Double) -> (RatioResult, Double, [RatioResult]) {
+    // Wrap your existing internal result into RatioResult.
+    // 1) Choose nearest target (your current logic).
+    // 2) Also return a short list of alternates (e.g. top 6–10) within primeLimit.
+    // IMPORTANT: no “stickiness” that prevents hard retarget when very wrong.
+    //
+    // Implementation sketch:
+    // - let nearest = ...
+    // - let cents = ...
+    // - let alts = ... (sorted by abs cents)
+    // - return (nearest, cents, alts)
+    fatalError("Implement using your existing resolver internals")
+}

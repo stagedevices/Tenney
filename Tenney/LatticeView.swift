@@ -36,6 +36,12 @@ enum LatticeGridMode: String, CaseIterable, Identifiable {
 
 
 struct LatticeView: View {
+    @AppStorage(SettingsKeys.latticeSoundEnabled)
+    private var latticeSoundEnabled: Bool = true
+
+    @inline(__always)
+    private var latticeAudioAllowed: Bool { latticeSoundEnabled }
+
     
     init(
         previewGridMode: LatticeGridMode? = nil,
@@ -89,6 +95,11 @@ struct LatticeView: View {
 
     private var overlayChipPrimes: [Int] {
         PrimeConfig.primes.filter { $0 != 2 && $0 != 3 && $0 != 5 }
+    }
+
+    private func stopAllLatticeVoices(hard: Bool = true) {
+        releaseInfoVoice(hard: hard)
+        store.stopAllLatticeVoices(hard: hard)
     }
 
     private func toggleAllOverlayChipPrimes() {
@@ -1693,18 +1704,30 @@ struct LatticeView: View {
         }
     }
     
-    // ⬇️ REPLACE your switchInfoTone(...) with:
     private func switchInfoTone(toHz hz: Double, newOffset: Int) {
+        // ✅ If lattice sound is disabled, do not start/stack preview voices.
+        guard latticeAudioAllowed else {
+            if let id = infoVoiceID {
+                ToneOutputEngine.shared.release(id: id, seconds: 0.0)
+                infoVoiceID = nil
+            }
+            infoOctaveOffset = newOffset
+            return
+        }
+
         // Pause ONLY the focused node’s selection sustain so we don’t hear both
         if let c = focusedPoint?.coord, pausedForInfoCoord == nil {
             store.pauseSelectionVoice(for: c, hard: true)
             pausedForInfoCoord = c
         }
+
         // Stop any previous preview instantly, then start the new one
         if let id = infoVoiceID { ToneOutputEngine.shared.release(id: id, seconds: 0.0) }
+        guard (UserDefaults.standard.object(forKey: SettingsKeys.latticeSoundEnabled) as? Bool ?? true) else { return }
         infoVoiceID = ToneOutputEngine.shared.sustain(freq: hz, amp: 0.22)
         infoOctaveOffset = newOffset
     }
+
     
     // MARK: - Axis Shift contrast (white/black by tint luminance)
     private enum AxisShiftContrast {
@@ -2988,7 +3011,14 @@ struct LatticeView: View {
                             .onPreferenceChange(SelectionTrayHeightKey.self) { trayHeight = $0 }
                             .onPreferenceChange(BottomHUDHeightKey.self) { bottomHUDHeight = $0 }
                     }
-            
+            .onChange(of: latticeSoundEnabled) { enabled in
+                guard !enabled else { return }
+                // ✅ kill any local preview voice immediately
+                releaseInfoVoice(hard: true)
+                // ✅ also stop any selection audition/sustain currently running
+                stopAllLatticeVoices(hard: true)
+            }
+
                 .onReceive(NotificationCenter.default.publisher(for: .settingsChanged)) { note in
                     applySettingsChanged(note)
                     

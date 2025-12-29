@@ -380,7 +380,7 @@ final class LatticeStore: ObservableObject {
             selected.insert(c)
             selectionOrder.append(c)
             startSelectionAnim(key, targetOn: true)
-            if auditionEnabled {
+            if auditionEnabled && latticeSoundEnabled {
                 pendingPlaneAudition[c]?.cancel()
 
                 let now = Date()
@@ -428,6 +428,7 @@ final class LatticeStore: ObservableObject {
     // Re-start audition for the current selection set (if wanted later).
     func reAuditionSelectionIfNeeded() {
         guard auditionEnabled else { return }
+        guard latticeSoundEnabled else { return }
         // This function is a "restart"; ensure we don't stack voices.
         stopSelectionAudio(hard: true)
         for c in selectionOrder {
@@ -457,6 +458,7 @@ final class LatticeStore: ObservableObject {
     func resumeSelectionVoiceIfNeeded(for c: LatticeCoord) {
         guard pausedPlane.remove(c) != nil else { return }               // was paused for preview?
         guard auditionEnabled, selected.contains(c), voiceForCoord[c] == nil else { return }
+        guard latticeSoundEnabled else { return }
         let f = exactFreq(for: c)
         let amp = amplitude(for: c)
         let id = ToneOutputEngine.shared.sustain(freq: f, amp: amp, owner: .lattice, attackMs: 8, releaseMs: 60)
@@ -488,7 +490,7 @@ final class LatticeStore: ObservableObject {
             selectionOrderGhosts.append(g)
             startSelectionAnim(key, targetOn: true)
 
-            if auditionEnabled {
+            if auditionEnabled && latticeSoundEnabled {
                 pendingGhostAudition[g]?.cancel()
 
                 let now = Date()
@@ -702,6 +704,10 @@ final class LatticeStore: ObservableObject {
         NotificationCenter.default.addObserver(forName: .settingsChanged, object: nil, queue: .main) { [weak self] note in
             guard let self else { return }
             
+            if note.userInfo?[SettingsKeys.latticeSoundEnabled] != nil, !self.latticeSoundEnabled {
+                self.stopAllLatticeVoices(hard: true)
+            }
+
             if let raw = note.userInfo?[SettingsKeys.tenneyDistanceMode] as? String,
                let m = TenneyDistanceMode(rawValue: raw) {
                 self.tenneyDistanceMode = m
@@ -754,6 +760,7 @@ final class LatticeStore: ObservableObject {
                 guard let self = self else { return }
                 AppModelLocator.shared?.playTestTone = false
                 if on {
+                    guard self.latticeSoundEnabled else { return }
                     if self.selectionOrder.isEmpty && self.selectionOrderGhosts.isEmpty {
                         // Select AND start 1/1 explicitly (no dependence on toggleSelection side-effects).
                         let unison = LatticeCoord(e3: 0, e5: 0)
@@ -800,6 +807,13 @@ final class LatticeStore: ObservableObject {
     private var voiceForCoord: [LatticeCoord: Int] = [:]
     private var lastTriggerAtGhost: [GhostMonzo: Date] = [:]
     private var voiceForGhost: [GhostMonzo: Int] = [:]
+    
+    // Default true when unset.
+        private var latticeSoundEnabled: Bool {
+            let ud = UserDefaults.standard
+            if ud.object(forKey: SettingsKeys.latticeSoundEnabled) == nil { return true }
+            return ud.bool(forKey: SettingsKeys.latticeSoundEnabled)
+        }
 
     /// Exact-ratio frequency for a 3×5-plane coord, folded into [root/2, 2*root].
     private func exactFreq(for c: LatticeCoord) -> Double {

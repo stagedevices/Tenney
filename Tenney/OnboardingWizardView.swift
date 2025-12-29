@@ -49,13 +49,23 @@ struct OnboardingWizardView: View {
     @State private var previewA4On: Bool = false
 
     var body: some View {
-        VStack(spacing: 12) {
-            progressPips
-            glassStepCard
-            controls
+        GeometryReader { geo in
+            VStack(spacing: 12) {
+                Image("LaunchLogo")
+                    .resizable()
+                    .scaledToFit()                 // ✅ no warping
+                    .frame(height: geo.size.height * 0.33)
+                    .padding(.horizontal, 24)
+                    .padding(.top, geo.safeAreaInsets.top + 12)
+
+                progressPips
+                glassStepCard
+                controls
+            }
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
         }
         .padding(8)
-        .background(.clear) // absolutely no extra background between wizard and tuner
+        .background(.clear)
         
         .onAppear {
             // Seed from current app state
@@ -327,6 +337,8 @@ struct OnboardingWizardView: View {
             } else {
                 DoneButton(ns: animationNamespace, action: {
                     withAnimation {
+                        setupWizardDone = true          //  persist completion
+                        app.showOnboardingWizard = false //  dismiss immediately (if you present off this)
                         onDone()
                     }
                 })
@@ -379,7 +391,10 @@ private struct SelectTile: View {
 
 
 // MARK: - Tone preview helpers
-private func startTone(_ hz: Double) { _ = ToneOutputEngine.shared.start(frequency: hz) }
+private func startTone(_ hz: Double) {
+    guard (UserDefaults.standard.object(forKey: "Tenney.SoundOn") as? Bool ?? true) else { return }
+    _ = ToneOutputEngine.shared.start(frequency: hz)
+}
 private func setTone(_ hz: Double)   { ToneOutputEngine.shared.setFrequency(hz) }
 private func stopTone()               { ToneOutputEngine.shared.stop() }
 

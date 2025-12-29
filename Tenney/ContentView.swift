@@ -8,6 +8,7 @@
 import Foundation
 import SwiftUI
 import AVFoundation
+import UIKit
 
 enum AppScreenMode: String, CaseIterable, Identifiable { case tuner, lattice; var id: String { rawValue } }
 
@@ -548,6 +549,12 @@ extension Notification.Name {
 private struct TunerCard: View {
     @EnvironmentObject private var model: AppModel
     @StateObject private var store = TunerStore()
+    private var liveHz: Double { model.display.hz }
+    private var liveCents: Double { model.display.cents }
+    private var liveConf: Double { model.display.confidence }
+    private var liveNearest: RatioResult? { parseRatio(model.display.ratioText) }
+
+    @StateObject private var hold = NeedleHoldState()
     @State private var currentNearest: RatioResult? = nil
     @Binding var stageActive: Bool
 
@@ -574,6 +581,12 @@ private struct TunerCard: View {
                 // Header row: Mode glyph strip (left) • Stage toggle (right)
                 HStack {
                     TunerModeStrip(mode: $store.mode)
+                    TunerViewStyleStrip(
+                        style: Binding(
+                            get: { store.viewStyle },
+                            set: { store.viewStyle = $0 }
+                        )
+                    )
                     Spacer()
                     Button {
                         withAnimation(.snappy) { stageActive.toggle() }
@@ -595,6 +608,13 @@ private struct TunerCard: View {
                                     ? (theme.isDark ? Color.white : Color.black)
                                     : Color.secondary
                                 )
+                            if store.lockedTarget != nil {
+                                Image(systemName: "lock.fill")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                    .transition(.opacity)
+                            }
+
                         }
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
@@ -622,18 +642,64 @@ private struct TunerCard: View {
 
 
                 // Chrono dial (rectangular card contains it)
-                let cents = centsVsLocked(store.lockedTarget, hz: model.display.hz, root: model.rootHz)
-                ChronoDial(
-                    cents: cents,
-                    confidence: model.display.confidence,
-                    inTuneWindow: 2.0,
-                    stageMode: stageActive
+                let rawCents: Double = {
+                    if let locked = store.lockedTarget {
+                        return signedCents(actualHz: liveHz, rootHz: model.rootHz, target: locked)
+                    } else {
+                        return liveCents
+                    }
+                }()
+
+                let (centsShown, held) = hold.output(
+                    rawCents: rawCents,
+                    confidence: liveConf,
+                    mode: store.needleHoldMode,
+                    threshold: 0.35
                 )
-                .contentShape(Rectangle())
-                .onLongPressGesture(minimumDuration: 0.35) {
-                    // Long-press: lock target to the current nearest (we rebuild it on each frame below)
-                    store.toggleLock(currentNearest: currentNearest)
-                }
+
+                let showFar = abs(rawCents) > 120
+
+                let stageAccentName = UserDefaults.standard.string(forKey: SettingsKeys.stageAccent) ?? "system"
+                let stageAccent: Color = (stageAccentName == "amber" ? .orange
+                                       : stageAccentName == "red"   ? .red
+                                       : .accentColor)
+
+Group {
+    switch store.viewStyle {
+    case .zenGauge:
+        ZenGauge(
+            cents: centsShown,
+            confidence: liveConf,
+            inTuneWindow: 5,
+            stageMode: store.stageMode,
+            mode: store.mode,
+            stageAccent: stageAccent,
+            showFarHint: showFar,
+            heldByConfidence: held,
+            farLabel: "Far"
+        )
+        .contentShape(Rectangle())
+        .onLongPressGesture(minimumDuration: 0.35) {
+            UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+            store.toggleLock(currentNearest: (currentNearest ?? liveNearest))
+        }
+
+    case .chronoDial:
+        ChronoDial(
+            cents: centsShown,
+            confidence: liveConf,
+            inTuneWindow: 5,
+            stageMode: store.stageMode,
+            accent: stageAccent
+        )
+        .contentShape(Rectangle())
+        .onLongPressGesture(minimumDuration: 0.35) {
+            UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+            store.toggleLock(currentNearest: (currentNearest ?? liveNearest))
+        }
+    }
+}
+                
                 .overlay(alignment: .topTrailing) {
                     // Lock indicator chip (top-right of the dial area)
                     if let t = store.lockedTarget {
@@ -662,7 +728,8 @@ private struct TunerCard: View {
                         if store.mode == .live, store.lockedTarget == nil {
                             StatTile(label: "vs JI", value: String(format: "%+.1f¢", model.display.cents))
                         } else if let lock = store.lockedTarget {
-                            StatTile(label: "vs \(lock.num)/\(lock.den)", value: String(format: "%+.1f¢", cents))
+                            StatTile(label: "vs \(lock.num)/\(lock.den)", value: String(format: "%+.1f¢", centsShown))
+
                         } // .strict hides the extra JI label by design
                         Spacer()
                         StatTile(label: "Hz", value: String(format: "%.1f", model.display.hz))
@@ -1713,24 +1780,6 @@ private struct WizardFooterRail: View {
             routeLabel = AudioRouteChip.currentRouteSummary()
         }
         .onAppear { routeLabel = AudioRouteChip.currentRouteSummary() }
-    }
-}
-
-private struct LaunchLogoStrip: View {
-    var body: some View {
-        GeometryReader { geo in
-            let maxW = min(geo.size.width - 32, 380)
-            VStack {
-                Spacer(minLength: 0)
-                Image("LaunchLogo")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: maxW)
-                    .accessibilityHidden(true)
-                Spacer(minLength: 0)
-            }
-        }
-        .frame(height: 120) // gives breathing room above the wizard
     }
 }
 

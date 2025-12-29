@@ -57,11 +57,16 @@ struct LatticeLayout: Sendable {
         // Higher primes: add a small orthogonal-ish projection so overlays are spatially distinct.
         // Deterministic rotation per prime for stable placement.
         for (p, eP) in monzo where p != 2 && p != 3 && p != 5 && eP != 0 {
-            // Map prime -> angle offset in radians (stable, not random)
             let a = primeAngle(p)
-            let vx = cos(a)
+            var vx = cos(a)
             let vy = sin(a)
-            let k: CGFloat = 0.72 * step // overlay axis length per exponent step
+
+            // Mirror 19-limit-only primes across the y-axis (x -> -x)
+            if p == 19 {
+                vx = -vx
+            }
+
+            let k: CGFloat = 0.72 * step
             x += CGFloat(eP) * k * vx
             y += CGFloat(eP) * k * vy
         }

@@ -234,8 +234,10 @@ private extension ScaleLibrarySheet {
             DispatchQueue.main.asyncAfter(deadline: when) {
                 let (cn, cd) = canonicalPQUnit(r.p, r.q)
                 let f = foldToAudible(root * (Double(cn) / Double(cd)))
+                guard (UserDefaults.standard.object(forKey: "Tenney.SoundOn") as? Bool ?? true) else { return }
                 let id = ToneOutputEngine.shared.sustain(freq: f, amp: 0.16)
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
                                     ToneOutputEngine.shared.release(id: id, seconds: 0.0)
                                 }
             }
