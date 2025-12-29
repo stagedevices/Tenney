@@ -81,15 +81,62 @@ vertex RibbonVaryings lissa_ribbon_vtx(uint vid [[vertex_id]],
     return o;
 }
 
+inline float sat(float x) { return clamp(x, 0.0f, 1.0f); }
+
 fragment float4 lissa_ribbon_frag(RibbonVaryings in [[stage_in]],
                                   constant Uniforms& U [[buffer(1)]]) {
-    float mixv = smoothstep(0.0, 1.0, in.u);
-    float4 col = mix(U.coreColor, U.sheenColor, mixv);
-    float coverage = clamp((1.0 - fabs(in.side)) / max(0.0001, U.edgeAA), 0.0, 1.0);
-    float alpha = U.globalAlpha * coverage;
-    col.rgb *= alpha;
-    col.a = alpha;
-    return col;
+
+    float t = sat(in.u);            // 0..1 across ribbon width
+    float a = fabs(in.side);        // 0 at center, 1 at edge
+
+    // --- Analytic AA (critical for single-sample persistence path)
+    float w = max(1e-4f, fwidth(a) * max(0.5f, U.edgeAA));
+    float coverage = 1.0f - smoothstep(1.0f - w, 1.0f + w, a);
+
+    // --- Thickness profile (center thicker, edges thinner)
+    float core = pow(1.0f - a, 1.6f);
+    float rim  = pow(a, 2.2f);
+
+    // --- Two-tone tint across width
+    float tone = smoothstep(0.0f, 1.0f, t);
+    float3 tint = mix(U.coreColor.rgb, U.sheenColor.rgb, tone);
+
+    // --- Specular ridge(s) for “glass” read
+    float ridge1 = exp2(-pow((t - 0.25f) / 0.12f, 2.0f));
+    float ridge2 = exp2(-pow((t - 0.78f) / 0.18f, 2.0f));
+    float spec   = 0.55f * ridge1 + 0.25f * ridge2;
+
+    // --- Final color (body + sheen)
+    float3 rgb = tint * (0.30f + 0.70f * core) + U.sheenColor.rgb * spec;
+
+    // --- Alpha: more transparent at edges, denser at center
+    float alpha = U.globalAlpha * coverage * (0.10f + 0.90f * core);
+
+    // slight rim lift (helps “glass edge” without turning neon)
+    rgb += U.sheenColor.rgb * (0.06f * rim);
+
+    // premultiplied output
+    return float4(rgb * alpha, alpha);
+}
+
+fragment float4 lissa_ribbon_glow_frag(RibbonVaryings in [[stage_in]],
+                                       constant Uniforms& U [[buffer(1)]]) {
+
+    float t = sat(in.u);
+    float a = fabs(in.side);
+
+    float w = max(1e-4f, fwidth(a) * max(0.5f, U.edgeAA));
+    float coverage = 1.0f - smoothstep(1.0f - w, 1.0f + w, a);
+
+    float core = pow(1.0f - a, 1.35f);
+
+    // gentle, wide halo — mostly sheen tint
+    float ridge = exp2(-pow((t - 0.35f) / 0.22f, 2.0f));
+    float3 rgb = U.sheenColor.rgb * (0.22f + 0.55f * ridge) * (0.35f + 0.65f * core);
+
+    float alpha = U.globalAlpha * coverage * (0.10f + 0.90f * core);
+
+    return float4(rgb * alpha, alpha);
 }
 
 // ---- Fullscreen quad for persistence / blit ---------------------------------

@@ -24,7 +24,6 @@ struct LissajousCard: View {
     @AppStorage(SettingsKeys.lissaShowGrid) private var showGrid: Bool = true
     @AppStorage(SettingsKeys.lissaShowAxes) private var showAxes: Bool = true
     @AppStorage(SettingsKeys.lissaStrokeWidth) private var ribbonWidth: Double = 1.5
-    @AppStorage(SettingsKeys.lissaDotMode) private var dotMode: Bool = false
     @AppStorage(SettingsKeys.lissaDotSize) private var dotSize: Double = 2.0
     @AppStorage(SettingsKeys.lissaPersistence) private var persistenceEnabled: Bool = true
     @AppStorage(SettingsKeys.lissaHalfLife) private var halfLife: Double = 0.6
@@ -64,25 +63,6 @@ struct LissajousCard: View {
             return .many(x: "Σ(" + x.joined(separator: ",") + ")", y: "Σ(" + y.joined(separator: ",") + ")")
         }
     }
-    @State private var scopeRenderMode: LissajousRenderer.Mode = .live   // NEW enum in renderer
-
-    private var scopeControls: some View {
-        HStack(spacing: 8) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.18)) {
-                    scopeRenderMode = (scopeRenderMode == .live ? .synthetic : .live)
-                }
-            } label: {
-                Label(scopeRenderMode == .live ? "Live" : "Math", systemImage: "slider.horizontal.3")
-                    .font(.caption2.weight(.semibold))
-            }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 10).padding(.vertical, 6)
-            .background(.ultraThinMaterial, in: Capsule(style: .continuous))
-            .overlay(Capsule(style: .continuous).stroke(Color.secondary.opacity(0.12), lineWidth: 1))
-        }
-        .padding(10)
-    }
 
     private func axisChip(_ text: String) -> some View {
         Text(text)
@@ -120,19 +100,13 @@ struct LissajousCard: View {
     private var effectiveHalfLife: Double { reduceTransparency ? 0.35 : halfLife }
     private var effectiveAlpha: Double { reduceTransparency ? min(globalAlpha, 0.6) : globalAlpha }
     private var effectiveLiveSamples: Int { reduceMotion ? max(64, Int(Double(liveSamples) * 0.6)) : liveSamples }
-    private var effectiveSampleCountForMode: Int {
-        switch scopeRenderMode {
-        case .live: return effectiveLiveSamples
-        case .synthetic: return samplesPerCurve
-        }
-    }
 
     private var previewConfig: LissajousRenderer.Config {
         LissajousRenderer.Config(
-            mode: scopeRenderMode,
+            mode: .live,
             sampleCount: effectiveLiveSamples,
             preferredFPS: effectiveFPS,
-            samplesPerCurve: effectiveSampleCountForMode,
+            samplesPerCurve: samplesPerCurve,
             ribbonWidth: Float(ribbonWidth),
             gridDivs: gridDivs,
             showGrid: showGrid,
@@ -141,7 +115,7 @@ struct LissajousCard: View {
             edgeAA: 1.0,
             favorSmallIntegerClosure: snapSmall,
             maxDenSnap: maxDen,
-            dotMode: dotMode,
+            dotMode: true,
             dotSize: Float(dotSize),
             persistenceEnabled: effectivePersistence,
             halfLifeSeconds: Float(effectiveHalfLife)
@@ -160,7 +134,6 @@ struct LissajousCard: View {
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .padding(12) // match Settings preview padding
-                    .overlay(alignment: .topTrailing) { scopeControls }
                     .overlay(alignment: .bottomLeading) { axisChips }
                 }
             }

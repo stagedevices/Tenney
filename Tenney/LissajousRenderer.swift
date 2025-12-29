@@ -45,11 +45,13 @@ final class LissajousRenderer: NSObject, MTKViewDelegate {
             var mode: Mode = .live
 
             // Live scope
-            var sampleCount: Int = 768
+            var sampleCount: Int = 4096
             var preferredFPS: Int = 60
 
             // Synthetic curve
             var samplesPerCurve: Int = 4096
+            /// 1.0 = fit-to-box. >1 zooms in.
+            var zoom: Float = 1.42
             var ribbonWidth: Float = 1.5
             var gridDivs: Int = 8
             var showGrid: Bool = true
@@ -134,8 +136,13 @@ final class LissajousRenderer: NSObject, MTKViewDelegate {
         }
         deriveInkColors(from: theme)
     }
+    
+    private var ribbonGlowPSO_MSAA: MTLRenderPipelineState!
+    private var ribbonGlowPSO_NoMSAA: MTLRenderPipelineState!
+
 
     private func buildPipelines(view: MTKView) {
+
         let lib = try! device.makeDefaultLibrary(bundle: .main)
         // Line / points
         let vfn = lib.makeFunction(name: "lissa_vtx")!
@@ -143,6 +150,8 @@ final class LissajousRenderer: NSObject, MTKViewDelegate {
 
         let rvfn = lib.makeFunction(name: "lissa_ribbon_vtx")!
         let rffn = lib.makeFunction(name: "lissa_ribbon_frag")!
+        let rgfn = lib.makeFunction(name: "lissa_ribbon_glow_frag")!
+
 
         func makeLinePSO(sampleCount: Int) -> MTLRenderPipelineState {
             let d = MTLRenderPipelineDescriptor()
@@ -157,6 +166,25 @@ final class LissajousRenderer: NSObject, MTKViewDelegate {
             d.colorAttachments[0].sourceAlphaBlendFactor = .sourceAlpha
             d.colorAttachments[0].destinationRGBBlendFactor = .oneMinusSourceAlpha
             d.colorAttachments[0].destinationAlphaBlendFactor = .oneMinusSourceAlpha
+            return try! device.makeRenderPipelineState(descriptor: d)
+        }
+
+        func makeRibbonGlowPSO(sampleCount: Int) -> MTLRenderPipelineState {
+            let d = MTLRenderPipelineDescriptor()
+            d.vertexFunction = rvfn
+            d.fragmentFunction = rgfn
+            d.colorAttachments[0].pixelFormat = view.colorPixelFormat
+            d.sampleCount = sampleCount
+
+            // Additive glow
+            d.colorAttachments[0].isBlendingEnabled = true
+            d.colorAttachments[0].rgbBlendOperation = .add
+            d.colorAttachments[0].alphaBlendOperation = .add
+            d.colorAttachments[0].sourceRGBBlendFactor = .one
+            d.colorAttachments[0].destinationRGBBlendFactor = .one
+            d.colorAttachments[0].sourceAlphaBlendFactor = .one
+            d.colorAttachments[0].destinationAlphaBlendFactor = .one
+
             return try! device.makeRenderPipelineState(descriptor: d)
         }
 
@@ -180,6 +208,9 @@ final class LissajousRenderer: NSObject, MTKViewDelegate {
         linePSO_NoMSAA = makeLinePSO(sampleCount: 1)
         ribbonPSO_MSAA = makeRibbonPSO(sampleCount: view.sampleCount)
         ribbonPSO_NoMSAA = makeRibbonPSO(sampleCount: 1)
+        ribbonGlowPSO_MSAA   = makeRibbonGlowPSO(sampleCount: view.sampleCount)
+        ribbonGlowPSO_NoMSAA = makeRibbonGlowPSO(sampleCount: 1)
+
         gridPSO_MSAA   = linePSO_MSAA
         gridPSO_NoMSAA = linePSO_NoMSAA
 
@@ -338,15 +369,22 @@ final class LissajousRenderer: NSObject, MTKViewDelegate {
         gridBuf = device.makeBuffer(bytes: lines, length: MemoryLayout<VSIn>.stride * lines.count, options: .storageModeShared)
     }
 
-    private func writeUniforms() {
-        var U = Uniforms(
-            scale: scale,
+    private func writeUniforms(ribbonWidth: Float? = nil,
+                               globalAlpha: Float? = nil,
+                               edgeAA: Float? = nil) {
+        let rw = ribbonWidth ?? config.ribbonWidth
+        let ga = globalAlpha ?? config.globalAlpha
+        let ea = edgeAA ?? config.edgeAA
+
+        let z = max(0.65, min(1.65, config.zoom))  // keep it subtle + safe
+                var U = Uniforms(
+                    scale: scale * SIMD2<Float>(repeating: z),
             pan: pan,
-            alpha: config.globalAlpha,
+            alpha: ga,
             pointSize: config.dotSize,
-            ribbonWidth: config.ribbonWidth,
-            globalAlpha: config.globalAlpha,
-            edgeAA: config.edgeAA,
+            ribbonWidth: rw,
+            globalAlpha: ga,
+            edgeAA: ea,
             padding: 0,
             coreColor: coreColor,
             sheenColor: sheenColor
@@ -354,6 +392,7 @@ final class LissajousRenderer: NSObject, MTKViewDelegate {
         if uniformBuf == nil { uniformBuf = device.makeBuffer(length: MemoryLayout<Uniforms>.stride) }
         memcpy(uniformBuf!.contents(), &U, MemoryLayout<Uniforms>.stride)
     }
+
 
     private func buildRibbonStrip(points: [SIMD2<Float>]) -> MTLBuffer? {
         guard !points.isEmpty else { return nil }
@@ -463,7 +502,7 @@ final class LissajousRenderer: NSObject, MTKViewDelegate {
         let dt = max(1.0 / Double(view.preferredFramesPerSecond), now - lastFrameTime)
         lastFrameTime = now
 
-        if config.mode == .synthetic, needsRebuildCurve { rebuildCurve() }
+        // Always live; synthetic curves are disabled.
         if needsRebuildGrid { rebuildGrid(size: view.drawableSize) }
 
         guard let cmd = queue.makeCommandBuffer() else { return }
@@ -529,9 +568,8 @@ final class LissajousRenderer: NSObject, MTKViewDelegate {
                 enc.endEncoding()
             }
 
-            // (2) draw curve into scratchTex
-            let curveRibbonVB: MTLBuffer? = (config.mode == .live ? liveRibbonBuffer : ribbonBuf)
-            let curveVB: MTLBuffer? = (config.mode == .live ? livePointBuffer : vbuf)
+            // (2) draw dots into scratchTex (always)
+            let curveVB: MTLBuffer? = livePointBuffer
             if let vb = curveVB, let out = scratchTex {
                 let rpd = MTLRenderPassDescriptor()
                 rpd.colorAttachments[0].texture = out
@@ -542,28 +580,15 @@ final class LissajousRenderer: NSObject, MTKViewDelegate {
                 enc.setDepthStencilState(depth)
                 writeUniforms()
                 enc.setVertexBuffer(uniformBuf, offset: 0, index: 1)
-                if config.dotMode {
-                    enc.setRenderPipelineState(linePSO_NoMSAA)            // <— NO MSAA
-                    enc.setVertexBuffer(vb, offset: 0, index: 0)
-                    let count = (config.mode == .live)
-                        ? livePointCount
-                        : (vb.length / MemoryLayout<VSIn>.stride)
+                enc.setFragmentBuffer(uniformBuf, offset: 0, index: 1)
 
-                    if count > 0 {
-                        enc.drawPrimitives(type: .point, vertexStart: 0, vertexCount: count)
-                    }
-                } else if let ribbonVB = curveRibbonVB {
-                    enc.setRenderPipelineState(ribbonPSO_NoMSAA)
-                    enc.setVertexBuffer(ribbonVB, offset: 0, index: 0)
-                    let count = (config.mode == .live)
-                        ? liveRibbonVertexCount
-                        : (ribbonVB.length / MemoryLayout<RibbonVertex>.stride)
+                enc.setRenderPipelineState(linePSO_NoMSAA)            // <— NO MSAA
+                                enc.setVertexBuffer(vb, offset: 0, index: 0)
+                                let count = livePointCount
+                                if count > 0 {
+                                    enc.drawPrimitives(type: .point, vertexStart: 0, vertexCount: count)
+                                }
 
-                    // triangleStrip needs at least 4 verts here (2 points → 4 ribbon verts)
-                    if count >= 4 {
-                        enc.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: count)
-                    }
-                }
                 enc.endEncoding()
             }
 
@@ -587,38 +612,28 @@ final class LissajousRenderer: NSObject, MTKViewDelegate {
             enc.setFragmentSamplerState(linearSampler, index: 0)
             enc.setVertexBuffer(quadVBuf, offset: 0, index: 0)
             enc.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
-        } else if let vb = (config.mode == .live ? livePointBuffer : vbuf) {
+        } else if let vb = livePointBuffer {
             // (A) direct draw to screen when persistence is off (MSAA)
             enc.setDepthStencilState(depth)
             writeUniforms()
             enc.setVertexBuffer(uniformBuf, offset: 0, index: 1)
-            if config.dotMode {
-                enc.setRenderPipelineState(linePSO_MSAA)                 // <— MSAA
-                enc.setVertexBuffer(vb, offset: 0, index: 0)
-                let count = (config.mode == .live)
-                    ? livePointCount
-                    : (vb.length / MemoryLayout<VSIn>.stride)
+            enc.setFragmentBuffer(uniformBuf, offset: 0, index: 1)
 
-                if count > 0 {
-                    enc.drawPrimitives(type: .point, vertexStart: 0, vertexCount: count)
-                }
-            } else if let ribbonVB = (config.mode == .live ? liveRibbonBuffer : ribbonBuf) {
-                enc.setRenderPipelineState(ribbonPSO_MSAA)
-                enc.setVertexBuffer(ribbonVB, offset: 0, index: 0)
-                let count = (config.mode == .live)
-                    ? liveRibbonVertexCount
-                    : (ribbonVB.length / MemoryLayout<RibbonVertex>.stride)
+            enc.setRenderPipelineState(linePSO_MSAA)                 // <— MSAA
+                        enc.setVertexBuffer(vb, offset: 0, index: 0)
+                        let count = livePointCount
+                        if count > 0 {
+                            enc.drawPrimitives(type: .point, vertexStart: 0, vertexCount: count)
+                        }
 
-                if count >= 4 {
-                    enc.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: count)
-                }
-            }
         }
 
         // (B) grid/axes on top (MSAA)
         if let gb = gridBuf {
             enc.setRenderPipelineState(gridPSO_MSAA)                 // <— MSAA
             enc.setVertexBuffer(uniformBuf, offset: 0, index: 1)
+            enc.setFragmentBuffer(uniformBuf, offset: 0, index: 1)
+
             enc.setVertexBuffer(gb, offset: 0, index: 0)
             let gcount = gb.length / MemoryLayout<VSIn>.stride
             enc.drawPrimitives(type: .line, vertexStart: 0, vertexCount: gcount)
@@ -642,6 +657,9 @@ final class LissajousRenderer: NSObject, MTKViewDelegate {
     }
     func setConfig(_ updater: (inout Config) -> Void) {
         updater(&config)
+        // Always-live + always-dots (no synthetic, no ribbon)
+                config.mode = .live
+                config.dotMode = true
         needsRebuildGrid = true
         needsRebuildCurve = true
     }
