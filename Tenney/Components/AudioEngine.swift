@@ -76,7 +76,7 @@ final class AudioEngineService {
         // Install tap only if the format looks valid; otherwise wait for a route change.
                 if tapInstalled { input.removeTap(onBus: 0); tapInstalled = false }
                 if inFmt.sampleRate > 0.0 && inFmt.channelCount >= 1 {
-                    input.installTap(onBus: 0, bufferSize: hopFrames, format: tapFmt) { [weak self] buffer, _ in
+                    input.installTap(onBus: 0, bufferSize: hopFrames, format: nil) { [weak self] buffer, _ in
                         guard let self = self else { return }
                         guard let (mono, srBuf) = self.extractMono(from: buffer) else { return }
 
@@ -119,26 +119,20 @@ final class AudioEngineService {
                                                        sampleRate: fmt.sampleRate,
                                                        channels: 1,
                                                        interleaved: false)
-                        self.engine.inputNode.installTap(onBus: 0, bufferSize: self.hopFrames, format: tapFmt) { [weak self] buffer, _ in
+                        self.engine.inputNode.installTap(onBus: 0,
+                                                         bufferSize: self.hopFrames,
+                                                         format: nil) { [weak self] buffer, _ in
                             guard let self = self else { return }
-                            let srBuf = buffer.format.sampleRate
-                            let ch = Int(buffer.format.channelCount)
-                            let n = Int(buffer.frameLength)
-                            guard n > 0, let chans = buffer.floatChannelData else { return }
+                            guard let (mono, srBuf) = self.extractMono(from: buffer) else { return }
+
                             if self.frontEnd == nil || self.frontEndSR != srBuf {
                                 self.frontEnd = FrontEnd(sampleRate: srBuf)
                                 self.frontEndSR = srBuf
                             }
-                            var mono = [Float](repeating: 0, count: n)
-                            if ch == 1 {
-                                mono.withUnsafeMutableBufferPointer { $0.baseAddress!.assign(from: chans[0], count: n) }
-                            } else {
-                                for c in 0..<ch { vDSP_vadd(chans[c], 1, mono, 1, &mono, 1, vDSP_Length(n)) }
-                                var scale = Float(1.0 / Float(ch))
-                                vDSP_vsmul(mono, 1, &scale, &mono, 1, vDSP_Length(n))
-                            }
+
                             if var feBuf = Optional(mono), let fe = self.frontEnd {
-                                let m = fe.process(&feBuf); if m.gated { return }
+                                let m = fe.process(&feBuf)
+                                if m.gated { return }
                                 callback(feBuf, srBuf)
                             } else {
                                 callback(mono, srBuf)
@@ -156,44 +150,85 @@ final class AudioEngineService {
         let sr = fmt.sampleRate
         let ch = Int(fmt.channelCount)
         let n  = Int(buffer.frameLength)
-        guard n > 0 else { return nil }
+        guard n > 0, ch >= 1, sr > 0 else { return nil }
 
         if !didLogTapFormat {
             didLogTapFormat = true
             print("[AudioEngineService] tap fmt sr=\(sr) ch=\(ch) interleaved=\(fmt.isInterleaved) common=\(fmt.commonFormat)")
         }
 
-        guard let chans = buffer.floatChannelData else { return nil }
+        switch fmt.commonFormat {
+        case .pcmFormatFloat32:
+            // ===== Float32 path (your existing logic, slightly tightened) =====
+            guard let chans = buffer.floatChannelData else { return nil }
 
-        if fmt.isInterleaved {
-            // interleaved: chans[0] is [L0,R0,L1,R1,...]
-            let inter = chans[0]
-            if ch <= 1 {
-                return (Array(UnsafeBufferPointer(start: inter, count: n)), sr)
-            }
-            var mono = [Float](repeating: 0, count: n)
-            for i in 0..<n {
-                var acc: Float = 0
-                let base = i * ch
-                for c in 0..<ch { acc += inter[base + c] }
-                mono[i] = acc / Float(ch)
-            }
-            return (mono, sr)
-        } else {
-            // planar: chans[c] is per-channel
-            var mono = [Float](repeating: 0, count: n)
-            if ch == 1 {
-                mono.withUnsafeMutableBufferPointer { dst in
-                    dst.baseAddress!.assign(from: chans[0], count: n)
+            if fmt.isInterleaved {
+                let inter = chans[0]
+                if ch == 1 {
+                    return (Array(UnsafeBufferPointer(start: inter, count: n)), sr)
                 }
+                var mono = [Float](repeating: 0, count: n)
+                for i in 0..<n {
+                    var acc: Float = 0
+                    let base = i * ch
+                    for c in 0..<ch { acc += inter[base + c] }
+                    mono[i] = acc / Float(ch)
+                }
+                return (mono, sr)
             } else {
-                for c in 0..<ch { vDSP_vadd(chans[c], 1, mono, 1, &mono, 1, vDSP_Length(n)) }
-                var scale = Float(1.0 / Float(ch))
-                vDSP_vsmul(mono, 1, &scale, &mono, 1, vDSP_Length(n))
+                var mono = [Float](repeating: 0, count: n)
+                if ch == 1 {
+                    mono.withUnsafeMutableBufferPointer { dst in
+                        dst.baseAddress!.assign(from: chans[0], count: n)
+                    }
+                } else {
+                    for c in 0..<ch { vDSP_vadd(chans[c], 1, mono, 1, &mono, 1, vDSP_Length(n)) }
+                    var scale = Float(1.0 / Float(ch))
+                    vDSP_vsmul(mono, 1, &scale, &mono, 1, vDSP_Length(n))
+                }
+                return (mono, sr)
             }
-            return (mono, sr)
+
+        case .pcmFormatInt16:
+            // ===== Int16 path (common on some routes when format:nil) =====
+            guard let chans = buffer.int16ChannelData else { return nil }
+
+            let inv = Float(1.0 / Float(Int16.max))
+            if fmt.isInterleaved {
+                let inter = chans[0]
+                var mono = [Float](repeating: 0, count: n)
+                if ch == 1 {
+                    for i in 0..<n { mono[i] = Float(inter[i]) * inv }
+                    return (mono, sr)
+                }
+                for i in 0..<n {
+                    var acc: Int = 0
+                    let base = i * ch
+                    for c in 0..<ch { acc += Int(inter[base + c]) }
+                    mono[i] = (Float(acc) / Float(ch)) * inv
+                }
+                return (mono, sr)
+            } else {
+                var mono = [Float](repeating: 0, count: n)
+                if ch == 1 {
+                    for i in 0..<n { mono[i] = Float(chans[0][i]) * inv }
+                    return (mono, sr)
+                }
+                for i in 0..<n {
+                    var acc: Int = 0
+                    for c in 0..<ch { acc += Int(chans[c][i]) }
+                    mono[i] = (Float(acc) / Float(ch)) * inv
+                }
+                return (mono, sr)
+            }
+
+        default:
+            // If this hits, print once and bail (better than crashing).
+            print("[AudioEngineService] unsupported tap commonFormat=\(fmt.commonFormat) (sr=\(sr) ch=\(ch))")
+            return nil
         }
     }
+
 
 
     func stop() { stop(deactivateSession: true) }

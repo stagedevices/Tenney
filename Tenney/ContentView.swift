@@ -98,26 +98,9 @@ private let libraryStore = ScaleLibraryStore.shared
                 Color(effectiveIsDark ? .black : .white).ignoresSafeArea().zIndex(1)  // Set background to black or white based on theme
 
                 ZStack {
-                    // Logo centered between safe area top and wizard top
-                    // Logo centered between safe area top and wizard top
-                    GeometryReader { geo in
-                        let topInset = geo.safeAreaInsets.top
-                        let wizardTop = wizardTopY.isNaN ? geo.size.height * 0.66 : wizardTopY
-                        let midY = topInset + max(0, (wizardTop - topInset) * 0.5)
-                        Image(effectiveIsDark ? "LaunchLogoDark" : "LaunchLogo") // ← ensure asset name casing matches
-                            .resizable()
-                            .scaledToFit()
-                            .padding(.top, 48)
-                            .offset(y: 0)      // Adjusted offset if needed, but keep it at 0
-                            .frame(width: geo.size.width - 32)
-                            .position(x: geo.size.width / 2, y: midY)
-                    }
-                    .allowsHitTesting(false)
-                    .zIndex(1.5)
-
-
                     VStack(spacing: 16) {
                         // Increase vertical space allocated for the wizard
+                        
                         OnboardingWizardView(
                             onRequireSwapFlash: { },
                             onDone: {
@@ -130,12 +113,16 @@ private let libraryStore = ScaleLibraryStore.shared
                             }
                         )
                         .frame(maxWidth: 600)
-                        .frame(height: 600)  // Use the full available height
-                        .offset(y: 132)                // Adjust offset to give more space for other elements
                         .padding(.horizontal, 16)
+                        .padding(.top, 16)
+                        .background(
+                            GeometryReader { proxy in
+                                Color.clear
+                                    .preference(key: WizardTopPref.self,
+                                                value: proxy.frame(in: .global).minY)
+                            }
+                        )
 
-
-                        .padding(.horizontal, 16)
                         // measure wizard top for logo centering
                         .background(
                             GeometryReader { proxy in
@@ -319,7 +306,7 @@ private let libraryStore = ScaleLibraryStore.shared
             .statusBarHidden(stageActive && stageHideStatus)
             .onChange(of: stageActive) { on in updateIdleTimer(stageOn: on) }
             .onChange(of: stageKeepAwake) { keep in updateIdleTimer(keepAwake: keep) }
-            .safeAreaInset(edge: .bottom) { utilityBarInset }
+            .safeAreaInset(edge: .bottom) { if !stageActive { utilityBarInset } }
             .onChange(of: mode) { new in app.setMicActive(new == .tuner) }
 
         return base
@@ -372,7 +359,8 @@ private let libraryStore = ScaleLibraryStore.shared
         TunerCard(stageActive: $stageActive)
             .matchedGeometryEffect(id: "tunerHero", in: stageNS)
             .opacity(stageActive ? 0 : 1)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .allowsHitTesting(!stageActive)   //  critical: don't let the invisible source eat taps
+            .frame(maxWidth: .infinity)
     }
 
     private func railView(in geo: GeometryProxy, isLandscape: Bool) -> some View {
@@ -421,22 +409,28 @@ private let libraryStore = ScaleLibraryStore.shared
 
     // Stage overlay pulled out to keep type-checker happy
     @ViewBuilder private var stageOverlay: some View {
-        if stageActive {
-            GeometryReader { proxy in
-                ZStack {
-                    Color.black.opacity(stageDimLevel)
-                        .ignoresSafeArea()
-                        .transition(.opacity.animation(.easeIn(duration: 0.18)))
-                    TunerCard(stageActive: $stageActive)
-                        .matchedGeometryEffect(id: "tunerHero", in: stageNS)
-                        .frame(maxWidth: min(520, proxy.size.width - 32))
-                        .modifier(LiquidGlassArrival())
-                        .padding(16)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        GeometryReader { proxy in
+            ZStack {
+                Color.black
+                    .opacity(stageActive ? stageDimLevel : 0)
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
+                    .animation(.easeInOut(duration: 0.18), value: stageActive)
+
+                TunerCard(stageActive: $stageActive)
+                    .matchedGeometryEffect(id: "tunerHero", in: stageNS)
+                    .frame(maxWidth: min(520, proxy.size.width - 32))
+                    .padding(16)
+                    .opacity(stageActive ? 1 : 0)
+                    .animation(.snappy, value: stageActive)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .allowsHitTesting(stageActive)
+        .zIndex(50)
     }
+
+
     private var utilityBarInset: some View {
         UtilityBar(
             mode: $mode,
@@ -546,7 +540,7 @@ extension Notification.Name {
 }
 
 
-private struct TunerCard: View {
+ struct TunerCard: View {
     @EnvironmentObject private var model: AppModel
     @StateObject private var store = TunerStore()
     private var liveHz: Double { model.display.hz }
@@ -567,78 +561,145 @@ private struct TunerCard: View {
             endPoint: .bottomTrailing
         )
     }
+     
+     @ViewBuilder
+     private func tunerDial(
+         centsShown: Double,
+         liveConf: Double,
+         stageAccent: Color,
+         showFar: Bool,
+         held: Bool,
+         currentNearest: RatioResult?,
+         liveNearest: RatioResult?
+     ) -> some View {
+         switch store.viewStyle {
+         case .Gauge:
+             Gauge(
+                 cents: centsShown,
+                 confidence: liveConf,
+                 inTuneWindow: 5,
+                 stageMode: store.stageMode,
+                 mode: store.mode,
+                 stageAccent: stageAccent,
+                 showFarHint: showFar,
+                 heldByConfidence: held,
+                 farLabel: "Far"
+             )
+
+         case .chronoDial:
+             ChronoDial(
+                 cents: centsShown,
+                 confidence: liveConf,
+                 inTuneWindow: 5,
+                 stageMode: store.stageMode,
+                 accent: stageAccent
+             )
+
+         case .phaseScope:
+             PhaseScopeTunerView(vm: model, store: store)
+         }
+     }
+
 
     private func centsVsLocked(_ locked: RatioResult?, hz: Double, root: Double) -> Double {
         guard let t = locked, hz.isFinite else { return model.display.cents }
         let targetHz = root * pow(2.0, Double(t.octave)) * (Double(t.num)/Double(t.den))
         return 1200.0 * log2(hz / targetHz)
     }
+     private var stageButton: some View {
+         Button {
+             withAnimation(.snappy) { stageActive.toggle() }
+         } label: {
+             HStack(spacing: 6) {
+                 Image(systemName: stageActive ? "theatermasks.fill" : "theatermasks")
+                     .font(.footnote.weight(.semibold))
+                     .foregroundStyle(
+                         stageActive
+                         ? AnyShapeStyle(pillGrad)
+                         : AnyShapeStyle(Color.secondary)
+                     )
+                     .blendMode(stageActive ? (theme.isDark ? .screen : .darken) : .normal)
+
+                 Text("Stage")
+                     .font(.footnote.weight(.semibold))
+                     .foregroundStyle(
+                         stageActive
+                         ? (theme.isDark ? Color.white : Color.black)
+                         : Color.secondary
+                     )
+
+                 if store.lockedTarget != nil {
+                     Image(systemName: "lock.fill")
+                         .font(.caption2.weight(.semibold))
+                         .foregroundStyle(.secondary)
+                         .transition(.opacity)
+                 }
+             }
+             .padding(.horizontal, 10)
+             .padding(.vertical, 6)
+             .background(
+                 stageActive
+                 ? AnyShapeStyle(.thinMaterial)
+                 : AnyShapeStyle(.ultraThinMaterial),
+                 in: Capsule()
+             )
+             .overlay(
+                 Capsule().stroke(
+                     stageActive
+                     ? AnyShapeStyle(pillGrad)
+                     : AnyShapeStyle(Color.secondary.opacity(0.12)),
+                     lineWidth: 1
+                 )
+             )
+             .contentTransition(.symbolEffect(.replace.downUp))
+             .symbolEffect(.bounce, value: stageActive)
+         }
+         .buttonStyle(.plain)
+         .accessibilityLabel("Stage Mode")
+         .accessibilityHint("Boosts contrast, thicker strobe, calmer text motion for performance.")
+     }
 
     var body: some View {
         GlassCard(corner: 20) {
             VStack(spacing: 14) {
 
-                // Header row: Mode glyph strip (left) • Stage toggle (right)
-                HStack {
-                    TunerModeStrip(mode: $store.mode)
-                    TunerViewStyleStrip(
-                        style: Binding(
-                            get: { store.viewStyle },
-                            set: { store.viewStyle = $0 }
-                        )
-                    )
-                    Spacer()
-                    Button {
-                        withAnimation(.snappy) { stageActive.toggle() }
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: stageActive ? "theatermasks.fill" : "theatermasks")
-                                .font(.footnote.weight(.semibold))
-                                .foregroundStyle(
-                                    stageActive
-                                    ? AnyShapeStyle(pillGrad)
-                                    : AnyShapeStyle(Color.secondary)
-                                )
-                                .blendMode(stageActive ? (theme.isDark ? .screen : .darken) : .normal)
+                // Header row: Mode glyph strip (left) • Style strip • Stage toggle (right)
+                ViewThatFits(in: .horizontal) {
 
-                            Text("Stage")
-                                .font(.footnote.weight(.semibold))
-                                .foregroundStyle(
-                                    stageActive
-                                    ? (theme.isDark ? Color.white : Color.black)
-                                    : Color.secondary
-                                )
-                            if store.lockedTarget != nil {
-                                Image(systemName: "lock.fill")
-                                    .font(.caption2.weight(.semibold))
-                                    .foregroundStyle(.secondary)
-                                    .transition(.opacity)
-                            }
-
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(
-                            stageActive
-                            ? AnyShapeStyle(.thinMaterial)
-                            : AnyShapeStyle(.ultraThinMaterial),
-                            in: Capsule()
-                        )
-                        .overlay(
-                            Capsule().stroke(
-                                stageActive
-                                ? AnyShapeStyle(pillGrad)
-                                : AnyShapeStyle(Color.secondary.opacity(0.12)),
-                                lineWidth: 1
+                    // ✅ Preferred (fits on wider devices)
+                    HStack {
+                        TunerModeStrip(mode: $store.mode)
+                        TunerViewStyleStrip(
+                            style: Binding(
+                                get: { store.viewStyle },
+                                set: { store.viewStyle = $0 }
                             )
                         )
-                        .contentTransition(.symbolEffect(.replace.downUp))
-                        .symbolEffect(.bounce, value: stageActive)
+
+                        Spacer()
+                        stageButton
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Stage Mode")
-                    .accessibilityHint("Boosts contrast, thicker strobe, calmer text motion for performance.")
+
+                    // ✅ Fallback (narrow widths): two-line header
+                    VStack(spacing: 10) {
+                        HStack {
+                            TunerModeStrip(mode: $store.mode)
+                            Spacer()
+                            stageButton
+                        }
+
+                        HStack {
+                            TunerViewStyleStrip(
+                                style: Binding(
+                                    get: { store.viewStyle },
+                                    set: { store.viewStyle = $0 }
+                                )
+                            )
+                            Spacer()
+                        }
+                    }
                 }
+
 
 
                 // Chrono dial (rectangular card contains it)
@@ -664,41 +725,27 @@ private struct TunerCard: View {
                                        : stageAccentName == "red"   ? .red
                                        : .accentColor)
 
-Group {
-    switch store.viewStyle {
-    case .zenGauge:
-        ZenGauge(
-            cents: centsShown,
-            confidence: liveConf,
-            inTuneWindow: 5,
-            stageMode: store.stageMode,
-            mode: store.mode,
-            stageAccent: stageAccent,
-            showFarHint: showFar,
-            heldByConfidence: held,
-            farLabel: "Far"
-        )
-        .contentShape(Rectangle())
-        .onLongPressGesture(minimumDuration: 0.35) {
-            UIImpactFeedbackGenerator(style: .soft).impactOccurred()
-            store.toggleLock(currentNearest: (currentNearest ?? liveNearest))
-        }
+                tunerDial(
+                    centsShown: centsShown,
+                    liveConf: liveConf,
+                    stageAccent: stageAccent,
+                    showFar: showFar,
+                    held: held,
+                    currentNearest: currentNearest,
+                    liveNearest: liveNearest
+                )
+                .frame(maxWidth: .infinity)
+                                .frame(
+                                    minHeight: 260,
+                                    idealHeight: (store.viewStyle == .phaseScope ? 300 : 320),
+                                    maxHeight: (store.viewStyle == .phaseScope ? 360 : nil)
+                                )
+                .contentShape(Rectangle())
+                .onLongPressGesture(minimumDuration: 0.35) {
+                    UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                    store.toggleLock(currentNearest: (currentNearest ?? liveNearest))
+                }
 
-    case .chronoDial:
-        ChronoDial(
-            cents: centsShown,
-            confidence: liveConf,
-            inTuneWindow: 5,
-            stageMode: store.stageMode,
-            accent: stageAccent
-        )
-        .contentShape(Rectangle())
-        .onLongPressGesture(minimumDuration: 0.35) {
-            UIImpactFeedbackGenerator(style: .soft).impactOccurred()
-            store.toggleLock(currentNearest: (currentNearest ?? liveNearest))
-        }
-    }
-}
                 
                 .overlay(alignment: .topTrailing) {
                     // Lock indicator chip (top-right of the dial area)
@@ -1730,6 +1777,12 @@ private struct WizardFooter: View {
     }
 }
 private struct WizardFooterRail: View {
+    private let skipGrad = LinearGradient(
+        colors: [.red, .orange],
+        startPoint: .leading,
+        endPoint: .trailing
+    )
+
     let buildString: String
     let tips: [String]
     var onSkip: (() -> Void)? = nil      // ← add
@@ -1742,19 +1795,23 @@ private struct WizardFooterRail: View {
 
             HStack {
                 Button {
-                    onSkip?()            // ← call it
+                    onSkip?()
                 } label: {
-                    Text("Skip setup")
-                        .font(.caption)
-                        .foregroundStyle(
-                                .linearGradient(
-                                    colors: [.red, .orange],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                            )
+                    Label("Skip setup", systemImage: "xmark.circle.fill")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(skipGrad)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(.thinMaterial, in: Capsule())
+                        .overlay(
+                            Capsule().stroke(skipGrad.opacity(0.55), lineWidth: 1)
+                        )
+                        .contentShape(Capsule())
+                        .shadow(radius: 10, y: 4)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Skip setup")
+
                 Spacer()
                 Text(buildString)
                     .font(.caption2)

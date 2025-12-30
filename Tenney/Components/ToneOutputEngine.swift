@@ -12,6 +12,52 @@ import os
 
 // MARK: - ENTRY POINT: One engine to run them all (MONO out; stereo only for scope)
 final class ToneOutputEngine {
+    
+
+
+    func installScopeTap(_ cb: @escaping ([Float], Double) -> Void) {
+        phaseScopeTap = cb
+        installTapIfNeeded()
+    }
+
+    func removeScopeTap() {
+        phaseScopeTap = nil
+        // optional: remove tap if you want; leaving it installed is fine if guarded by phaseScopeTap != nil
+    }
+
+    private func publishScopeSamples(_ buffer: AVAudioPCMBuffer, sampleRate: Double) {
+        guard let phaseScopeTap else { return }
+        guard let ch0 = buffer.floatChannelData?[0] else { return }
+        let n = Int(buffer.frameLength)
+        phaseScopeTap(Array(UnsafeBufferPointer(start: ch0, count: n)), sampleRate)
+    }
+
+    
+// MARK: - Phase Scope contract
+    
+    
+
+    private func installTapIfNeeded() {
+        guard !phaseScopeTapInstalled else { return }
+        phaseScopeTapInstalled = true
+
+
+        //  Install exactly once on the node that contains the synth render.
+        // Prefer: your synth source/mixer node. Acceptable: your main mixer.
+        let tapNode: AVAudioNode = /* TODO: replace with your synth mixer/source if you have it */ engine.mainMixerNode
+        let format = tapNode.outputFormat(forBus: 0)
+
+        tapNode.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buf, _ in
+            guard let self else { return }
+            self.publishScopeSamples(buf, sampleRate: format.sampleRate)
+        }
+    }
+
+        
+            func setEnabled(_ on: Bool) {
+                // route to existing enable/disable
+                // e.g. masterGain = on ? 1 : 0
+            }
     private let scopeStateLock = NSLock()
     private var scopeMode: ScopeMode = .liveActiveSignals([])
     private var scopePendingFadeSamples: Int = 0
@@ -28,6 +74,10 @@ final class ToneOutputEngine {
 
     // MARK: Singleton
     static let shared = ToneOutputEngine()
+    // ===== Phase Scope contract =====
+    private var phaseScopeTap: (([Float], Double) -> Void)? = nil
+    private var phaseScopeTapInstalled: Bool = false
+
     private init() {
             loadPersistedConfigIfPresent()
         }
@@ -305,7 +355,7 @@ final class ToneOutputEngine {
     // MARK: Optional: stereo scope tap (not audible)
     // Called once per render with two read-only buffers for X/Y display (length = frames).
     // Hardware output remains MONO.
-    var scopeTap: ((_ x: UnsafePointer<Float>, _ y: UnsafePointer<Float>, _ count: Int) -> Void)?
+    var xyScopeTap: ((_ x: UnsafePointer<Float>, _ y: UnsafePointer<Float>, _ count: Int) -> Void)?
 
     
     @inline(__always) private func metaSet(_ id: VoiceID, _ m: VoiceMeta) {
@@ -501,7 +551,7 @@ try? AVAudioSession.sharedInstance().setActive(true, options: [])
                     vDSP_vclr(yb.baseAddress!, 1, vDSP_Length(n))
                 }
 
-                if let tap = self.scopeTap {
+                if let tap = self.xyScopeTap {
                     self.scopeX.withUnsafeBufferPointer { x in
                         self.scopeY.withUnsafeBufferPointer { y in
                             tap(x.baseAddress!, y.baseAddress!, n)
@@ -675,7 +725,7 @@ try? AVAudioSession.sharedInstance().setActive(true, options: [])
             self.scopeNextAssign = nextAssign
             self.scopeStateLock.unlock()
 
-            if let tap = self.scopeTap {
+            if let tap = self.xyScopeTap {
                 self.scopeX.withUnsafeBufferPointer { xb in
                     self.scopeY.withUnsafeBufferPointer { yb in
                         tap(xb.baseAddress!, yb.baseAddress!, n)

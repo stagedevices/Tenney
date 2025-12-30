@@ -9,6 +9,14 @@ import Combine
 import AVFoundation
 @MainActor
 final class TunerViewModel: ObservableObject {
+    // MARK: - Phase Scope mic PCM hooks
+        func attachMicPCMTap(_ cb: @escaping ([Float], Double) -> Void) {
+            tracker.onAudioPCM = cb
+        }
+    
+        func detachMicPCMTap() {
+            tracker.onAudioPCM = nil
+        }
     private func asResult(_ r: Ratio) -> RatioResult {
         RatioResult(num: r.n, den: r.d, octave: 0)
     }

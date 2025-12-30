@@ -44,21 +44,24 @@ enum TunerUIMode: String, CaseIterable, Identifiable {
 }
 
 enum TunerViewStyle: String, CaseIterable, Identifiable {
-    case zenGauge
+    case Gauge
     case chronoDial
+    case phaseScope   //  NEW
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .zenGauge:  return "Zen"
+        case .Gauge:  return "Gauge"
         case .chronoDial:return "Chrono"
+        case .phaseScope: return "Scope"   // ✅ NEW
         }
     }
 
     var symbol: String {
         switch self {
-        case .zenGauge:  return "gauge"
+        case .Gauge:  return "gauge"
         case .chronoDial:return "circle.dotted"
+        case .phaseScope: return "scope"
         }
     }
 }
@@ -79,6 +82,15 @@ enum NeedleHoldMode: String, CaseIterable, Identifiable {
 // MARK: - TunerStore (UI-only, walled off; keeps lock, stage, mode, local limit)
 @MainActor
 final class TunerStore: ObservableObject {
+    @Published var scopePartial: Int = {
+        let v = UserDefaults.standard.integer(forKey: SettingsKeys.tunerScopePartial)
+        return (v == 0 ? 1 : max(1, min(16, v)))
+    }() { didSet { UserDefaults.standard.set(scopePartial, forKey: SettingsKeys.tunerScopePartial) } }
+
+    @Published var scopeReferenceOn: Bool = {
+        UserDefaults.standard.object(forKey: SettingsKeys.tunerScopeReferenceOn) as? Bool ?? false
+    }() { didSet { UserDefaults.standard.set(scopeReferenceOn, forKey: SettingsKeys.tunerScopeReferenceOn) } }
+
     @Published var primeLimit: Int = {
         let v = UserDefaults.standard.integer(forKey: SettingsKeys.tunerPrimeLimit)
         return (v == 0 ? 11 : v)
@@ -96,11 +108,11 @@ final class TunerStore: ObservableObject {
 
     @Published var viewStyleRaw: String = {
         UserDefaults.standard.string(forKey: SettingsKeys.tunerViewStyle)
-        ?? TunerViewStyle.zenGauge.rawValue
+        ?? TunerViewStyle.Gauge.rawValue
     }() { didSet { UserDefaults.standard.set(viewStyleRaw, forKey: SettingsKeys.tunerViewStyle) } }
 
     var viewStyle: TunerViewStyle {
-        get { TunerViewStyle(rawValue: viewStyleRaw) ?? .zenGauge }
+        get { TunerViewStyle(rawValue: viewStyleRaw) ?? .Gauge }
         set { viewStyleRaw = newValue.rawValue }
     }
 
@@ -278,7 +290,7 @@ struct BadgeCapsule: View {
     }
 }
 
-// MARK: - ZEN GAUGE TUNER DIAL # TUNER NO. 2
+// MARK: - GAUGE TUNER DIAL # TUNER NO. 2
 struct TunerViewStyleStrip: View {
     @Binding var style: TunerViewStyle
     @Namespace private var ns
@@ -351,7 +363,7 @@ final class NeedleHoldState: ObservableObject {
     }
 }
 
-struct ZenGauge: View {
+struct Gauge: View {
     let cents: Double            // signed cents vs current target (locked or auto)
     let confidence: Double       // 0–1
     let inTuneWindow: Double     // 5¢
@@ -459,7 +471,7 @@ struct ZenGauge: View {
                 }
 
                 // needle
-                ZenNeedle(
+                GaugeNeedle(
                     pivot: pivot,
                     rNeedle: rNeedle,
                     cents: cents,
@@ -507,7 +519,7 @@ struct ZenGauge: View {
     }
 }
 
-private struct ZenNeedle: View {
+private struct GaugeNeedle: View {
     let pivot: CGPoint
     let rNeedle: CGFloat
     let cents: Double

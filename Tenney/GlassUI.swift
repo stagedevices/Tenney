@@ -13,7 +13,7 @@ struct GlassCard<Content: View>: View {
     private let content: Content
     private let corner: CGFloat
 
-    init(corner: CGFloat = 16, @ViewBuilder content: () -> Content) {
+    init(corner: CGFloat = 16, @ViewBuilder content: @escaping () -> Content) {
         self.corner = corner
         self.content = content()
     }

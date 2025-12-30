@@ -130,10 +130,11 @@ final class LissajousRenderer: NSObject, MTKViewDelegate {
         buildDepth()
         buildQuad()
         buildSampler()
-        ToneOutputEngine.shared.scopeTap = { [weak self] x, y, count in
+        ToneOutputEngine.shared.xyScopeTap = { [weak self] x, y, count in
             guard let self else { return }
             self.ring.push(x: x, y: y, count: count)
         }
+
         deriveInkColors(from: theme)
     }
     

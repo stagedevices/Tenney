@@ -49,37 +49,40 @@ struct OnboardingWizardView: View {
     @State private var previewA4On: Bool = false
 
     var body: some View {
-        GeometryReader { geo in
-            VStack(spacing: 12) {
-                Image("LaunchLogo")
-                    .resizable()
-                    .scaledToFit()                 // ✅ no warping
-                    .frame(height: geo.size.height * 0.33)
-                    .padding(.horizontal, 24)
-                    .padding(.top, geo.safeAreaInsets.top + 12)
-
-                progressPips
-                glassStepCard
-                controls
+            GeometryReader { geo in
+                VStack(spacing: 12) {
+                    Image("LaunchLogo")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: .infinity)
+                        .frame(height: min(220, geo.size.height * 0.28))
+                        .padding(.horizontal, 16)
+                        .padding(.top, 22)
+                    
+                    
+                    progressPips.padding(.top, 4)
+                    glassStepCard.padding(.top, 20)
+                    controls
+                }
+                .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
             }
-            .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
-        }
-        .padding(8)
-        .background(.clear)
-        
-        .onAppear {
-            // Seed from current app state
-            rootCustomHz = app.rootHz
-            if let m = rootPresets.first(where: { abs($0 - app.rootHz) < 0.01 }) {
-                rootPreset = m
-            } else { rootPreset = nil }
-
-            a4CustomHz = a4Staff
-            if let m = a4Presets.first(where: { abs($0 - a4Staff) < 0.01 }) {
-                a4Preset = m
-            } else { a4Preset = nil }
-        }
-        .onDisappear { stopTone() } // ensure tone off
+            .padding(.horizontal, 12)
+            .padding(.bottom, 12)
+            .background(.clear)
+            
+            .onAppear {
+                // Seed from current app state
+                rootCustomHz = app.rootHz
+                if let m = rootPresets.first(where: { abs($0 - app.rootHz) < 0.01 }) {
+                    rootPreset = m
+                } else { rootPreset = nil }
+                
+                a4CustomHz = a4Staff
+                if let m = a4Presets.first(where: { abs($0 - a4Staff) < 0.01 }) {
+                    a4Preset = m
+                } else { a4Preset = nil }
+            }
+            .onDisappear { stopTone() } // ensure tone off
     }
 
     // MARK: - Header progress
@@ -105,6 +108,9 @@ struct OnboardingWizardView: View {
             default: stepDefaultView
             }
         }
+        .frame(maxWidth: .infinity)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .padding(.top, 6)
     }
 
     // MARK: - Step 1: Root pitch
@@ -224,7 +230,7 @@ struct OnboardingWizardView: View {
                 SettingsThemePickerView()
                     .padding(.vertical, 4)
             }
-            .frame(maxHeight: 360) // clamps on small phones; expands on iPad
+            .frame(minHeight: 340, maxHeight: .infinity) // clamps on small phones; expands on iPad
         }
     }
 
@@ -241,8 +247,26 @@ struct OnboardingWizardView: View {
                     selectDefaultView("tuner")
                 }
             }
-            Text("We’ll briefly fade to white while applying your choice.")
+            Text("Which do you want to see when you start Tenney?")
                 .font(.footnote).foregroundStyle(.secondary)
+            
+            NavigationLink {
+                           LearnTenneyHubView(entryPoint: .onboarding)
+                       } label: {
+                           HStack(spacing: 10) {
+                               Image(systemName: "graduationcap")
+                               Text("Learn Tenney")
+                               Spacer()
+                               Text("Learn ins and outs in settings")
+                                   .font(.caption.weight(.semibold))
+                                   .foregroundStyle(.secondary)
+                           }
+                           .font(.subheadline.weight(.semibold))
+                           .padding(.horizontal, 14)
+                           .padding(.vertical, 12)
+                           .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                       }
+                       .buttonStyle(.plain)
         }
     }
     private func selectDefaultView(_ v: String) {

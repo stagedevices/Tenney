@@ -42,6 +42,10 @@ final class PitchTracker {
     var onHz: ((Double, Double)->Void)?
         var onMetrics: ((Float)->Void)?
     
+    /// Raw mic PCM (mono Float32), for Phase Scope.
+        /// Called on the audio tap thread; keep it lightweight.
+        var onAudioPCM: (([Float], Double) -> Void)?
+    
         /// Bind UI callbacks; forces delivery on the main actor.
         func setUICallbacks(
             onHz: @escaping @Sendable (Double, Double) -> Void,
@@ -385,6 +389,9 @@ final class PitchTracker {
             log.error("tap: extractMonoFloat32 failed (ch=\(buffer.format.channelCount, privacy: .public) interleaved=\(buffer.format.isInterleaved ? "Y" : "N", privacy: .public))")
             return
         }
+        
+        // Phase Scope contract: publish raw mic PCM
+        onAudioPCM?(mono, buffer.format.sampleRate)
 
         // Feed ring + quick peak on the audio thread (no allocations)
         mono.withUnsafeBufferPointer { ptr in

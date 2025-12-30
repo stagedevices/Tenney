@@ -20,6 +20,15 @@ enum AppModelLocator {
 
 @MainActor
 final class AppModel: ObservableObject {
+    private var micPCMTap: (([Float], Double) -> Void)?
+    func attachMicPCMTap(_ tap: @escaping ([Float], Double) -> Void) {
+        micPCMTap = tap
+    }
+
+    func detachMicPCMTap() {
+        micPCMTap = nil
+    }
+
     @Published var builderPresented: Bool = false
     private var _recenterObserver: NSObjectProtocol?
     init() {

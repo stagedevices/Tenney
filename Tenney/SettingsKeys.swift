@@ -49,11 +49,16 @@ enum SettingsKeys {
     static let a4Choice      = "tenney.tuner.a4Choice"     // "440" | "442" | "custom"
     static let a4CustomHz    = "tenney.tuner.a4CustomHz"   // Double
     static let staffA4Hz     = "tenney.tuner.staffA4Hz"    // Double (cached, used by NotationFormatter)
-    // Tuner UI style (Zen Gauge vs Chrono Dial)
+    // Tuner UI style (Gauge vs Chrono Dial vs Scope)
     static let tunerViewStyle = "Tenney.Tuner.ViewStyle"
 
     // Confidence / needle behavior
     static let tunerNeedleHoldMode = "Tenney.Tuner.NeedleHoldMode"
+
+    
+    //scope tuner
+    static let tunerScopePartial = "Tenney.Tuner.ScopePartial"
+    static let tunerScopeReferenceOn = "Tenney.Tuner.ScopeReferenceOn"
 
     // First-run wizard
         static let hasRunSetupV1   = "Tenney.Setup.HasRunV1"
@@ -78,6 +83,14 @@ enum SettingsKeys {
     static let builderExportCustomA4Hz = "Tenney.Builder.ExportCustomA4Hz"
     static let latticeSoundEnabled = "Tenney.Latticetice.SoundEnabled"
     
+    // MARK: Learn Tenney
+        static let learnLatticeTourCompleted = "Tenney.Learn.latticeTourCompleted" // Bool
+        static let learnTunerTourCompleted   = "Tenney.Learn.tunerTourCompleted"   // Bool
+        static let learnBuilderTourCompleted = "Tenney.Learn.builderTourCompleted" // Bool
+        static let learnLastTipDayStamp      = "Tenney.Learn.lastTipDayStamp"      // String "YYYY-MM-DD"
+        static let learnTipsMode             = "Tenney.Learn.tipsMode"             // String ("learnOnly" | "learnAndUI")
+    
+
     static let builderExportFormats   = "Tenney.Builder.ExportFormats"
         static let builderExportRootMode  = "Tenney.Builder.ExportRootMode"
     

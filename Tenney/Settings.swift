@@ -46,6 +46,7 @@ extension EnvironmentValues {
     }
 }
 
+
 private enum A4Choice: String, CaseIterable, Identifiable { case _440="440", _442="442", custom="custom"; var id: String { rawValue } }
 private enum NodeSizeChoice: String, CaseIterable, Identifiable { case s, m, mplus, l; var id: String { rawValue } }
 private struct StageOptionChip: View {
@@ -330,6 +331,10 @@ private extension View {
 struct StudioConsoleView: View {
     @State private var homeQuery: String = ""
 
+    // Needle
+    @AppStorage(SettingsKeys.tunerNeedleHoldMode)
+    private var tunerNeedleHoldRaw: String = NeedleHoldMode.snapHold.rawValue
+
     @AppStorage(SettingsKeys.latticeSoundEnabled)
     private var latticeSoundEnabled: Bool = true
 
@@ -364,7 +369,7 @@ struct StudioConsoleView: View {
     
     @AppStorage(SettingsKeys.defaultView) private var defaultView: String = "tuner" // "lattice" | "tuner"
 
-    @EnvironmentObject private var model: AppModel   // ⬅️ bring AppModel into scope
+    @EnvironmentObject private var model: AppModel   //  bring AppModel into scope
     @EnvironmentObject private var app: AppModel
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var hSizeClass
@@ -2651,6 +2656,7 @@ struct StudioConsoleView: View {
         }
         .background(
             SettingsChangeSinks(
+                tunerNeedleHoldRaw: $tunerNeedleHoldRaw,
                 defaultView: $defaultView,
                 a4Staff: $a4Staff,
                 labelDefault: $labelDefault,
@@ -2955,7 +2961,9 @@ struct StudioConsoleView: View {
         case .general:
             VStack(spacing: 14) {
                 quickSetupCard
+                learnTenneyCard
                 tuningSection
+                tunerNeedleSection
                 defaultViewSection
                 whatsNewSection
                 aboutSection
@@ -3133,6 +3141,43 @@ struct StudioConsoleView: View {
                 .zIndex(10)
         }
     }
+    
+    @ViewBuilder private var learnTenneyCard: some View {
+        glassCard(
+            icon: "graduationcap.fill",
+            title: "Learn Tenney",
+            subtitle: "Tours, practice, and a searchable control glossary"
+        ) {
+            NavigationLink {
+                LearnTenneyHubView(entryPoint: .settings)
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "graduationcap.fill")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(.tint)
+                        .frame(width: 28, height: 28)
+                        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Learn Tenney")
+                            .font(.headline)
+                        Text("Tours, practice, and a searchable control glossary")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .contentShape(Rectangle())
+                .padding(.vertical, 4)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
 
     @ViewBuilder private var quickSetupCard: some View {
         glassCard(
@@ -3173,7 +3218,8 @@ struct StudioConsoleView: View {
                 ToneOutputEngine.shared.config = cfg
             }
         }
-
+        
+        @Binding var tunerNeedleHoldRaw: String
         @Binding var defaultView: String
         @Binding var a4Staff: Double
         @Binding var labelDefault: String
@@ -3234,6 +3280,7 @@ struct StudioConsoleView: View {
                                         UserDefaults.standard.set(true, forKey: SettingsKeys.latticeRememberLastView)
                                         postSetting(SettingsKeys.latticeRememberLastView, true)
                 }
+                .onChange(of: tunerNeedleHoldRaw) { postSetting(SettingsKeys.tunerNeedleHoldMode, $0) }
                 .onChange(of: defaultView)   { postSetting(SettingsKeys.defaultView, $0) }
                 .onChange(of: a4Staff)       { postSetting(SettingsKeys.staffA4Hz, $0) }
                 .onChange(of: labelDefault)  { postSetting(SettingsKeys.labelDefault, $0) }
@@ -3572,7 +3619,24 @@ struct StudioConsoleView: View {
     }
 
 
-    
+    @ViewBuilder private var tunerNeedleSection: some View {
+        glassCard(
+            icon: "gauge",
+            title: "Tuner",
+            subtitle: "Needle behavior"
+        ) {
+            Picker("Needle", selection: $tunerNeedleHoldRaw) {
+                Text("Hold").tag(NeedleHoldMode.snapHold.rawValue)
+                Text("Float").tag(NeedleHoldMode.float.rawValue)
+            }
+            .pickerStyle(.segmented)
+
+            Text("Hold stabilizes the needle when you’re near a pitch; Float follows continuous motion.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+    }
+
 
     
     @ViewBuilder private var defaultViewSection: some View {
