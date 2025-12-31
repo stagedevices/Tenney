@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 struct LearnTenneyPracticeView: View {
     let module: LearnTenneyModule
@@ -27,40 +28,60 @@ struct LearnTenneyPracticeView: View {
         default: return true
         }
     }
+    private func overlayStep(for idx: Int) -> LearnStep? {
+        guard steps.indices.contains(idx) else { return nil }
+        return steps[idx]
+    }
+
+    private func finishPractice() {
+        focus = nil
+        dismiss()
+    }
+
+    private func handleLearnEvent(_ e: LearnEvent) {
+        switch e {
+        case .latticeAuditionToggled:
+            if coordinator.currentStepIndex == 1 { auditionToggledOnce = true }
+
+        case .latticePrimeChipTapped:
+            if coordinator.currentStepIndex == 2 || coordinator.currentStepIndex == 3 {
+                primeLimitTapCount += 1
+            }
+
+        default:
+            break
+        }
+    }
 
     var body: some View {
+        let idx = coordinator.currentStepIndex
+
         ZStack(alignment: .top) {
-            PracticeContent(module: module, stepIndex: coordinator.currentStepIndex)
+            PracticeContent(module: module, stepIndex: idx)
                 .environment(\.learnGate, coordinator.gate)
 
             // Top-right + pushed DOWN so top-left prime chips stay visible/tappable
             LearnOverlay(
-                stepIndex: coordinator.currentStepIndex,
+                stepIndex: idx,
                 totalSteps: steps.count,
-                step: steps.indices.contains(coordinator.currentStepIndex) ? steps[coordinator.currentStepIndex] : nil,
+                step: overlayStep(for: idx),
                 completed: coordinator.completed,
                 nextEnabled: nextEnabledForStep,
-                onBack: { coordinator.back() },
-                onNext: { coordinator.next() },
-                onReset: { coordinator.reset() },
-                onDone: {
-                    focus = nil
-                    dismiss()
-                }
+                onBack: coordinator.back,
+                onNext: coordinator.next,
+                onReset: coordinator.reset,
+                onDone: finishPractice
             )
+
             .frame(maxWidth: 420)
             .frame(maxWidth: .infinity, alignment: .topTrailing)
             .padding(.top, 72)
             .padding(.horizontal, 12)
         }
-        .onChange(of: app.latticeAuditionOn) { _ in
-            if coordinator.currentStepIndex == 1 { auditionToggledOnce = true }
+        .onReceive(LearnEventBus.shared.publisher) { (e: LearnEvent) in
+            handleLearnEvent(e)
         }
-        .onChange(of: app.primeLimit) { _ in
-            if coordinator.currentStepIndex == 2 || coordinator.currentStepIndex == 3 {
-                primeLimitTapCount += 1
-            }
-        }
+
         .navigationTitle("Practice")
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -95,6 +116,8 @@ private struct LatticePracticeHost: View {
             ContentView()
                 .environment(\.tenneyPracticeActive, true)
                 .ignoresSafeArea()
+                .toolbar(.hidden, for: .navigationBar)
+                .toolbar(.hidden, for: .tabBar)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             // ✅ Step-specific visuals ONLY (never replace the sandbox)

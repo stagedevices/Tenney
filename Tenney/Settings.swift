@@ -2881,22 +2881,22 @@ struct StudioConsoleView: View {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
             )
-
-            if showLearnTenneyHomeTile {
-                GlassNavTile(
-                    title: "Learn Tenney",
-                    icon: "graduationcap.fill",
-                    subtitle: "Tours, practice, and a searchable control glossary",
-                    isFullWidth: true
-                ) {
-                    LearnTenneyHubView(entryPoint: .settings)
-                        .transition(.opacity)
-                                .navigationTitle("Learn Tenney")
-                                .navigationSubtitle("Tours, practice, and a searchable control glossary")
-                }
-                .frame(maxWidth: .infinity)
-                .frame(height: 120)
-            }
+// MARK: - LEARN TENNEY TILE IN SETTINGS HOME (LEAVE COMMENTED FOR PROD UNTIL READY)
+//            if showLearnTenneyHomeTile {
+//                GlassNavTile(
+  //                  title: "Learn Tenney",
+    //                icon: "graduationcap.fill",
+      //              subtitle: "Tours, practice, and a searchable control glossary",
+                // isFullWidth: true
+        //        ) {
+           //          LearnTenneyHubView(entryPoint: .settings)
+            //            .transition(.opacity)
+              //                  .navigationTitle("Learn Tenney")
+                //                .navigationSubtitle("Tours, practice, and a searchable control glossary")
+              //  }
+            //    .frame(maxWidth: .infinity)
+              //  .frame(height: 120)
+        //    }
 
             // grid (tighter spacing, filtered)
             LazyVGrid(

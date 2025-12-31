@@ -22,8 +22,9 @@ final class LearnCoordinator: ObservableObject {
     }
 
     @Published var currentStepIndex: Int = 0
-    @Published var gate = LearnGate()
+    @Published var gate: LearnGate = .init()
     @Published var completed = false
+
 
     private var cancellables = Set<AnyCancellable>()
     private let module: LearnTenneyModule

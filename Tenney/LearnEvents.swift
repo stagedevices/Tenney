@@ -46,6 +46,9 @@ enum LearnEvent: Equatable, Sendable {
 
     // Meta
     case attemptedDisallowedAction(String)
+    // 🔹 lattice-specific
+    case latticeAuditionToggled
+    case latticePrimeChipTapped(prime: Int)
 }
 
 final class LearnEventBus {
@@ -55,3 +58,4 @@ final class LearnEventBus {
 
     func send(_ event: LearnEvent) { subject.send(event) }
 }
+
