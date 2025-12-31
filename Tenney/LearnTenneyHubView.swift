@@ -42,6 +42,7 @@ enum LearnTenneyModule: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+
 struct LearnTenneyHubView: View {
     let entryPoint: LearnTenneyEntryPoint
 
@@ -86,7 +87,7 @@ struct LearnTenneyHubView: View {
             } header: {
                 Text("Modules")
             } footer: {
-                Text("Each module includes a short Tour, an interactive Practice sandbox, and a searchable control glossary.")
+                Text("Each module includes a short tour through an interactive practice sandbox and a searchable control glossary.")
             }
         }
         .navigationTitle("Learn Tenney")

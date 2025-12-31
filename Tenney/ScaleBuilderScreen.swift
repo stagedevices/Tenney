@@ -228,6 +228,7 @@ struct ScaleBuilderScreen: View {
                     let delta = u["delta"] as? Int
                 else { return }
                 stepPadOctave(idx: idx, delta: delta)
+                LearnEventBus.shared.send(.builderPadOctaveChanged(idx, delta))
             }
             .onAppear {
                 // Pause tuner mic while in Builder (restored on exit)
@@ -761,8 +762,12 @@ struct ScaleBuilderScreen: View {
         
     private var exportModeButton: some View {
         Button {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) {
+            let was = isExportMode
+            withAnimation(.spring(response: 0.36, dampingFraction: 0.86)) {
                 isExportMode.toggle()
+            }
+            if !was {
+                LearnEventBus.shared.send(.builderExportOpened)
             }
         } label: {
             Image(systemName: isExportMode ? "chevron.backward" : "square.and.arrow.up")

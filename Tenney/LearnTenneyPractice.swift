@@ -1,167 +1,123 @@
-//
-//  LearnTenneyPractice.swift
-//  Tenney
-//
-//  Created by Sebastian Suarez-Solis on 12/29/25.
-//
-
-
 import SwiftUI
 
 struct LearnTenneyPracticeView: View {
     let module: LearnTenneyModule
     @Binding var focus: LearnPracticeFocus?
 
+    private let steps: [LearnStep]
+    @StateObject private var coordinator: LearnCoordinator
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var app: AppModel
+    @State private var auditionToggledOnce = false
+    @State private var primeLimitTapCount = 0
 
-    @State private var baseline: TenneyPracticeSnapshot? = nil
-    @State private var trackedBaseline: TenneyPracticeSnapshot? = nil
-    @State private var resetToken = UUID()
+    init(module: LearnTenneyModule, focus: Binding<LearnPracticeFocus?>) {
+        self.module = module
+        self._focus = focus
+
+        let s = LearnStepFactory.steps(for: module)
+        self.steps = s
+        _coordinator = StateObject(wrappedValue: LearnCoordinator(module: module, steps: s))
+    }
+    private var nextEnabledForStep: Bool {
+        switch coordinator.currentStepIndex {
+        case 1:  return auditionToggledOnce          // Step 2
+        case 2:  return primeLimitTapCount >= 1      // Step 3
+        case 3:  return primeLimitTapCount >= 2      // Step 4
+        default: return true
+        }
+    }
 
     var body: some View {
         ZStack(alignment: .top) {
-            Group {
-                switch module {
-                case .lattice:
-                    LatticeScreen()
-                        .id(resetToken)
+            PracticeContent(module: module, stepIndex: coordinator.currentStepIndex)
+                .environment(\.learnGate, coordinator.gate)
 
-                case .tuner:
-                    TunerPracticeHost()
-                        .id(resetToken)
-
-                case .builder:
-                    BuilderPracticeHost()
-                        .id(resetToken)
+            // Top-right + pushed DOWN so top-left prime chips stay visible/tappable
+            LearnOverlay(
+                stepIndex: coordinator.currentStepIndex,
+                totalSteps: steps.count,
+                step: steps.indices.contains(coordinator.currentStepIndex) ? steps[coordinator.currentStepIndex] : nil,
+                completed: coordinator.completed,
+                nextEnabled: nextEnabledForStep,
+                onBack: { coordinator.back() },
+                onNext: { coordinator.next() },
+                onReset: { coordinator.reset() },
+                onDone: {
+                    focus = nil
+                    dismiss()
                 }
-            }
-            .ignoresSafeArea(.keyboard)
-
-            LearnPracticeOverlay(
-                title: overlayTitle,
-                instruction: overlayInstruction,
-                onReset: resetPractice,
-                onDone: exitPractice
             )
-            .padding(.top, 10)
+            .frame(maxWidth: 420)
+            .frame(maxWidth: .infinity, alignment: .topTrailing)
+            .padding(.top, 72)
             .padding(.horizontal, 12)
         }
-        .onAppear {
-            if baseline == nil {
-                let snap = TenneyPracticeSnapshot()
-                baseline = snap
-                trackedBaseline = snap
+        .onChange(of: app.latticeAuditionOn) { _ in
+            if coordinator.currentStepIndex == 1 { auditionToggledOnce = true }
+        }
+        .onChange(of: app.primeLimit) { _ in
+            if coordinator.currentStepIndex == 2 || coordinator.currentStepIndex == 3 {
+                primeLimitTapCount += 1
             }
         }
-        .onDisappear {
-            // Safety: restore if user swipes back.
-            trackedBaseline?.restore()
-        }
-    }
-
-    private var overlayTitle: String {
-        switch module {
-        case .lattice: return "Practice · Lattice"
-        case .tuner: return "Practice · Tuner"
-        case .builder: return "Practice · Builder"
-        }
-    }
-
-    private var overlayInstruction: String {
-        // Focus-driven micro-instructions (short, actionable).
-        switch focus {
-        case .latticeTapSelect:
-            return "Tap a node to select it, then tap a different node to compare selection behavior."
-        case .latticeLongPress:
-            return "Long-press a selected node to reveal its deeper/context action."
-        case .latticeLimitChips:
-            return "Find the limit chips and change the limit; watch the lattice surface respond."
-        case .latticeAxisShift:
-            return "Open Axis Shift, change a prime by ±1, then reset to zero."
-
-        case .tunerViewSwitch:
-            return "Switch between tuner styles and notice what information is emphasized."
-        case .tunerLockTarget:
-            return "Long-press the target to lock, then unlock."
-        case .tunerConfidence:
-            return "Sustain a steady tone; watch confidence rise with stability."
-        case .tunerPrimeLimit:
-            return "Change prime limit; observe how the suggested ratio vocabulary changes."
-        case .tunerStageMode:
-            return "Toggle stage mode; confirm readability and simplified layout."
-        case .tunerETvsJI:
-            return "Compare ET naming vs JI ratio for the same stable pitch."
-
-        case .builderPads:
-            return "Tap pads like an instrument—aim for a steady rhythm and listen for tuning color."
-        case .builderOctaveStepping:
-            return "Shift a pad up/down an octave, then return it to neutral."
-        case .builderExport:
-            return "Open export and verify what will be included before sharing."
-        case .builderOscilloscope:
-            return "Watch the oscilloscope as tones interact; treat it as visual feedback, not diagnosis."
-
-        case .none:
-            return "Try the main controls you’re curious about. Use Reset to get back to a clean slate."
-        }
-    }
-
-    private func resetPractice() {
-        guard let base = baseline else { return }
-        // Remove keys created since baseline, then restore baseline values.
-        let strict = base.trackingNewKeys(since: base)
-        strict.restore()
-        resetToken = UUID()
-        // Keep focus; user is usually mid-task.
-    }
-
-    private func exitPractice() {
-        trackedBaseline?.restore()
-        dismiss()
+        .navigationTitle("Practice")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
-private struct LearnPracticeOverlay: View {
-    let title: String
-    let instruction: String
-    let onReset: () -> Void
-    let onDone: () -> Void
+private struct PracticeContent: View {
+    let module: LearnTenneyModule
+    let stepIndex: Int
 
     var body: some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 10) {
-                Text(title)
-                    .font(.subheadline.weight(.semibold))
-                Spacer()
-                Button(action: onReset) {
-                    Image(systemName: "arrow.counterclockwise")
-                    Text("Reset")
-                }
-                .font(.subheadline.weight(.semibold))
-                .buttonStyle(.bordered)
+        Group {
+            switch module {
+            case .lattice:
+                LatticePracticeHost(stepIndex: stepIndex)
 
-                Button(action: onDone) {
-                    Text("Done")
-                }
-                .font(.subheadline.weight(.semibold))
-                .buttonStyle(.borderedProminent)
+            case .tuner:
+                TunerPracticeHost()
+
+            case .builder:
+                BuilderPracticeHost()
             }
-
-            Text(instruction)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .lineLimit(3)
         }
-        .padding(12)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(.white.opacity(0.08), lineWidth: 1)
-        )
-        .accessibilityElement(children: .contain)
     }
 }
+
+private struct LatticePracticeHost: View {
+    let stepIndex: Int
+
+    var body: some View {
+        ZStack {
+            // ✅ Always keep the real sandbox mounted (this is where your UtilityBar comes from)
+            ContentView()
+                .environment(\.tenneyPracticeActive, true)
+                .ignoresSafeArea()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            // ✅ Step-specific visuals ONLY (never replace the sandbox)
+            latticeStepOverlay
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .zIndex(10)
+        }
+    }
+
+    @ViewBuilder
+    private var latticeStepOverlay: some View {
+        switch stepIndex {
+        case 0:
+            Color.clear
+        case 1:
+            // step 2: keep it NON-OPAQUE so the lattice remains visible
+            Color.clear
+        default:
+            Color.clear
+        }
+    }
+}
+
 
 private struct TunerPracticeHost: View {
     @State private var stageActive = false
@@ -178,4 +134,4 @@ private struct BuilderPracticeHost: View {
         ScaleBuilderScreen(store: store)
     }
 }
-
+  

@@ -71,3 +71,24 @@ extension Date {
     }
 }
 
+extension TenneyPracticeSnapshot {
+    static let shared = TenneyPracticeSnapshot()
+
+    func markCompleted(_ module: LearnTenneyModule) {
+        let key = "learn.\(module.rawValue).completed"
+        UserDefaults.standard.set(true, forKey: key)
+    }
+
+    func isCompleted(_ module: LearnTenneyModule) -> Bool {
+        let key = "learn.\(module.rawValue).completed"
+        return UserDefaults.standard.bool(forKey: key)
+    }
+
+    func saveCurrentStep(_ module: LearnTenneyModule, index: Int) {
+        UserDefaults.standard.set(index, forKey: "learn.\(module.rawValue).step")
+    }
+
+    func loadCurrentStep(_ module: LearnTenneyModule) -> Int {
+        UserDefaults.standard.integer(forKey: "learn.\(module.rawValue).step")
+    }
+}

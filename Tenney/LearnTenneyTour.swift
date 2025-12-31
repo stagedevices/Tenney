@@ -138,20 +138,12 @@ struct LearnTenneyTourView: View {
                     tryIt: "Tap one node, then tap a different node—watch the selected state change."
                 ),
                 .init(
-                    title: "Auditioning (aha)",
+                    title: "Auditioning",
                     bullets: [
                         "Auditioning lets you quickly hear a node’s ratio against your root.",
-                        "This is the fastest way to internalize the geometry → sound relationship."
+                        "Turn on Audition (speaker icon) in the utility bar so taps can produce sound."
                     ],
-                    tryIt: "Tap-select a node and trigger its audition (use the same gesture you already use in Lattice)."
-                ),
-                .init(
-                    title: "Long-press behavior",
-                    bullets: [
-                        "Long-press reveals the “deeper” action for the thing you pressed.",
-                        "In Lattice, this typically means contextual actions tied to the selected ratio."
-                    ],
-                    tryIt: "Long-press a selected node and read the action sheet / contextual UI that appears."
+                    tryIt: "Turn on Audition in the bottom utility bar, then tap-select a node to hear it."
                 ),
                 .init(
                     title: "Limit chips",
@@ -160,6 +152,14 @@ struct LearnTenneyTourView: View {
                         "They are also a status readout: your current constraint set at a glance."
                     ],
                     tryIt: "Find the limit chips, change the limit, then observe how the lattice surface responds."
+                ),
+                .init(
+                    title: "Press-and-hold on limit chips",
+                    bullets: [
+                        "Press-and-hold reveals the “deeper” action for a control.",
+                        "On the prime-limit chips, press-and-hold toggles all higher limits on/off in one move."
+                    ],
+                    tryIt: "Press-and-hold a prime-limit chip to toggle the higher-limit set on/off."
                 ),
                 .init(
                     title: "Axis shift",
@@ -174,7 +174,7 @@ struct LearnTenneyTourView: View {
         case .tuner:
             return [
                 .init(
-                    title: "Two tuner vibes",
+                    title: "Three tuner types",
                     bullets: [
                         "Gauge is minimal and calm; Chrono is more technical / explicit; Scope is more professional",
                         "Both read the same pitch engine—only presentation changes."

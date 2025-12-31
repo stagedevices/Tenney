@@ -329,6 +329,8 @@ private extension View {
 }
 
 struct StudioConsoleView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     @State private var homeQuery: String = ""
 
     // Needle
@@ -374,7 +376,6 @@ struct StudioConsoleView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var hSizeClass
     @Environment(\.colorScheme) private var systemScheme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
 
@@ -475,37 +476,43 @@ struct StudioConsoleView: View {
         var pageTitle: String {
             switch self {
             case .lattice:      return "Lattice UI"
+            case .tuner:        return "Tuner"
             case .oscilloscope: return "Oscilloscope"
             case .stage:        return "Stage Mode"
-            case .audio:        return "Audio Engine & Headroom"
+            case .audio:        return "Audio & I/O"
             case .general:      return "General"
+
             }
         }
 
         var pageSubtitle: String {
             switch self {
             case .lattice:      return "View, grid, theme, distance"
+            case .tuner:        return "Reference, needle, detection"
             case .oscilloscope: return "Lissajous preview + pro controls"
             case .stage:        return "Dim, accent, performance behavior"
             case .audio:        return "Devices, tone, envelope, limiter"
-            case .general:      return "Setup, tuning, defaults, about"
+            case .general:      return "Setup, defaults, about"
+
             }
         }
 
-        case lattice, oscilloscope, stage, audio, general
+        case lattice, tuner, oscilloscope, stage, audio, general
         var id: String { rawValue }
         var title: String {
             switch self {
             case .lattice:      return "Lattice UI"
+            case .tuner:        return "Tuner"
             case .oscilloscope: return "Oscilloscope"
             case .stage:        return "Stage Mode"
-            case .audio:        return "Audio Engine"
+            case .audio:        return "Audio & I/O"
             case .general:      return "General"
             }
         }
         var icon: String {
             switch self {
             case .lattice:      return "hexagon"
+            case .tuner:        return "gauge"   // (or "tuningfork" if you prefer)
             case .oscilloscope: return "waveform.path.ecg"
             case .stage:        return "rectangle.on.rectangle.angled"
             case .audio:        return "waveform.and.mic"
@@ -2739,8 +2746,17 @@ struct StudioConsoleView: View {
             )
 
             ScrollView {
-                gridView
+                VStack(spacing: 0) {
+                    gridView
+                        .frame(maxWidth: .infinity)
+                }
+                .padding(.bottom, 40) // ensures scroll buffer beyond last tile
             }
+            .scrollIndicators(.hidden)
+            .ignoresSafeArea(.keyboard)
+            .scrollTargetLayout()
+            .scrollDisabled(activeCategory != nil)
+
             .coordinateSpace(name: "settings.scroll")
             .onPreferenceChange(SettingsHeaderMinYKey.self) { measuredMinY in
                 // Remove our own offset from the measurement to avoid feedback loops
@@ -2817,6 +2833,14 @@ struct StudioConsoleView: View {
         }
         .animation(catAnim, value: activeCategory)
     }
+    
+    private var showLearnTenneyHomeTile: Bool {
+        let q = homeQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        if q.isEmpty { return true }
+        return fuzzyMatch(q, in: "Learn Tenney") ||
+               fuzzyMatch(q, in: "Tours, practice, and a searchable control glossary")
+    }
+
 
     private var homeScreen: some View {
         VStack(spacing: 14) {
@@ -2857,6 +2881,22 @@ struct StudioConsoleView: View {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
             )
+
+            if showLearnTenneyHomeTile {
+                GlassNavTile(
+                    title: "Learn Tenney",
+                    icon: "graduationcap.fill",
+                    subtitle: "Tours, practice, and a searchable control glossary",
+                    isFullWidth: true
+                ) {
+                    LearnTenneyHubView(entryPoint: .settings)
+                        .transition(.opacity)
+                                .navigationTitle("Learn Tenney")
+                                .navigationSubtitle("Tours, practice, and a searchable control glossary")
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 120)
+            }
 
             // grid (tighter spacing, filtered)
             LazyVGrid(
@@ -2945,31 +2985,124 @@ struct StudioConsoleView: View {
         case .audio:
             let safePct = Int((StudioConsoleView.nearestDetent(safeAmp, in: StudioConsoleView.safeAmpDetents) * 100).rounded())
             return "Wave: \(waveLabel(cfg.wave)) · Limiter: \(onOff(cfg.limiterOn)) · Safe: \(safePct)%"
+        case .tuner:
+            let mode = NeedleHoldMode(rawValue: tunerNeedleHoldRaw) ?? .snapHold
+            let needle = (mode == .snapHold) ? "Hold" : "Float"
+            return "A4: \(Int(a4Staff.rounded())) Hz · Needle: \(needle)"
 
         case .general:
             return "A4: \(Int(a4Staff.rounded())) Hz · Default: \(defaultView.capitalized)"
         }
     }
 
+    private var tunerCategoryStack: some View {
+        VStack(spacing: 14) {
+            tuningSection
+            tunerNeedleSection
+            // (Optional: add any other tuner-only UX controls here later)
+        }
+    }
+
     
     @ViewBuilder private func categoryContent(for cat: SettingsCategory) -> some View {
         switch cat {
-        case .lattice:      latticeUISection
-        case .oscilloscope: oscilloscopeSection
-        case .stage:        stageSection
-        case .audio:        soundSection
-        case .general:
-            VStack(spacing: 14) {
-                quickSetupCard
-                learnTenneyCard
-                tuningSection
-                tunerNeedleSection
-                defaultViewSection
-                whatsNewSection
-                aboutSection
-            }
+    case .lattice:      latticeUISection
+    case .tuner:        tunerCategoryStack
+    case .oscilloscope: oscilloscopeSection
+    case .stage:        stageSection
+    case .audio:        soundSection
+    case .general:
+        VStack(spacing: 14) {
+            quickSetupCard
+            defaultViewSection
+            whatsNewSection
+            aboutSection
         }
     }
+    }
+
+private struct GlassNavTile<Destination: View>: View {
+    let title: String
+    var icon: String? = nil
+    var subtitle: String? = nil
+    var badgeText: String? = nil
+    var isOn: Bool = false
+    var isFullWidth: Bool = false
+    @ViewBuilder let destination: () -> Destination
+
+    @Environment(\.tenneyTheme) private var theme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var grad: LinearGradient {
+        LinearGradient(colors: [theme.e3, theme.e5],
+                       startPoint: .topLeading,
+                       endPoint: .bottomTrailing)
+    }
+
+    var body: some View {
+        NavigationLink(destination: destination()) {
+            ZStack(alignment: .topTrailing) {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(isOn ? .thinMaterial : .ultraThinMaterial)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(
+                                isOn ? AnyShapeStyle(grad)
+                                     : AnyShapeStyle(Color.secondary.opacity(0.12)),
+                                lineWidth: 1
+                            )
+                    )
+                    .shadow(color: Color.black.opacity(0.1), radius: 12, x: 0, y: 6)
+                    .shadow(color: Color.white.opacity(theme.isDark ? 0.05 : 0.15), radius: 4, x: 0, y: -2)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .center, spacing: 10) {
+                        if let icon {
+                            Image(systemName: icon)
+                                .font(.title3.weight(.semibold))
+                                .foregroundStyle(AnyShapeStyle(grad))
+                                .blendMode(theme.isDark ? .screen : .darken)
+                                .frame(width: 22)
+                        }
+
+                        Text(title)
+                            .font(isFullWidth ? .title3.bold() : .headline.weight(.semibold))
+                            .foregroundStyle(theme.isDark ? Color.white : Color.black)
+                            .lineLimit(1)
+
+                        Spacer()
+
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(isFullWidth ? .footnote : .caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(isFullWidth ? 18 : 14)
+
+                if let badgeText {
+                    Text(badgeText)
+                        .font(.caption2.weight(.black))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(.thinMaterial, in: Capsule())
+                        .foregroundStyle(.secondary)
+                        .padding(10)
+                }
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .buttonStyle(PressScalePlainStyle())
+    }
+}
+
     
     private struct GlassSelectTile: View {
         let title: String
@@ -2982,7 +3115,6 @@ struct StudioConsoleView: View {
 
         @Environment(\.tenneyTheme) private var theme
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
-        @State private var pressed = false
 
         private var grad: LinearGradient {
             LinearGradient(colors: [theme.e3, theme.e5],
@@ -2990,12 +3122,8 @@ struct StudioConsoleView: View {
                            endPoint: .bottomTrailing)
         }
 
-        @Environment(\.scrollProgress) private var scrollProgress
-        @State private var parallaxOffset: CGFloat = 0
 
         @ViewBuilder private var embellishment: some View {
-            let dim = 1.0 - (scrollProgress * 0.25)
-            let parallax = reduceMotion ? 0 : parallaxOffset
 
             switch title {
             case "Lattice UI":
@@ -3004,12 +3132,10 @@ struct StudioConsoleView: View {
                     .environment(\.latticePreviewHideChips, true)
                     .allowsHitTesting(false)
                     .disabled(true)
-                    .opacity(dim * 0.6)
-                    .blur(radius: scrollProgress * 2)
-                    .offset(y: parallax)
+               //     .opacity()
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     .padding(6)
-                    .animation(.easeInOut(duration: 0.3), value: scrollProgress)
+                    .animation(.easeInOut(duration: 0.3))
 
             case "Oscilloscope":
                 LissajousCanvasPreview(
@@ -3024,12 +3150,10 @@ struct StudioConsoleView: View {
                     dotSize: 1.5,
                     globalAlpha: 0.9
                 )
-                .opacity(dim * 0.6)
-                .blur(radius: scrollProgress * 2)
-                .offset(y: parallax)
+              //  .opacity()
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .padding(6)
-                .animation(.easeInOut(duration: 0.3), value: scrollProgress)
+                .animation(.easeInOut(duration: 0.3))
 
             default:
                 EmptyView()
@@ -3113,13 +3237,8 @@ struct StudioConsoleView: View {
                     }
                 }
                 .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .scaleEffect((pressed && !reduceMotion) ? 0.985 : 1)
             }
-            .buttonStyle(.plain)
-            .pressEvents { down in
-                if reduceMotion { return }
-                withAnimation(.easeOut(duration: 0.12)) { pressed = down }
-            }
+            .buttonStyle(PressScalePlainStyle())
         }
     }
 
@@ -3141,43 +3260,6 @@ struct StudioConsoleView: View {
                 .zIndex(10)
         }
     }
-    
-    @ViewBuilder private var learnTenneyCard: some View {
-        glassCard(
-            icon: "graduationcap.fill",
-            title: "Learn Tenney",
-            subtitle: "Tours, practice, and a searchable control glossary"
-        ) {
-            NavigationLink {
-                LearnTenneyHubView(entryPoint: .settings)
-            } label: {
-                HStack(spacing: 12) {
-                    Image(systemName: "graduationcap.fill")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(.tint)
-                        .frame(width: 28, height: 28)
-                        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Learn Tenney")
-                            .font(.headline)
-                        Text("Tours, practice, and a searchable control glossary")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                    }
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                }
-                .contentShape(Rectangle())
-                .padding(.vertical, 4)
-            }
-            .buttonStyle(.plain)
-        }
-    }
-
 
     @ViewBuilder private var quickSetupCard: some View {
         glassCard(
@@ -4455,15 +4537,35 @@ private extension CGPoint {
     static let bottomTrailing = CGPoint(x: 1, y: 1)
 }
 
-private extension View {
-    func pressEvents(_ onChange: @escaping (Bool) -> Void) -> some View {
-        simultaneousGesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { _ in onChange(true) }
-                .onEnded { _ in onChange(false) }
-        )
+
+private struct PressEventsModifier: ViewModifier {
+    let onPress: (Bool) -> Void
+    @State private var isDown = false
+
+    func body(content: Content) -> some View {
+        content
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in
+                        guard !isDown else { return }
+                        isDown = true
+                        onPress(true)
+                    }
+                    .onEnded { _ in
+                        guard isDown else { return }
+                        isDown = false
+                        onPress(false)
+                    }
+            )
     }
 }
+
+extension View {
+    func pressEvents(_ onPress: @escaping (Bool) -> Void) -> some View {
+        modifier(PressEventsModifier(onPress: onPress))
+    }
+}
+
  
 extension EnvironmentValues { var scrollProgress: CGFloat {
     get { self[ScrollProgressKey.self] }
@@ -4471,3 +4573,12 @@ extension EnvironmentValues { var scrollProgress: CGFloat {
 }
 }
 private struct ScrollProgressKey: EnvironmentKey { static let defaultValue: CGFloat = 0 }
+private struct PressScalePlainStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.985 : 1.0)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}

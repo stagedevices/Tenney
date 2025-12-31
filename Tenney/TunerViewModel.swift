@@ -47,6 +47,12 @@ final class TunerViewModel: ObservableObject {
     @Published var confidenceValue: Double = 0
     @Published var isFarValue: Bool = false
 
+    @Published var lockedTarget: RatioResult? = nil {
+        didSet {
+            LearnEventBus.shared.send(.tunerLockToggled(lockedTarget != nil))
+        }
+    }
+
 
     private let tracker: PitchTracker
     private let resolver = RatioResolver()

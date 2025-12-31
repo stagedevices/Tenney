@@ -22,6 +22,7 @@ private let libraryStore = ScaleLibraryStore.shared
     @State private var inkVisible = false
     @State private var inkIsDark = false
     @State private var effectiveIsDark = false
+    @Environment(\.tenneyPracticeActive) private var practiceActive
 
     @EnvironmentObject private var app: AppModel
     @State private var mode: AppScreenMode = .tuner
@@ -240,8 +241,9 @@ private let libraryStore = ScaleLibraryStore.shared
 
         .onAppear {
             // Align initial mode to defaultView
-            mode = (defaultView == "lattice" ? .lattice : .tuner)
-            app.setMicActive(mode == .tuner)
+            mode = practiceActive ? .lattice : (defaultView == "lattice" ? .lattice : .tuner)
+            app.setMicActive(!practiceActive && mode == .tuner)
+
             // Footer bootstrap (first-run overlay)
                         computeBuildStamp()
                         updateFooterRoute()
@@ -307,8 +309,16 @@ private let libraryStore = ScaleLibraryStore.shared
             .onChange(of: stageActive) { on in updateIdleTimer(stageOn: on) }
             .onChange(of: stageKeepAwake) { keep in updateIdleTimer(keepAwake: keep) }
             .safeAreaInset(edge: .bottom) { if !stageActive { utilityBarInset } }
-            .onChange(of: mode) { new in app.setMicActive(new == .tuner) }
+            .onChange(of: mode) { new in
+                if practiceActive {
+                    if new != .lattice { mode = .lattice }
+                    app.setMicActive(false)
+                } else {
+                    app.setMicActive(new == .tuner)
+                }
+            }
 
+        
         return base
             .sheet(isPresented: $showSettings) { settingsSheet }
             .sheet(item: $app.builderPayload, onDismiss: builderSheetDismiss) { payload in
@@ -881,6 +891,7 @@ private struct RailView: View {
 }
 
 private struct UtilityBar: View {
+
     @EnvironmentObject private var app: AppModel
     @Binding var mode: AppScreenMode
     @Binding var showSettings: Bool
@@ -890,6 +901,7 @@ private struct UtilityBar: View {
     let defaultView: String
 
     @Environment(\.tenneyTheme) private var theme
+    @Environment(\.tenneyPracticeActive) private var practiceActive
 
     private var pillGrad: LinearGradient {
         LinearGradient(
@@ -901,18 +913,28 @@ private struct UtilityBar: View {
 
     var body: some View {
         HStack {
-            Picker("Mode", selection: $mode) {
-                if defaultView == "lattice" {
-                    Text("Lattice").tag(AppScreenMode.lattice)
-                    Text("Tuner").tag(AppScreenMode.tuner)
-                } else {
-                    Text("Tuner").tag(AppScreenMode.tuner)
-                    Text("Lattice").tag(AppScreenMode.lattice)
+            if practiceActive {
+                HStack(spacing: 8) {
+                    Image(systemName: "graduationcap.fill").imageScale(.medium)
+                    Text("Lattice Practice").font(.footnote.weight(.semibold))
                 }
+                .foregroundStyle(.secondary)
+                .padding(.trailing, 8)
+            } else {
+                Picker("Mode", selection: $mode) {
+                    if defaultView == "lattice" {
+                        Text("Lattice").tag(AppScreenMode.lattice)
+                        Text("Tuner").tag(AppScreenMode.tuner)
+                    } else {
+                        Text("Tuner").tag(AppScreenMode.tuner)
+                        Text("Lattice").tag(AppScreenMode.lattice)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 220)
+                .padding(.trailing, 8)
             }
-            .pickerStyle(.segmented)
-            .frame(maxWidth: 220)
-            .padding(.trailing, 8)
+
 
             // In lattice mode, show a clear, tappable Sound toggle for audition
             if mode == .lattice {

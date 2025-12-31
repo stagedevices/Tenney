@@ -117,6 +117,8 @@ struct LatticeView: View {
                 store.setPrimeVisible(p, target, animated: true)
             }
         }
+        LearnEventBus.shared.send(.latticePrimeChipHiToggle(target))
+
     }
 
     @Environment(\.latticePreviewMode) private var latticePreviewMode
@@ -2352,7 +2354,9 @@ struct LatticeView: View {
                 HStack(spacing: 8) {
                     Button {
                         withAnimation(.snappy) { store.auditionEnabled.toggle() }
+                        LearnEventBus.shared.send(.latticeAuditionEnabledChanged(store.auditionEnabled))
                     } label: {
+
                         HStack(spacing: 6) {
                             Image(systemName: store.auditionEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
                                 .imageScale(.medium)
@@ -3042,7 +3046,12 @@ struct LatticeView: View {
                         withAnimation(.easeOut(duration: 0.2)) { focusedPoint = nil }
                     }
                     if newValue.isEmpty { releaseInfoVoice() }
+
+                    if !newValue.isEmpty {
+                        LearnEventBus.shared.send(.latticeNodeSelected("selected"))
+                    }
                 }
+
         }
     }
     
@@ -3624,7 +3633,13 @@ struct LatticeView: View {
                 store.camera.pan(by: CGSize(width: dx, height: dy))
                 lastDrag = v.translation
             }
-            .onEnded { _ in lastDrag = .zero }
+            .onEnded { v in
+                let pan = hypot(v.translation.width, v.translation.height)
+                if pan > 0.5 {
+                    LearnEventBus.shared.send(.latticeCameraChanged(pan: Double(pan), zoom: 1.0))
+                }
+                lastDrag = .zero
+            }
     }
     
     private func pinchGesture(in geo: GeometryProxy) -> some Gesture {
@@ -3636,7 +3651,10 @@ struct LatticeView: View {
                 store.camera.zoom(by: factor, anchor: anchor)
                 lastMag = scale
             }
-            .onEnded { _ in lastMag = 1 }
+            .onEnded { scale in
+                LearnEventBus.shared.send(.latticeCameraChanged(pan: 0.0, zoom: Double(scale)))
+                lastMag = 1
+            }
     }
     // Brush-select: toggles nodes as you drag over them (only in .select mode)
     private func brushGesture(in geo: GeometryProxy, viewRect: CGRect) -> some Gesture {

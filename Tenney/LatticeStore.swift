@@ -12,6 +12,8 @@ import UIKit
 
 @MainActor
 final class LatticeStore: ObservableObject {
+    
+    
     // Add alongside your other selection state
     @Published var selectionOrderKeys: [SelectionKey] = []
 
@@ -360,7 +362,25 @@ final class LatticeStore: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + a.duration + 0.06, execute: work)
     }
 
-    
+    private func ratioStringPlane(_ c: LatticeCoord) -> String {
+        let e3 = c.e3 + pivot.e3 + (axisShift[3] ?? 0)
+        let e5 = c.e5 + pivot.e5 + (axisShift[5] ?? 0)
+        let p = (e3 > 0 ? Int(pow(3.0, Double(e3))) : 1) * (e5 > 0 ? Int(pow(5.0, Double(e5))) : 1)
+        let q = (e3 < 0 ? Int(pow(3.0, Double(-e3))) : 1) * (e5 < 0 ? Int(pow(5.0, Double(-e5))) : 1)
+        return "\(p)/\(q)"
+    }
+
+    private func ratioStringGhost(_ g: GhostMonzo) -> String {
+        let e3 = g.e3, e5 = g.e5, eP = g.eP, prime = g.p
+        let p = (e3 > 0 ? Int(pow(3.0, Double(e3))) : 1)
+              * (e5 > 0 ? Int(pow(5.0, Double(e5))) : 1)
+              * (eP > 0 ? Int(pow(Double(prime), Double(eP))) : 1)
+        let q = (e3 < 0 ? Int(pow(3.0, Double(-e3))) : 1)
+              * (e5 < 0 ? Int(pow(5.0, Double(-e5))) : 1)
+              * (eP < 0 ? Int(pow(Double(prime), Double(-eP))) : 1)
+        return "\(p)/\(q)"
+    }
+
     // MARK: - Selection (plane)
     func toggleSelection(_ c: LatticeCoord, pushUndo: Bool = true) {
         let key: SelectionKey = .plane(c)
@@ -378,6 +398,8 @@ final class LatticeStore: ObservableObject {
             }
         } else {
             selected.insert(c)
+            LearnEventBus.shared.send(.latticeNodeSelected(ratioStringPlane(c)))
+
             selectionOrder.append(c)
             startSelectionAnim(key, targetOn: true)
             if auditionEnabled && latticeSoundEnabled {
@@ -398,7 +420,8 @@ final class LatticeStore: ObservableObject {
                     self.lastTriggerAt[c] = Date()
 
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred(intensity: 0.9)
-                }
+                       LearnEventBus.shared.send(.latticeNodeAuditioned(self.ratioStringPlane(c)))
+                   }
 
                 if let last = lastTriggerAt[c] {
                     let dt = now.timeIntervalSince(last)
@@ -487,6 +510,8 @@ final class LatticeStore: ObservableObject {
             }
         } else {
             selectedGhosts.insert(g)
+            LearnEventBus.shared.send(.latticeNodeSelected(ratioStringGhost(g)))
+
             selectionOrderGhosts.append(g)
             startSelectionAnim(key, targetOn: true)
 
@@ -498,7 +523,6 @@ final class LatticeStore: ObservableObject {
 
                 let fire = { [weak self] in
                     guard let self else { return }
-                    // If user deselected during the delay, do nothing.
                     guard self.auditionEnabled,
                           self.selectedGhosts.contains(g),
                           self.voiceForGhost[g] == nil
@@ -515,7 +539,8 @@ final class LatticeStore: ObservableObject {
 
                     self.pendingGhostAudition.removeValue(forKey: g)
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred(intensity: 0.9)
-                }
+                        LearnEventBus.shared.send(.latticeNodeAuditioned(self.ratioStringGhost(g)))
+                    }
 
                 if let last = lastTriggerAtGhost[g] {
                     let dt = now.timeIntervalSince(last)
