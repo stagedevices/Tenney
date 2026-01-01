@@ -40,4 +40,19 @@ enum MicPermission {
         UIApplication.shared.open(URL(string: UIApplication.openSettingsURLString)!)
         #endif
     }
+    /// Convenience wrapper that matches your "granted/denied" call sites.
+        static func ensureGranted(_ onGranted: @escaping () -> Void,
+                                  onDenied: @escaping () -> Void) {
+            ensure { ok in
+                if ok { onGranted() } else { onDenied() }
+            }
+        }
+    
+        /// Deep-link into the app’s Settings page (iOS / Catalyst).
+        static func openAppSettings() {
+            #if os(iOS) || targetEnvironment(macCatalyst)
+            guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+            UIApplication.shared.open(url)
+            #endif
+        }
 }

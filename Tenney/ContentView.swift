@@ -296,6 +296,12 @@ private let libraryStore = ScaleLibraryStore.shared
                 }
         // Capture wizard top Y (global)
             .onPreferenceChange(WizardTopPref.self) { wizardTopY = $0 }
+            .alert("Microphone Access Needed", isPresented: $app.micDenied) {
+                        Button("Open Settings") { MicrophonePermission.openAppSettings() }
+                        Button("Not Now", role: .cancel) { }
+                    } message: {
+                        Text("Enable Microphone in Settings → Privacy → Microphone to use the tuner.")
+                    }
     }
     // ===== Footer helpers =====
         private func updateFooterRoute() {

@@ -27,38 +27,8 @@ final class AudioEngineService {
                 }
 #if os(iOS) || targetEnvironment(macCatalyst)
         let session = AVAudioSession.sharedInstance()
-        // 1) Handle mic permission first
-        switch session.recordPermission {
-        case .undetermined:
-            session.requestRecordPermission { _ in
-                DispatchQueue.main.async { self.start(config: config, callback: callback) }
-            }
-            return
-        case .denied:
-            // Fall back to playback-only. Don’t touch input at all.
-            do {
-                let sr = config.preferredSampleRate ?? 48_000
-                let frames: AVAudioFrameCount = {
-                    if let f = config.bufferFrames, f > 0 { return AVAudioFrameCount(f) }
-                    return hopFrames
-                }()
-                try session.setPreferredSampleRate(sr)
-                try session.setPreferredIOBufferDuration(Double(frames) / sr)
-            } catch { print("[AudioSession] playback-only error: \(error)") }
-        case .granted:
-            do {
-                try session.setCategory(.playAndRecord,
-                                        mode: .measurement,
-                                        options: [.mixWithOthers, .allowBluetooth, .defaultToSpeaker])
-                try session.setPreferredSampleRate(48_000)
-                try session.setPreferredIOBufferDuration(Double(hopFrames) / 48_000.0)
-                try session.setActive(true, options: [])
-            } catch {
-                print("[AudioSession] configure error: \(error)")
-            }
-        @unknown default:
-            break
-        }
+        // 1) Permission is handled by AppModel. If not granted, do nothing.
+        guard session.recordPermission == .granted else { return }
         #endif
 
 

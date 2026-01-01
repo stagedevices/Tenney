@@ -53,6 +53,7 @@ final class AppModel: ObservableObject {
     enum MicPermissionState { case unknown, denied, granted }
     
     @Published var micPermission: MicPermissionState = .unknown
+    @Published var micDenied: Bool = false
     @Published var display: TunerDisplay = .empty
     @Published var rootHz: Double = {
         // Load persisted root Hz (independent from A4 ET reference)
@@ -190,10 +191,22 @@ final class AppModel: ObservableObject {
             bufferFrames: preferredBufferFrames
         )
         
-        // Pass the config to audio.start
-        audio.start(config: config) { [weak self] samples, sr in
-            self?.process(samples: samples, sr: sr)
-        }
+        // Pass the config to audio.start (only after permission is granted)
+                MicrophonePermission.ensureGranted(
+                    { [weak self] in
+                        guard let self else { return }
+                        self.micDenied = false
+                        self.audio.start(config: config) { [weak self] samples, sr in
+                            self?.process(samples: samples, sr: sr)
+                        }
+                    },
+                    onDenied: { [weak self] in
+                        guard let self else { return }
+                        self.micDenied = true
+                        // Optional: keep UI stable if the tuner is visible
+                        self.display = .noInput(rootHz: self.rootHz)
+                    }
+                )
     }
     
     func stop() { audio.stop(deactivateSession: true); toneOutput.stop() }
