@@ -275,7 +275,7 @@ public extension View {
     }
 
     /// For explicitly NOT-themed controls: shadow only (no fill/stroke).
-    func tenneyChromaShadow(_ enabled: Bool = true, radius: CGFloat = 8, y: CGFloat = 4) -> some View {
+    func tenneyChromaShadow(_ enabled: Bool = true, radius: CGFloat = 18, y: CGFloat = 8) -> some View {
         self.modifier(_TenneyChromaShadow(enabled: enabled, radius: radius, y: y))
     }
 }
@@ -284,7 +284,8 @@ private struct _TenneySurfaceTint: ViewModifier {
      func body(content: Content) -> some View {
          content.overlay {
              theme.surfaceTint
-                 .blendMode(.overlay)
+                    .opacity(0.18) // ⬅️ turn down chroma wash (tweak 0.10–0.25)
+                    .blendMode(.overlay)
                  .allowsHitTesting(false)
          }
      }
@@ -298,7 +299,7 @@ private struct _TenneyChromaShadow: ViewModifier {
 
     func body(content: Content) -> some View {
         if enabled {
-            content.shadow(color: theme.chromaShadow, radius: radius, x: 0, y: y)
+            content.shadow(color: theme.chromaShadow.opacity(0.35), radius: radius, x: 0, y: y)
         } else {
             content
         }

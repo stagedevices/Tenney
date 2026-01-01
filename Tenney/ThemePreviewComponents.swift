@@ -22,21 +22,31 @@ struct ThemeDialPreview: View {
             Circle().fill(.ultraThinMaterial)
             Circle().strokeBorder(Color.primary.opacity(0.10), lineWidth: 1)
 
-            // ticks
-            ForEach(0..<12, id: \.self) { i in
+            // ticks (arc, gauge-style)
+            ForEach(0..<17, id: \.self) { i in
+                let t = Double(i) / 16.0
+                let ang = -140.0 + (280.0 * t) // sweep an arc instead of full circle
+
                 Capsule()
                     .fill(theme.tunerTicks.opacity(theme.tunerTickOpacity))
-                    .frame(width: 2, height: i % 3 == 0 ? 12 : 7)
+                    .frame(width: 2, height: i % 4 == 0 ? 13 : 7)
                     .offset(y: -30)
-                    .rotationEffect(.degrees(Double(i) / 12.0 * 360.0))
+                    .rotationEffect(.degrees(ang))
             }
 
-            // needle (static)
-            Capsule()
+
+            // needle (gauge-style: pivots from center)
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
                 .fill(theme.tunerNeedle)
-                .frame(width: 3, height: 42)
-                .offset(y: -10)
-                .rotationEffect(.degrees(-18))
+                .frame(width: 4, height: 44)
+                .rotationEffect(.degrees(-24), anchor: .bottom)
+                .offset(y: -22) // places the pivot at the dial center
+
+            // hub
+            Circle()
+                .fill(.ultraThinMaterial)
+                .overlay(Circle().stroke(theme.tunerNeedle.opacity(0.9), lineWidth: 1))
+                .frame(width: 10, height: 10)
         }
         .frame(width: 86, height: 86)
     }

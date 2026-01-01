@@ -289,10 +289,16 @@ struct OnboardingWizardView: View {
                     .frame(maxWidth: 200)
                     .padding()
                     .background(
-                        RoundedRectangle(cornerRadius: 16)
-                            .fill(Material.thin)
-                        
-                            .glassEffect(.regular, in: .rect(cornerRadius: 16))
+                        Group {
+                            if #available(iOS 26.0, *) {
+                                RoundedRectangle(cornerRadius: 16)
+                                    .fill(Material.thin)
+                                    .glassEffect(.regular, in: .rect(cornerRadius: 16))
+                            } else {
+                                RoundedRectangle(cornerRadius: 16)
+                                    .fill(.thinMaterial)
+                            }
+                        }
                     )
                     .contentShape(Rectangle())
                     .padding(.horizontal, 16)
@@ -310,9 +316,16 @@ struct OnboardingWizardView: View {
                     .frame(maxWidth: 200)
                     .padding()
                     .background(
-                        RoundedRectangle(cornerRadius: 16)
-                            .fill(Material.thin)
-                            .glassEffect(.regular, in: .rect(cornerRadius: 16))
+                        Group {
+                            if #available(iOS 26.0, *) {
+                                RoundedRectangle(cornerRadius: 16)
+                                    .fill(Material.thin)
+                                    .glassEffect(.regular, in: .rect(cornerRadius: 16))
+                            } else {
+                                RoundedRectangle(cornerRadius: 16)
+                                    .fill(.thinMaterial)
+                            }
+                        }
                     )
                     .contentShape(Rectangle())
                     .matchedGeometryEffect(id: "continueButton", in: ns)
@@ -330,9 +343,16 @@ struct OnboardingWizardView: View {
                     .frame(maxWidth: 200)
                     .padding()
                     .background(
-                        RoundedRectangle(cornerRadius: 16)
-                            .fill(Material.thin)
-                            .glassEffect(.regular, in: .rect(cornerRadius: 16))
+                        Group {
+                            if #available(iOS 26.0, *) {
+                                RoundedRectangle(cornerRadius: 16)
+                                    .fill(Material.thin)
+                                    .glassEffect(.regular, in: .rect(cornerRadius: 16))
+                            } else {
+                                RoundedRectangle(cornerRadius: 16)
+                                    .fill(.thinMaterial)
+                            }
+                        }
                     )
                     .contentShape(Rectangle())
                     .matchedGeometryEffect(id: "doneButton", in: ns)

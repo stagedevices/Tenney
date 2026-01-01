@@ -19,7 +19,7 @@ enum LatticeConnectionMode: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .chain:    return "Chain"
         case .loop:     return "Loop (3+ closes)"
-        case .gridPath: return "Grid Path"
+        case .gridPath: return "Path"
         }
     }
 }

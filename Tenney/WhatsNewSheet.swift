@@ -8,7 +8,9 @@
 import Foundation
 import SwiftUI
 import StoreKit
+#if canImport(UIKit)
 import UIKit
+#endif
 
 struct WhatsNewItem: Identifiable {
     let id = UUID()
@@ -64,9 +66,10 @@ enum WhatsNewContent {
 
 // MARK: - Sheet
 struct WhatsNewSheet: View {
-    @EnvironmentObject private var app: AppModel
+    let app: AppModel
     let items: [WhatsNewItem]
     let primaryAction: () -> Void
+
 
     // v0.3 deep-link actions (shown only if provided)
     var onOpenExport: (() -> Void)? = nil
@@ -97,7 +100,7 @@ struct WhatsNewSheet: View {
     @State private var animateHero = false
     
     private struct RealLatticePreview: View {
-        @EnvironmentObject private var app: AppModel
+        let app: AppModel
         @StateObject private var store = LatticeStore()
 
         let gridMode: LatticeGridMode?
@@ -105,10 +108,12 @@ struct WhatsNewSheet: View {
         let seedSelection: [LatticeCoord]
 
         init(
+            app: AppModel,
             gridMode: LatticeGridMode? = nil,
             connectionMode: LatticeConnectionMode? = nil,
             seedSelection: [LatticeCoord] = []
         ) {
+            self.app = app
             self.gridMode = gridMode
             self.connectionMode = connectionMode
             self.seedSelection = seedSelection
@@ -132,6 +137,8 @@ struct WhatsNewSheet: View {
                 }
         }
     }
+    
+    @available(iOS 26.0, *)
     private var heroPalette: HeroPalette {
         // ✅ If you already have explicit theme colors, prefer them:
         // return .init(primary: app.theme.primary, secondary: app.theme.secondary, accent: app.theme.accent)
@@ -333,7 +340,7 @@ struct WhatsNewSheet: View {
                 blurb: "Nodes got a visual upgrade, plus path connection modes (Chain, Loop, Map) and better selection that follows your Attack/Release timing.",
                 preview: AnyView(
                     HStack(spacing: 10) {
-                        RealLatticePreview(gridMode: .triMesh)
+                        RealLatticePreview(app: app, gridMode: .triMesh)
                     }
                 ),
                 primaryCTA: seeInLatticeAction == nil ? nil : ("See in Lattice", {
@@ -348,6 +355,7 @@ struct WhatsNewSheet: View {
                 blurb: "New hex and triangle grids reveal the lattice structure more clearly at any zoom.",
                 preview: AnyView(
                     RealLatticePreview(
+                        app: app,
                         gridMode: .outlines,
                         connectionMode: .chain,
                         seedSelection: [
@@ -475,11 +483,15 @@ struct WhatsNewSheet: View {
     }
 
     private func requestRating() {
+        #if canImport(UIKit)
         if let scene = UIApplication.shared.connectedScenes
             .compactMap({ $0 as? UIWindowScene })
             .first(where: { $0.activationState == .foregroundActive }) {
             SKStoreReviewController.requestReview(in: scene)
         }
+        #else
+        SKStoreReviewController.requestReview()
+        #endif
     }
 }
 

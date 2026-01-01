@@ -329,6 +329,8 @@ private extension View {
 }
 
 struct StudioConsoleView: View {
+    @Environment(\.colorScheme) private var scheme
+
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var homeQuery: String = ""
@@ -484,7 +486,6 @@ struct StudioConsoleView: View {
             case .theme:        return "Theme"
             case .tuner:        return "Tuner"
             case .oscilloscope: return "Oscilloscope"
-            case .stage:        return "Stage Mode"
             case .audio:        return "Audio & I/O"
             case .general:      return "General"
 
@@ -495,16 +496,15 @@ struct StudioConsoleView: View {
             switch self {
             case .lattice:      return "View, grid, theme, distance"
             case .theme:        return "Appearance + theme"
-            case .tuner:        return "Reference, needle, detection"
+            case .tuner:        return "Reference, needle, stage mode"
             case .oscilloscope: return "Lissajous preview + pro controls"
-            case .stage:        return "Dim, accent, performance behavior"
             case .audio:        return "Devices, tone, envelope, limiter"
             case .general:      return "Setup, defaults, about"
 
             }
         }
 
-        case lattice, theme, tuner, oscilloscope, stage, audio, general
+        case lattice, theme, tuner, oscilloscope, audio, general
         var id: String { rawValue }
         var title: String {
             switch self {
@@ -512,7 +512,6 @@ struct StudioConsoleView: View {
             case .theme:        return "Theme"
             case .tuner:        return "Tuner"
             case .oscilloscope: return "Oscilloscope"
-            case .stage:        return "Stage Mode"
             case .audio:        return "Audio & I/O"
             case .general:      return "General"
             }
@@ -523,7 +522,6 @@ struct StudioConsoleView: View {
             case .theme:        return "paintpalette"
             case .tuner:        return "gauge"   // (or "tuningfork" if you prefer)
             case .oscilloscope: return "waveform.path.ecg"
-            case .stage:        return "rectangle.on.rectangle.angled"
             case .audio:        return "waveform.and.mic"
             case .general:      return "gearshape"
             }
@@ -2159,19 +2157,15 @@ struct StudioConsoleView: View {
                     .onChange(of: labelDensity) { _ in snapLabelDensityIfNeeded() }
                 }
                 
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 10) {
                     Text("Connection Mode")
                         .font(.subheadline.weight(.semibold))
 
-                    Picker("Connection Mode", selection: $latticeConnectionModeRaw) {
-                        ForEach(LatticeConnectionMode.allCases) { m in
-                            Text(m.title).tag(m.rawValue)
-                        }
-                    }
-                    .pickerStyle(.segmented)
+                    connectionModePicker
                 }
 
-                Text("Default Zoom affects Reset View; Labels control fade.")
+
+                Text("Chain: nodes are connected in the order they are selected. Loop: nodes are connected into shapes. Path: nodes are connected along the grid.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -2221,6 +2215,58 @@ struct StudioConsoleView: View {
                             .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
                     )
             }
+        
+        @ViewBuilder private var connectionModePicker: some View {
+            let setMode: (LatticeConnectionMode) -> Void = { m in
+                guard latticeConnectionModeRaw != m.rawValue else { return }
+                withAnimation(.snappy) { latticeConnectionModeRaw = m.rawValue }
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            }
+
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) {
+                    ForEach(LatticeConnectionMode.allCases) { m in
+                        let icons = connIcons(for: m)
+                        GridModeRadioChip(
+                            title: m.title,
+                            systemNameOff: icons.off,
+                            systemNameOn: icons.on,
+                            selected: latticeConnectionMode == m
+                        ) { setMode(m) }
+                    }
+                }
+
+                LazyVGrid(
+                    columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)],
+                    spacing: 10
+                ) {
+                    ForEach(LatticeConnectionMode.allCases) { m in
+                        let icons = connIcons(for: m)
+                        GridModeRadioChip(
+                            title: m.title,
+                            systemNameOff: icons.off,
+                            systemNameOn: icons.on,
+                            selected: latticeConnectionMode == m
+                        ) { setMode(m) }
+                    }
+                }
+            }
+        }
+
+        private func connIcons(for m: LatticeConnectionMode) -> (off: String, on: String) {
+            // Raw-value mapping keeps this compile-safe even if you add/remove enum cases later.
+            switch m.rawValue {
+            case "none":
+                return ("slash.circle", "slash.circle.fill")
+            case "chain":
+                return ("link", "link.circle.fill")
+            case "star":
+                return ("star", "star.fill")
+            default:
+                return ("circle.grid.3x3", "circle.grid.3x3.fill")
+            }
+        }
+
 
         @ViewBuilder private var gridModePicker: some View {
             let setMode: (LatticeGridMode) -> Void = { m in
@@ -2642,6 +2688,7 @@ struct StudioConsoleView: View {
                 markWhatsNewSeen()
             }) {
             WhatsNewSheet(
+                app: app,
                 items: WhatsNewContent.v0_3Items,
                 primaryAction: {
                     showWhatsNewSheet = false
@@ -2928,7 +2975,7 @@ struct StudioConsoleView: View {
                 spacing: 14
             ) {
                 // Full-width large tiles (stacked vertically)
-                ForEach(filteredHomeCategories.filter { $0 == .lattice || $0 == .oscilloscope }) { cat in
+                ForEach(filteredHomeCategories.filter { $0 == .lattice || $0 == .tuner || $0 == .oscilloscope }) { cat in
                     GlassSelectTile(
                         title: cat.title,
                         icon: cat.icon,
@@ -2944,7 +2991,7 @@ struct StudioConsoleView: View {
                 }
 
                 // Remaining categories (regular grid)
-                ForEach(filteredHomeCategories.filter { ![.lattice, .oscilloscope].contains($0) }) { cat in
+                ForEach(filteredHomeCategories.filter { ![.lattice, .tuner, .oscilloscope].contains($0) }) { cat in
                     GlassSelectTile(
                         title: cat.title,
                         icon: cat.icon,
@@ -3010,23 +3057,24 @@ struct StudioConsoleView: View {
             let w = String(format: "%.1f", lissaRibbonWidth)
             return "Grid: \(onOff(lissaShowGrid)) · Live: \(lissaLiveSamples) · Width: \(w) · Persist: \(onOff(lissaPersistenceEnabled))"
 
-        case .stage:
-            let style = ThemeStyleChoice(rawValue: themeStyleRaw) ?? .system
-            let dimLocked = (style == .dark) || (style == .system && systemScheme == .dark)
-            let dimText = dimLocked ? "Dim: Locked" : "Dim: \(Int((stageDimLevel * 100).rounded()))%"
-            let accent = stageAccent.capitalized
-            return "\(dimText) · Accent: \(accent) · Minimal: \(onOff(stageMinimalUI))"
-
         case .audio:
             let safePct = Int((StudioConsoleView.nearestDetent(safeAmp, in: StudioConsoleView.safeAmpDetents) * 100).rounded())
             return "Wave: \(waveLabel(cfg.wave)) · Limiter: \(onOff(cfg.limiterOn)) · Safe: \(safePct)%"
         case .tuner:
             let mode = NeedleHoldMode(rawValue: tunerNeedleHoldRaw) ?? .snapHold
             let needle = (mode == .snapHold) ? "Hold" : "Float"
-            return "A4: \(Int(a4Staff.rounded())) Hz · Needle: \(needle)"
+
+            // Fold Stage Mode summary into Tuner (Stage tile removed)
+            let style = ThemeStyleChoice(rawValue: themeStyleRaw) ?? .system
+            let dimLocked = (style == .dark) || (style == .system && systemScheme == .dark)
+            let dimText = dimLocked ? "Dim: Locked" : "Dim: \(Int((stageDimLevel * 100).rounded()))%"
+            let accent = stageAccent.capitalized
+
+            return "A4: \(Int(a4Staff.rounded())) Hz · Needle: \(needle) · \(dimText) · Accent: \(accent)"
+
 
         case .general:
-            return "A4: \(Int(a4Staff.rounded())) Hz · Default: \(defaultView.capitalized)"
+            return "Hz · Default: \(defaultView.capitalized)"
         }
     }
 
@@ -3034,6 +3082,7 @@ struct StudioConsoleView: View {
         VStack(spacing: 14) {
             tuningSection
             tunerNeedleSection
+            stageSection
             // (Optional: add any other tuner-only UX controls here later)
         }
     }
@@ -3045,7 +3094,6 @@ struct StudioConsoleView: View {
         case .theme:        themeCategoryStack
         case .tuner:        tunerCategoryStack
         case .oscilloscope: oscilloscopeSection
-        case .stage:        stageSection
         case .audio:        soundSection
         case .general:
             VStack(spacing: 14) {
@@ -3069,12 +3117,37 @@ struct StudioConsoleView: View {
             title: "Appearance",
             subtitle: "Light / Dark / System"
         ) {
-            Picker("Appearance", selection: $themeStyleRaw) {
-                Text("System").tag(ThemeStyleChoice.system.rawValue)
-                Text("Light").tag(ThemeStyleChoice.light.rawValue)
-                Text("Dark").tag(ThemeStyleChoice.dark.rawValue)
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 180, maximum: 240), spacing: 12)],
+                spacing: 12
+            ) {
+                GlassSelectTile(
+                    title: "System",
+                    icon: "circle.lefthalf.filled",
+                    subtitle: "Follow device appearance.",
+                    isOn: styleChoice == .system
+                ) {
+                    withAnimation(.snappy) { themeStyleRaw = ThemeStyleChoice.system.rawValue }
+                }
+
+                GlassSelectTile(
+                    title: "Light",
+                    icon: "sun.max.fill",
+                    subtitle: "Force light across the app.",
+                    isOn: styleChoice == .light
+                ) {
+                    withAnimation(.snappy) { themeStyleRaw = ThemeStyleChoice.light.rawValue }
+                }
+
+                GlassSelectTile(
+                    title: "Dark",
+                    icon: "moon.stars.fill",
+                    subtitle: "Force dark across the app.",
+                    isOn: styleChoice == .dark
+                ) {
+                    withAnimation(.snappy) { themeStyleRaw = ThemeStyleChoice.dark.rawValue }
+                }
             }
-            .pickerStyle(.segmented)
 
             Text("Applied across Settings, Tuner, and Lattice.")
                 .font(.footnote)
@@ -3216,6 +3289,29 @@ private struct GlassNavTile<Destination: View>: View {
                     globalAlpha: 0.9
                 )
               //  .opacity()
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .padding(6)
+                .animation(.easeInOut(duration: 0.3))
+                
+            case "Tuner":
+                GeometryReader { geo in
+                    ZStack {
+                        // background tint should match the preview image's intended canvas
+                        if theme.isDark {
+                            Color(.sRGB, red: 23.0/255.0, green: 23.0/255.0, blue: 23.0/255.0, opacity: 1.0)
+                        } else {
+                            Color(.sRGB, red: 247.0/255.0, green: 246.0/255.0, blue: 247.0/255.0, opacity: 1.0)
+                        }
+
+                        Image(theme.isDark ? "SettingsTunerPrevDark" : "SettingsTunerPrev")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: geo.size.width, height: geo.size.height)
+                    }
+                    .clipped()
+                }
+                .allowsHitTesting(false)
+                .disabled(true)
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .padding(6)
                 .animation(.easeInOut(duration: 0.3))
@@ -3561,9 +3657,9 @@ private struct GlassNavTile<Destination: View>: View {
 
     @ViewBuilder private var stageSection: some View {
         glassCard(
-            icon: "",
-            title: "",
-            subtitle: ""
+            icon: "rectangle.on.rectangle.angled",
+            title: "Stage Mode",
+            subtitle: "Dim, accent, performance behavior"
         ) {
             let dimLocked = isExplicitDarkStyle || isAutoAndCurrentlyDark
 
@@ -3770,15 +3866,33 @@ private struct GlassNavTile<Destination: View>: View {
             title: "Tuner",
             subtitle: "Needle behavior"
         ) {
-            Picker("Needle", selection: $tunerNeedleHoldRaw) {
-                Text("Hold").tag(NeedleHoldMode.snapHold.rawValue)
-                Text("Float").tag(NeedleHoldMode.float.rawValue)
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 180, maximum: 240), spacing: 12)],
+                spacing: 12
+            ) {
+                GlassSelectTile(
+                    title: "Hold",
+                    icon: "pin.fill",
+                    subtitle: "Stabilizes near pitch.",
+                    isOn: tunerNeedleHoldRaw == NeedleHoldMode.snapHold.rawValue
+                ) {
+                    withAnimation(.snappy) { tunerNeedleHoldRaw = NeedleHoldMode.snapHold.rawValue }
+                }
+
+                GlassSelectTile(
+                    title: "Float",
+                    icon: "waveform.path.ecg",
+                    subtitle: "Continuous motion.",
+                    isOn: tunerNeedleHoldRaw == NeedleHoldMode.float.rawValue
+                ) {
+                    withAnimation(.snappy) { tunerNeedleHoldRaw = NeedleHoldMode.float.rawValue }
+                }
             }
-            .pickerStyle(.segmented)
 
             Text("Hold stabilizes the needle when you’re near a pitch; Float follows continuous motion.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+
         }
     }
 
@@ -3901,29 +4015,50 @@ private struct GlassNavTile<Destination: View>: View {
         let mode: TenneyDistanceMode
         let selected: Bool
         let tap: () -> Void
+        private var tileCard: some View {
+            ZStack(alignment: .topTrailing) {
+                TenneyMiniPreview(mode: mode)
+                    .padding(10)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(
+                        selected ? Color.accentColor.opacity(0.35) : Color.secondary.opacity(0.12),
+                        lineWidth: 1
+                    )
+
+                if selected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .imageScale(.small)
+                        .symbolRenderingMode(.hierarchical)
+                        .padding(6)
+                        .transition(.opacity)
+                }
+            }
+            .frame(minWidth: 160, minHeight: 84)
+        }
+
 
         var body: some View {
             VStack(spacing: 6) {
                 Button(action: tap) {
-                    GlassEffectContainer {      // iOS 18; gracefully ignored pre-18
-                        ZStack(alignment: .topTrailing) {
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(.clear) // glass background drawn by container
-                            TenneyMiniPreview(mode: mode)
-                                .padding(10)
-                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .stroke(selected ? Color.accentColor.opacity(0.35) : Color.secondary.opacity(0.12), lineWidth: 1)
-                            if selected {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .imageScale(.small)
-                                    .symbolRenderingMode(.hierarchical)
-                                    .padding(6)
-                                    .transition(.opacity)
-                            }
+                #if os(iOS)
+                    if #available(iOS 26.0, *) {
+                        GlassEffectContainer {
+                            tileCard
+                                .background(
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .fill(.clear) // glass background drawn by container
+                                )
                         }
-                        .frame(minWidth: 160, minHeight: 84)
+                    } else {
+                        tileCard
+                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     }
+                #else
+                    tileCard
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                #endif
                 }
                 .buttonStyle(.plain)
 
@@ -4571,8 +4706,6 @@ private struct ZoomPresetStepperControl: View {
                 }
     }
 }
-
-
 
 
 private struct SettingsLatticePreview: View {
