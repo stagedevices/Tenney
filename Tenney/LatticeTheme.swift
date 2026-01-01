@@ -228,15 +228,16 @@ struct ThemeRegistry {
 }
 
 // MARK: Environment
-private struct TenneyThemeKey: EnvironmentKey {
+private struct LatticeThemeKey: EnvironmentKey {
     static let defaultValue: LatticeTheme = ThemeRegistry.theme(.classicBO, dark: false)
 }
 extension EnvironmentValues {
-    var tenneyTheme: LatticeTheme {
-        get { self[TenneyThemeKey.self] }
-        set { self[TenneyThemeKey.self] = newValue }
+    var latticeTheme: LatticeTheme {
+        get { self[LatticeThemeKey.self] }
+        set { self[LatticeThemeKey.self] = newValue }
     }
 }
+
 
 // MARK: Utilities
 extension Color {

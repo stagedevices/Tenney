@@ -133,10 +133,13 @@ struct LatticeView: View {
     }
     
     private var activeTheme: LatticeTheme {
-        let id = LatticeThemeID(rawValue: themeIDRaw) ?? .classicBO
+        // tenneyThemeID can be "custom:<uuid>" — LatticeTheme only supports builtins.
+        let raw = themeIDRaw
+        let builtinRaw = raw.hasPrefix("custom:") ? LatticeThemeID.classicBO.rawValue : raw
+        let id = LatticeThemeID(rawValue: builtinRaw) ?? .classicBO
         return ThemeRegistry.theme(id, dark: effectiveIsDark)
     }
-    
+
     
     private struct TenneyDistanceNode {
         let screen: CGPoint
@@ -231,7 +234,7 @@ struct LatticeView: View {
     }
 
     
-    @AppStorage(SettingsKeys.latticeThemeID) private var themeIDRaw: String = LatticeThemeID.classicBO.rawValue
+    @AppStorage(SettingsKeys.tenneyThemeID) private var themeIDRaw: String = LatticeThemeID.classicBO.rawValue
     @AppStorage(SettingsKeys.latticeThemeStyle) private var themeStyleRaw: String = ThemeStyleChoice.system.rawValue
     
     @AppStorage(SettingsKeys.latticeAlwaysRecenterOnQuit)
@@ -2345,39 +2348,6 @@ struct LatticeView: View {
         
     }
     
-    // MARK: - Audition (sound on/off) pill (v0.2)
-    private struct AuditionPill: View {
-        @ObservedObject var store: LatticeStore
-        
-        var body: some View {
-            GlassCard {
-                HStack(spacing: 8) {
-                    Button {
-                        withAnimation(.snappy) { store.auditionEnabled.toggle() }
-                        LearnEventBus.shared.send(.latticeAuditionEnabledChanged(store.auditionEnabled))
-                    } label: {
-
-                        HStack(spacing: 6) {
-                            Image(systemName: store.auditionEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
-                                .imageScale(.medium)
-                                .symbolRenderingMode(.hierarchical)
-                            
-                            Text(store.auditionEnabled ? "Sound On" : "Sound Off")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                    }
-                    .buttonStyle(.plain)
-                    .sensoryFeedback(.selection, trigger: store.auditionEnabled)
-                    .accessibilityLabel(store.auditionEnabled ? "Audition on" : "Audition off")
-                }
-            }
-            .controlSize(.small)
-        }
-    }
-    
     private struct ShiftRibbonGlass: ViewModifier {
         func body(content: Content) -> some View {
             if #available(iOS 26.0, *) {
@@ -2987,7 +2957,8 @@ struct LatticeView: View {
     
     
     private func applySettingsChanged(_ note: Notification) {
-        if let v = note.userInfo?[SettingsKeys.latticeThemeID] as? String { themeIDRaw = v }
+        if let v = note.userInfo?[SettingsKeys.tenneyThemeID] as? String { themeIDRaw = v }
+        if let v = note.userInfo?[SettingsKeys.latticeThemeID] as? String { themeIDRaw = v } // legacy sender
         if let v = note.userInfo?[SettingsKeys.latticeThemeStyle] as? String { themeStyleRaw = v }
         
         // Settings preview: if default zoom preset changes, re-apply default zoom immediately.

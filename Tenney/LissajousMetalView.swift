@@ -10,7 +10,7 @@ import MetalKit
 import SwiftUI
 
 struct LissajousMetalView: UIViewRepresentable {
-    let theme: LatticeTheme
+    let theme: ResolvedTenneyTheme
     let rootHz: Double
     var pair: (RatioResult, RatioResult) = (.init(num: 1, den: 1, octave: 0),
                                             .init(num: 1, den: 1, octave: 0))
@@ -27,6 +27,9 @@ struct LissajousMetalView: UIViewRepresentable {
 
     func updateUIView(_ uiView: MTKView, context: Context) {
         uiView.preferredFramesPerSecond = config.preferredFPS
+
+        context.coordinator.theme = theme
+
         let r = context.coordinator.renderer!
         r.setTheme(theme)
         r.setRatios(
@@ -34,14 +37,20 @@ struct LissajousMetalView: UIViewRepresentable {
             y: .init(num: pair.1.num, den: pair.1.den, octave: pair.1.octave),
             rootHz: rootHz
         )
-        r.setConfig { $0 = config } // apply full config atomically
+        r.setConfig { $0 = config }
     }
 
-    func makeCoordinator() -> Coordinator { Coordinator() }
+    func makeCoordinator() -> Coordinator { Coordinator(theme: theme) }
     final class Coordinator: NSObject {
         var renderer: LissajousRenderer?
+        var theme: ResolvedTenneyTheme
+
+        init(theme: ResolvedTenneyTheme) {
+            self.theme = theme
+        }
+
         func attach(to view: MTKView) {
-            renderer = LissajousRenderer(mtkView: view)
+            renderer = LissajousRenderer(mtkView: view, theme: theme)
             view.delegate = renderer
         }
     }

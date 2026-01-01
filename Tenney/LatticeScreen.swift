@@ -37,6 +37,7 @@ struct LatticeScreen: View {
     var body: some View {
         LatticeView()
             .environmentObject(store)
+        
             .onAppear {
                 // If your app sets AppModelLocator.shared in TenneyApp/ContentView already, this is harmless.
                 // Keep the root provider updated (future-proof if you migrate LatticeStore to use it).

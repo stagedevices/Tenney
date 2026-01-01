@@ -55,7 +55,13 @@ enum SettingsKeys {
     // Confidence / needle behavior
     static let tunerNeedleHoldMode = "Tenney.Tuner.NeedleHoldMode"
 
-    
+    // NEW: Themes
+    static let tenneyThemeID          = "tenney.theme.id"                 // String (builtin rawValue or "custom:<uuid>")
+    static let tenneyThemeMixBasis    = "tenney.theme.mixing.basis"       // String (TenneyMixBasis)
+    static let tenneyThemeMixMode     = "tenney.theme.mixing.mode"        // String (TenneyMixMode)
+    static let tenneyThemeScopeMode   = "tenney.theme.scope.mode"         // String (TenneyScopeColorMode)
+    static let tenneyCustomThemes     = "tenney.theme.customThemes"       // Data ([CustomTheme])
+
     //scope tuner
     static let tunerScopePartial = "Tenney.Tuner.ScopePartial"
     static let tunerScopeReferenceOn = "Tenney.Tuner.ScopeReferenceOn"

@@ -10,6 +10,8 @@ import SwiftUI
 import Combine
 
 struct PhaseScopeTunerView: View {
+    @Environment(\.tenneyTheme) private var theme
+
     @EnvironmentObject private var app: AppModel
 
     @EnvironmentObject private var model: AppModel
@@ -116,7 +118,7 @@ struct PhaseScopeTunerView: View {
 
                 // “In tune” cue uses your existing notion (same window)
                 if abs(cents) <= inTuneWindow && conf > 0.25 {
-                    InTuneJewel()
+                    InTuneJewel(tint: theme.inTuneHighlightColor(activeLimit: store.primeLimit))
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                         .padding(.bottom, 10)
                 }
@@ -208,6 +210,8 @@ private struct ScopeReticle: View {
 }
 
 private struct ScopeTrace: View {
+    @Environment(\.tenneyTheme) private var theme
+
     let points: [CGPoint]         // already normalized to [-1,1] mapped to view
     let confidence: Double
     let referenceOn: Bool
@@ -233,7 +237,7 @@ private struct ScopeTrace: View {
                 for p in points.dropFirst() { path.addLine(to: map(p)) }
 
                 ctx.stroke(path,
-                           with: .color(Color.primary.opacity(alpha)),
+                           with: .color(theme.scopeTraceDefault.opacity(alpha)),
                            style: StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
             }
             .blur(radius: blur)
@@ -293,18 +297,19 @@ private struct BeatPulse: View {
 }
 
 private struct InTuneJewel: View {
-    var body: some View {
+    let tint: Color
+        var body: some View {
         Circle()
             .fill(Color.primary.opacity(0.12))
             .frame(width: 10, height: 10)
             .overlay(
-                Circle().fill(Color.accentColor.opacity(0.45))
-                    .blur(radius: 6)
-                    .frame(width: 22, height: 22)
+                Circle().fill(tint.opacity(0.45))
+                .blur(radius: 6)
+                .frame(width: 22, height: 22)
             )
             .accessibilityHidden(true)
+        }
     }
-}
 fileprivate func parseRatioText(_ s: String) -> RatioResult? {
     let parts = s.split(separator: "/")
     guard parts.count == 2, let n = Int(parts[0]), let d = Int(parts[1]) else { return nil }

@@ -89,7 +89,7 @@ private struct StageAccentPicker: View {
         .init(id: "red",    label: "Red",    colors: [.red, .pink])
     ]
 
-    @Environment(\.tenneyTheme) private var theme
+    @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
 
     private var strokeGrad: LinearGradient {
         LinearGradient(
@@ -153,7 +153,7 @@ private struct StageToggleChip: View {
     @Binding var isOn: Bool
     var invertVisual: Bool = false
 
-    @Environment(\.tenneyTheme) private var theme
+    @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
 
     private var grad: LinearGradient {
         LinearGradient(
@@ -378,7 +378,7 @@ struct StudioConsoleView: View {
     @Environment(\.colorScheme) private var systemScheme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
-
+//  THeme
     private var effectiveIsDark: Bool {
         (themeStyleRaw == "dark") || (themeStyleRaw == "system" && systemScheme == .dark)
     }
@@ -386,6 +386,12 @@ struct StudioConsoleView: View {
         @State private var localInkVisible = false
         @State private var localInkIsDark  = false
         @State private var lastEffectiveIsDark = false
+    
+    @AppStorage(SettingsKeys.tenneyThemeID) private var tenneyThemeIDRaw: String = LatticeThemeID.classicBO.rawValue
+    @AppStorage(SettingsKeys.tenneyThemeMixBasis) private var mixBasisRaw: String = TenneyMixBasis.complexityWeight.rawValue
+    @AppStorage(SettingsKeys.tenneyThemeMixMode) private var mixModeRaw: String = TenneyMixMode.blend.rawValue
+    @AppStorage(SettingsKeys.tenneyThemeScopeMode) private var scopeModeRaw: String = TenneyScopeColorMode.constant.rawValue
+
     // Tuning
     @AppStorage(SettingsKeys.a4Choice)   private var a4Choice = A4Choice._440.rawValue
     @AppStorage(SettingsKeys.a4CustomHz) private var a4Custom: Double = 440
@@ -402,7 +408,6 @@ struct StudioConsoleView: View {
     @AppStorage(SettingsKeys.overlay7)     private var overlay7: Bool = true
     @AppStorage(SettingsKeys.overlay11)    private var overlay11: Bool = true
     @AppStorage(SettingsKeys.foldAudible)  private var foldAudible: Bool = false
-    @AppStorage(SettingsKeys.latticeThemeID) private var latticeThemeID: String = LatticeThemeID.classicBO.rawValue
     @AppStorage(SettingsKeys.latticeThemeStyle) private var themeStyleRaw: String = ThemeStyleChoice.system.rawValue
     
     // Hex grid (Lattice) — single value (no light/dark split)
@@ -476,6 +481,7 @@ struct StudioConsoleView: View {
         var pageTitle: String {
             switch self {
             case .lattice:      return "Lattice UI"
+            case .theme:        return "Theme"
             case .tuner:        return "Tuner"
             case .oscilloscope: return "Oscilloscope"
             case .stage:        return "Stage Mode"
@@ -488,6 +494,7 @@ struct StudioConsoleView: View {
         var pageSubtitle: String {
             switch self {
             case .lattice:      return "View, grid, theme, distance"
+            case .theme:        return "Appearance + theme"
             case .tuner:        return "Reference, needle, detection"
             case .oscilloscope: return "Lissajous preview + pro controls"
             case .stage:        return "Dim, accent, performance behavior"
@@ -497,11 +504,12 @@ struct StudioConsoleView: View {
             }
         }
 
-        case lattice, tuner, oscilloscope, stage, audio, general
+        case lattice, theme, tuner, oscilloscope, stage, audio, general
         var id: String { rawValue }
         var title: String {
             switch self {
             case .lattice:      return "Lattice UI"
+            case .theme:        return "Theme"
             case .tuner:        return "Tuner"
             case .oscilloscope: return "Oscilloscope"
             case .stage:        return "Stage Mode"
@@ -512,6 +520,7 @@ struct StudioConsoleView: View {
         var icon: String {
             switch self {
             case .lattice:      return "hexagon"
+            case .theme:        return "paintpalette"
             case .tuner:        return "gauge"   // (or "tuningfork" if you prefer)
             case .oscilloscope: return "waveform.path.ecg"
             case .stage:        return "rectangle.on.rectangle.angled"
@@ -599,7 +608,7 @@ struct StudioConsoleView: View {
     private struct SubpageTopBar: View {
         let title: String
         let subtitle: String
-        @Environment(\.tenneyTheme) private var theme
+        @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
 
         var body: some View {
             VStack(alignment: .trailing, spacing: 2) {
@@ -624,7 +633,7 @@ struct StudioConsoleView: View {
         let selected: Bool
         let tap: () -> Void
 
-        @Environment(\.tenneyTheme) private var theme
+        @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
 
         private var grad: LinearGradient {
             LinearGradient(colors: [theme.e3, theme.e5], startPoint: .topLeading, endPoint: .bottomTrailing)
@@ -702,7 +711,7 @@ struct StudioConsoleView: View {
         let value: Double
         @Binding var current: Double
 
-        @Environment(\.tenneyTheme) private var theme
+        @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
 
         private var grad: LinearGradient {
             LinearGradient(
@@ -762,13 +771,12 @@ struct StudioConsoleView: View {
 
 
     private enum LatticeUIPage: String, CaseIterable, Identifiable {
-        case view, grid, theme, distance
+        case view, grid, distance
         var id: String { rawValue }
         var title: String {
             switch self {
             case .view: return "View"
             case .grid: return "Grid"
-            case .theme: return "Theme"
             case .distance: return "Distance"
             }
         }
@@ -781,7 +789,7 @@ struct StudioConsoleView: View {
         let selected: Bool
         let tap: () -> Void
 
-        @Environment(\.tenneyTheme) private var theme
+        @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
 
         private var grad: LinearGradient {
             LinearGradient(
@@ -871,7 +879,7 @@ struct StudioConsoleView: View {
         @Binding var snapSmall: Bool
         @Binding var maxDen: Int
 
-        @Environment(\.tenneyTheme) private var theme
+        @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
         @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
@@ -1046,7 +1054,7 @@ struct StudioConsoleView: View {
         private struct PageHeader: View {
             let title: String
             let systemImage: String
-            @Environment(\.tenneyTheme) private var theme
+            @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
 
             private var headerGradient: LinearGradient {
                 LinearGradient(colors: [theme.e3, theme.e5], startPoint: .topLeading, endPoint: .bottomTrailing)
@@ -1328,7 +1336,7 @@ struct StudioConsoleView: View {
         @Binding var cfg: ToneOutputEngine.Config
         @Binding var safeAmp: Double
         
-        @Environment(\.tenneyTheme) private var theme
+        @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
 
                 private var pageGrad: LinearGradient {
                     LinearGradient(
@@ -1522,7 +1530,7 @@ struct StudioConsoleView: View {
         private struct AudioPageHeader: View {
             let title: String
             let systemImage: String
-            @Environment(\.tenneyTheme) private var theme
+            @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
 
             private var headerGradient: LinearGradient {
                 LinearGradient(
@@ -1822,7 +1830,7 @@ struct StudioConsoleView: View {
 
         @Binding var latticeConnectionModeRaw: String
         @Binding var soundOn: Bool   // ✅ add
-        @Environment(\.tenneyTheme) private var theme
+        @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
 
         private var pageGrad: LinearGradient {
             LinearGradient(
@@ -1847,9 +1855,8 @@ struct StudioConsoleView: View {
         @Binding var gridMajorEnabled: Bool
         @Binding var gridMajorEvery: Int
         
-        //  moved in from standalone cards
-        @Binding var latticeThemeID: String
         @Binding var tenneyDistanceModeRaw: String
+        let previewToken: String
 
         @State private var page: LatticeUIPage = .view
                 private let pageAnim = Animation.easeInOut(duration: 0.22)
@@ -1898,7 +1905,6 @@ struct StudioConsoleView: View {
                     switch p {
                     case .view:     return "viewfinder.circle"
                     case .grid:     return "square.grid.2x2"
-                    case .theme:    return "paintpalette"
                     case .distance: return "ruler"
                     }
                 }
@@ -1906,7 +1912,7 @@ struct StudioConsoleView: View {
         private struct PageHeader: View {
             let title: String
             let systemImage: String
-            @Environment(\.tenneyTheme) private var theme
+            @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
 
             private var headerGradient: LinearGradient {
                 LinearGradient(
@@ -1974,10 +1980,6 @@ struct StudioConsoleView: View {
                     "Axis: \(onOff(guidesOn)) · Recenter: \(onOff(alwaysRecenter)) · Zoom: \(zoomPreset.title) · Size: \(nodeChoice.summaryCode) · Labels: \(labelDensityName(labelDensity))"
                 }
         
-        private var themeSummary: String {
-                    "Theme: \(latticeThemeID)"
-                }
-        
                 private var tenneyMode: TenneyDistanceMode {
                     TenneyDistanceMode(rawValue: tenneyDistanceModeRaw) ?? .breakdown
                 }
@@ -1996,7 +1998,6 @@ struct StudioConsoleView: View {
             switch p {
             case .view: return viewSummary
             case .grid: return gridSummary
-            case .theme: return themeSummary
             case .distance: return distanceSummary
             }
         }
@@ -2072,12 +2073,11 @@ struct StudioConsoleView: View {
                                     HStack(spacing: 10) {
                                         pageChip(.view)
                                         pageChip(.grid)
-                                        pageChip(.theme)
                                         pageChip(.distance)
                                     }
                                     VStack(spacing: 10) {
                                         HStack(spacing: 10) { pageChip(.view); pageChip(.grid) }
-                                        HStack(spacing: 10) { pageChip(.theme); pageChip(.distance) }
+                                        HStack(spacing: 10) { pageChip(.distance) }
                                     }
                                 }
 
@@ -2176,16 +2176,7 @@ struct StudioConsoleView: View {
                     .foregroundStyle(.secondary)
             }
         }
-        
-    private var themePage: some View {
-                VStack(alignment: .leading, spacing: 12) {
-                    PageHeader(title: "Theme", systemImage: icon(for: .theme))
-                    SettingsThemePickerView()
-                    Text("Themes change node colors (3- vs 5-limit) and high-prime overlays. Selection rims and the selection path inherit per-node tints.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-            }
+
 
             private var distancePage: some View {
                 VStack(alignment: .leading, spacing: 12) {
@@ -2216,7 +2207,6 @@ struct StudioConsoleView: View {
                 switch page {
                 case .view:     viewPage
                 case .grid:     gridPage
-                case .theme:    themePage
                 case .distance: distancePage
                 }
             }
@@ -2359,14 +2349,7 @@ struct StudioConsoleView: View {
                             }
                             .id("lattice.ui.panel.grid")
                             .transition(.opacity)
-                        case .theme:
-                            panelContainer {
-                                MeasuredPage(id: .theme, active: $page, heights: $panelHeights, currentHeight: $panelHeight, pageAnim: pageAnim) {
-                                    themePage
-                                }
-                            }
-                            .id("lattice.ui.panel.theme")
-                            .transition(.opacity)
+                        
                         case .distance:
                             panelContainer {
                                 MeasuredPage(id: .distance, active: $page, heights: $panelHeights, currentHeight: $panelHeight, pageAnim: pageAnim) {
@@ -2392,6 +2375,7 @@ struct StudioConsoleView: View {
                     if #available(iOS 26.0, *) {
                         GlassEffectContainer {
                             SettingsLatticePreview()
+                                .id(previewToken)
                                 .environment(\.latticePreviewMode, true)
                                 .environment(\.latticePreviewHideChips, true)
                                 .allowsHitTesting(false)
@@ -2407,6 +2391,7 @@ struct StudioConsoleView: View {
                         )
                     } else {
                         SettingsLatticePreview()
+                            .id(previewToken)
                             .environment(\.latticePreviewMode, true)
                             .environment(\.latticePreviewHideChips, true)
                             .allowsHitTesting(false)
@@ -2639,14 +2624,17 @@ struct StudioConsoleView: View {
                             .transition(.opacity)
                     }
                 }
-
                 .environment(
                     \.tenneyTheme,
-                ThemeRegistry.theme(
-                    LatticeThemeID(rawValue: latticeThemeID) ?? .classicBO,
-                    dark: effectiveIsDark
+                    TenneyThemeRegistry.resolvedCurrent(
+                        themeIDRaw: tenneyThemeIDRaw,
+                        scheme: effectiveIsDark ? .dark : .light,
+                        mixBasis: TenneyMixBasis(rawValue: mixBasisRaw) ?? .complexityWeight,
+                        mixMode: TenneyMixMode(rawValue: mixModeRaw) ?? .blend,
+                        scopeMode: TenneyScopeColorMode(rawValue: scopeModeRaw) ?? .constant
+                    )
                 )
-            )
+
                 
             .statusBar(hidden: stageHideStatus)
             .preferredColorScheme(settingsScheme)
@@ -2680,7 +2668,6 @@ struct StudioConsoleView: View {
                 foldAudible: $foldAudible,
                 safeAmp: $safeAmp,
                 latticeConnectionModeRaw: $latticeConnectionModeRaw,
-                latticeThemeID: $latticeThemeID,
                 themeStyleRaw: $themeStyleRaw,
                 stageDimLevel: $stageDimLevel,
                 stageAccent: $stageAccent,
@@ -2741,33 +2728,37 @@ struct StudioConsoleView: View {
             backgroundGlass
 
             let theme = ThemeRegistry.theme(
-                LatticeThemeID(rawValue: latticeThemeID) ?? .classicBO,
+                LatticeThemeID(rawValue: tenneyThemeIDRaw) ?? .classicBO,
                 dark: effectiveIsDark
             )
 
-            ScrollView {
-                VStack(spacing: 0) {
+            Group {
+                if activeCategory == nil {
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            gridView
+                                .frame(maxWidth: .infinity)
+                        }
+                        .padding(.bottom, 40)
+                    }
+                    .scrollIndicators(.hidden)
+                    .ignoresSafeArea(.keyboard)
+                    .scrollTargetLayout()
+                    .coordinateSpace(name: "settings.scroll")
+                    .onPreferenceChange(SettingsHeaderMinYKey.self) { measuredMinY in
+                        let effectiveMinY = measuredMinY - settingsHeaderPinned
+                        if settingsHeaderBaselineMinY == nil { settingsHeaderBaselineMinY = effectiveMinY }
+                        let base = settingsHeaderBaselineMinY ?? effectiveMinY
+                        let raw = effectiveMinY - base
+                        let pin = max(0, -raw)
+                        settingsHeaderPinned = pin
+                        settingsHeaderProgress = min(1, pin / headerCollapseRange)
+                    }
+                } else {
+                    // Subpages provide their own ScrollView; don’t wrap them in a disabled parent.
                     gridView
-                        .frame(maxWidth: .infinity)
+                        .ignoresSafeArea(.keyboard)
                 }
-                .padding(.bottom, 40) // ensures scroll buffer beyond last tile
-            }
-            .scrollIndicators(.hidden)
-            .ignoresSafeArea(.keyboard)
-            .scrollTargetLayout()
-            .scrollDisabled(activeCategory != nil)
-
-            .coordinateSpace(name: "settings.scroll")
-            .onPreferenceChange(SettingsHeaderMinYKey.self) { measuredMinY in
-                // Remove our own offset from the measurement to avoid feedback loops
-                let effectiveMinY = measuredMinY - settingsHeaderPinned
-                if settingsHeaderBaselineMinY == nil { settingsHeaderBaselineMinY = effectiveMinY }
-                let base = settingsHeaderBaselineMinY ?? effectiveMinY
-                let raw = effectiveMinY - base // 0 at rest, negative as you scroll down
-                let pin = max(0, -raw)
-                settingsHeaderPinned = pin
-                settingsHeaderProgress = min(1, pin / headerCollapseRange)
-
             }
 
             inkOverlay
@@ -2787,7 +2778,7 @@ struct StudioConsoleView: View {
         let subSize = lerp(subBig, subSmall, p)
 
         let theme = ThemeRegistry.theme(
-            LatticeThemeID(rawValue: latticeThemeID) ?? .classicBO,
+            LatticeThemeID(rawValue: tenneyThemeIDRaw) ?? .classicBO,
             dark: effectiveIsDark
         )
 
@@ -2815,6 +2806,7 @@ struct StudioConsoleView: View {
 
     private var gridView: some View {
         ZStack {
+            
             if activeCategory == nil {
                 homeScreen
                     .transition(.opacity)
@@ -2833,7 +2825,14 @@ struct StudioConsoleView: View {
         }
         .animation(catAnim, value: activeCategory)
     }
-    
+    private var showQuickThemeHomeTile: Bool {
+        let q = homeQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        if q.isEmpty { return true }
+        return fuzzyMatch(q, in: "Theme") ||
+               fuzzyMatch(q, in: "Appearance") ||
+               fuzzyMatch(q, in: "Lattice Theme")
+    }
+
     private var showLearnTenneyHomeTile: Bool {
         let q = homeQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         if q.isEmpty { return true }
@@ -2881,6 +2880,31 @@ struct StudioConsoleView: View {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
             )
+            //            if showQuickThemeHomeTile {
+            //  glassCard(
+            //      icon: "paintpalette",
+            //      title: "Theme",
+            //      subtitle: "Quick picker"
+            //  ) {
+            //      ThemeQuickPickerRow()
+            //          .frame(maxWidth: .infinity)
+            //          .frame(height: 72)
+            //          .clipped()
+            //
+            //      HStack {
+            //          Text("Open full Theme page for more.")
+            //              .font(.footnote)
+            //              .foregroundStyle(.secondary)
+            //
+            //          Spacer()
+            //
+            //                        GlassCTAButton(title: "More", systemName: "chevron.right") {
+            //              withAnimation(catAnim) { activeCategory = .theme }
+            //          }
+            //}
+            //  }
+            // }
+
 // MARK: - LEARN TENNEY TILE IN SETTINGS HOME (LEAVE COMMENTED FOR PROD UNTIL READY)
 //            if showLearnTenneyHomeTile {
 //                GlassNavTile(
@@ -2969,7 +2993,18 @@ struct StudioConsoleView: View {
         switch cat {
         case .lattice:
             let labelsPct = Int((StudioConsoleView.nearestDetent(labelDensity, in: StudioConsoleView.labelDensityDetents) * 100).rounded())
-            return "Theme: \(latticeThemeID) · Grid: \(gridName(gridModeRaw)) · Nodes: \(nodeCode(nodeSize)) · Labels: \(labelsPct)%"
+            return "Theme: \(tenneyThemeIDRaw) · Grid: \(gridName(gridModeRaw)) · Nodes: \(nodeCode(nodeSize)) · Labels: \(labelsPct)%"
+
+        case .theme:
+            let style = ThemeStyleChoice(rawValue: themeStyleRaw) ?? .system
+            let styleText: String = {
+                switch style {
+                case .system: return "System"
+                case .light:  return "Light"
+                case .dark:   return "Dark"
+                }
+            }()
+            return "Theme: \(tenneyThemeIDRaw) · Appearance: \(styleText)"
 
         case .oscilloscope:
             let w = String(format: "%.1f", lissaRibbonWidth)
@@ -3006,20 +3041,47 @@ struct StudioConsoleView: View {
     
     @ViewBuilder private func categoryContent(for cat: SettingsCategory) -> some View {
         switch cat {
-    case .lattice:      latticeUISection
-    case .tuner:        tunerCategoryStack
-    case .oscilloscope: oscilloscopeSection
-    case .stage:        stageSection
-    case .audio:        soundSection
-    case .general:
-        VStack(spacing: 14) {
-            quickSetupCard
-            defaultViewSection
-            whatsNewSection
-            aboutSection
+        case .lattice:      latticeUISection
+        case .theme:        themeCategoryStack
+        case .tuner:        tunerCategoryStack
+        case .oscilloscope: oscilloscopeSection
+        case .stage:        stageSection
+        case .audio:        soundSection
+        case .general:
+            VStack(spacing: 14) {
+                quickSetupCard
+                defaultViewSection
+                whatsNewSection
+                aboutSection
+            }
         }
     }
+    private var themeCategoryStack: some View {
+        VStack(spacing: 14) {
+            appearanceSection
+            themeSection
+        }
     }
+
+    @ViewBuilder private var appearanceSection: some View {
+        glassCard(
+            icon: "circle.lefthalf.filled",
+            title: "Appearance",
+            subtitle: "Light / Dark / System"
+        ) {
+            Picker("Appearance", selection: $themeStyleRaw) {
+                Text("System").tag(ThemeStyleChoice.system.rawValue)
+                Text("Light").tag(ThemeStyleChoice.light.rawValue)
+                Text("Dark").tag(ThemeStyleChoice.dark.rawValue)
+            }
+            .pickerStyle(.segmented)
+
+            Text("Applies immediately across Settings, Tuner, and Lattice.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+    }
+
 
 private struct GlassNavTile<Destination: View>: View {
     let title: String
@@ -3030,7 +3092,7 @@ private struct GlassNavTile<Destination: View>: View {
     var isFullWidth: Bool = false
     @ViewBuilder let destination: () -> Destination
 
-    @Environment(\.tenneyTheme) private var theme
+    @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var grad: LinearGradient {
@@ -3105,6 +3167,8 @@ private struct GlassNavTile<Destination: View>: View {
 
     
     private struct GlassSelectTile: View {
+        @AppStorage(SettingsKeys.tenneyThemeID)
+                private var tenneyThemeIDRaw: String = LatticeThemeID.classicBO.rawValue
         let title: String
         var icon: String? = nil
         var subtitle: String? = nil
@@ -3113,7 +3177,7 @@ private struct GlassNavTile<Destination: View>: View {
         var isFullWidth: Bool = false
         let tap: () -> Void
 
-        @Environment(\.tenneyTheme) private var theme
+        @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
         private var grad: LinearGradient {
@@ -3128,6 +3192,7 @@ private struct GlassNavTile<Destination: View>: View {
             switch title {
             case "Lattice UI":
                 SettingsLatticePreview()
+                    .id("\(tenneyThemeIDRaw)|\(theme.isDark ? "dark" : "light")")
                     .environment(\.latticePreviewMode, true)
                     .environment(\.latticePreviewHideChips, true)
                     .allowsHitTesting(false)
@@ -3318,7 +3383,6 @@ private struct GlassNavTile<Destination: View>: View {
         @Binding var foldAudible: Bool
         @Binding var safeAmp: Double
         @Binding var latticeConnectionModeRaw: String
-        @Binding var latticeThemeID: String
         @Binding var themeStyleRaw: String
         @Binding var stageDimLevel: Double
         @Binding var stageAccent: String
@@ -3394,7 +3458,6 @@ private struct GlassNavTile<Destination: View>: View {
                 }
 
                 .onChange(of: latticeConnectionModeRaw) { postSetting(SettingsKeys.latticeConnectionMode, $0) }
-                .onChange(of: latticeThemeID){ postSetting(SettingsKeys.latticeThemeID, $0) }
                 .onChange(of: themeStyleRaw) { postSetting(SettingsKeys.latticeThemeStyle, $0) }
                 .onChange(of: stageDimLevel) { postSetting(SettingsKeys.stageDimLevel, $0) }
                 .onChange(of: stageAccent)   { postSetting(SettingsKeys.stageAccent, $0) }
@@ -3455,7 +3518,7 @@ private struct GlassNavTile<Destination: View>: View {
         ) {
             VStack(alignment: .leading, spacing: 12) {
                 let theme = ThemeRegistry.theme(
-                    LatticeThemeID(rawValue: latticeThemeID) ?? .classicBO,
+                    LatticeThemeID(rawValue: tenneyThemeIDRaw) ?? .classicBO,
                     dark: effectiveIsDark
                 )
 
@@ -3749,6 +3812,7 @@ private struct GlassNavTile<Destination: View>: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
+        .tenneyChromaShadow(true)
     }
 
 
@@ -3771,8 +3835,8 @@ private struct GlassNavTile<Destination: View>: View {
                 gridStrength: $gridStrength,
                 gridMajorEnabled: $gridMajorEnabled,
                 gridMajorEvery: $gridMajorEvery,
-                latticeThemeID: $latticeThemeID,
-                tenneyDistanceModeRaw: $tenneyDistanceModeRaw
+                tenneyDistanceModeRaw: $tenneyDistanceModeRaw,
+                previewToken: "\(tenneyThemeIDRaw)|\(effectiveIsDark ? "dark" : "light")"
             )
         }
     }
@@ -3818,7 +3882,7 @@ private struct GlassNavTile<Destination: View>: View {
             title: "Appearance · Lattice Theme",
             subtitle: "Node colors and overlays"
         ) {
-            SettingsThemePickerView()
+            ThemesCenterView()
             Text("Themes change node colors (3- vs 5-limit) and high-prime overlays. Selection rims and the selection path inherit per-node tints.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
@@ -3996,7 +4060,7 @@ private struct GlassNavTile<Destination: View>: View {
     }
 
     fileprivate struct WaveTile: View {
-        @Environment(\.tenneyTheme) private var theme
+        @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
 
             private var grad: LinearGradient {
                 LinearGradient(
@@ -4131,7 +4195,7 @@ private struct GlassNavTile<Destination: View>: View {
     private func broadcastAll() {
         postSetting(SettingsKeys.labelDefault, labelDefault)
         postSetting(SettingsKeys.showRatioAlongHeji, showRatioAlong)
-        postSetting(SettingsKeys.latticeThemeID, latticeThemeID)
+        postSetting(SettingsKeys.latticeThemeID, tenneyThemeIDRaw)
         postSetting(SettingsKeys.nodeSize, nodeSize)
         postSetting(SettingsKeys.labelDensity, labelDensity)
         postSetting(SettingsKeys.guidesOn, guidesOn)
@@ -4163,7 +4227,7 @@ private struct GlassNavTile<Destination: View>: View {
         let systemName: String
         let title: String
         var subtitle: String?
-        @Environment(\.tenneyTheme) private var theme
+        @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
 
         private var headerGradient: LinearGradient {
             LinearGradient(

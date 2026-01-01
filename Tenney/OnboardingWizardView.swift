@@ -179,10 +179,12 @@ struct OnboardingWizardView: View {
                 ForEach(a4Presets, id: \.self) { hz in
                     SelectTile(label: "\(Int(hz)) Hz", selected: a4Preset == hz)
                         .onTapGesture { selectA4(hz) }
+                        .tenneyChromaShadow(true)
                 }
                 VStack(alignment: .leading, spacing: 8) {
                     SelectTile(label: "Custom", selected: a4Preset == nil)
                         .onTapGesture { withAnimation(.snappy) { a4Preset = nil } }
+                        .tenneyChromaShadow(true)
                     if a4Preset == nil {
                         HStack {
                             Text("A4")
@@ -227,8 +229,8 @@ struct OnboardingWizardView: View {
                 .font(.headline)
             // Constrain height so this never pushes out of the card; allow internal scrolling if needed.
             ScrollView {
-                SettingsThemePickerView()
-                    .padding(.vertical, 4)
+                ThemesCenterView()
+                        .padding(.vertical, 4)
             }
             .frame(minHeight: 340, maxHeight: .infinity) // clamps on small phones; expands on iPad
         }
@@ -267,6 +269,7 @@ struct OnboardingWizardView: View {
                            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                        }
                        .buttonStyle(.plain)
+                       .tenneyChromaShadow(true)
         }
     }
     private func selectDefaultView(_ v: String) {

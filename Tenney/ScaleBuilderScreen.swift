@@ -74,10 +74,20 @@ struct ScaleBuilderScreen: View {
     private var builderLissajousRatios: (x: (n: Int, d: Int)?, y: (n: Int, d: Int)?) {
         // Prefer most-recent selection (selectedPad) first, then the rest in stable order.
         var ids: [Int] = []
-        if let sel = selectedPad, latched.contains(sel) { ids.append(sel) }
+
+        // Prefer most-recent selection first (even if the latch update hasn't landed yet).
+        if let sel = selectedPad { ids.append(sel) }
+
+        // Then any latched pads, stable order.
         ids.append(contentsOf: latched.sorted().filter { $0 != selectedPad })
 
+        // Keep only valid indices + de-dupe without reordering.
+        ids = ids.filter { store.degrees.indices.contains($0) }
+        var seen = Set<Int>()
+        ids = ids.filter { seen.insert($0).inserted }
+
         guard let first = ids.first else { return (nil, nil) }
+
 
         func tuple(for idx: Int) -> (n: Int, d: Int) {
             let base = store.degrees[idx]
@@ -677,8 +687,8 @@ struct ScaleBuilderScreen: View {
                 let _ = oct
             
             Button {
-                selectedPad = idx
                 toggleLatch(idx: idx, ratio: r)
+                selectedPad = idx
             } label: {
                 HStack(spacing: 6) {
                     Text("\(cn)/\(cd)")

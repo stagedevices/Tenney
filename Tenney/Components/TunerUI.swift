@@ -142,6 +142,8 @@ final class TunerStore: ObservableObject {
 
 // MARK: - Mode strip (glyphs + matched-geometry capsule)
 struct TunerModeStrip: View {
+    @Environment(\.tenneyTheme) private var theme
+
     @Binding var mode: TunerUIMode
     @Namespace private var ns
     var body: some View {
@@ -183,6 +185,8 @@ struct TunerModeStrip: View {
 // Uses cents error + confidence to drive motion/saturation.
 // Keep the card strictly rectangular; glass applied at the card, not here.
 struct ChronoDial: View {
+    @Environment(\.tenneyTheme) private var theme
+
     let cents: Double  // signed cents (vs nearest, or vs locked target if provided)
     let confidence: Double  // 0–1
     let inTuneWindow: Double // e.g. 5¢
@@ -211,7 +215,9 @@ struct ChronoDial: View {
                     let alpha = stageMode ? 0.9 : 0.75
                     let sat   = CGFloat(0.25 + 0.75 * confidence)
                     let op    = Double(0.18 + 0.62 * confidence) * (abs(err) <= inTuneWindow ? 0.25 : 1.0)
-                    ctx.stroke(p, with: .color(Color.cyan.opacity(op)), lineWidth: (stageMode ? 3.0 : 2.0))
+                                        ctx.stroke(p, with: .color(theme.tunerTicks.opacity(op * theme.tunerTickOpacity)),
+                                                   lineWidth: (stageMode ? 3.0 : 2.0))
+
                     // Add subtle “phase dash” effect by overlaying short ticks
                     var ticks = Path()
                     let dashCount = 48 + ring * 8
@@ -222,14 +228,13 @@ struct ChronoDial: View {
                         let y = center.y + rr * CGFloat(sin(phase))
                         ticks.addEllipse(in: CGRect(x: x-0.8, y: y-0.8, width: 1.6, height: 1.6))
                     }
-                    ctx.fill(ticks, with: .color(Color.primary.opacity(0.06 + 0.10 * (stageMode ? 1 : 0))))
+                    ctx.fill(ticks, with: .color(theme.tunerTicks.opacity(0.06 + 0.10 * (stageMode ? 1 : 0))))
+
                 }
 
                 // In-tune glow
                 if abs(err) <= inTuneWindow {
                     let glow = Path(ellipseIn: CGRect(x: center.x - r, y: center.y - r, width: 2*r, height: 2*r))
-                    let stageAccent = UserDefaults.standard.string(forKey: SettingsKeys.stageAccent) ?? "system"
-                     let accent: Color = (stageAccent == "amber" ? .orange : stageAccent == "red" ? .red : .accentColor)
                     ctx.stroke(glow, with: .color(accent.opacity(stageMode ? 0.45 : 0.28)),
                                lineWidth: (stageMode ? 10 : 8))
 
@@ -268,7 +273,7 @@ struct ChronoDial: View {
                                       y: center.y + radius * CGFloat(1 - cos(angle.radians)))
                     p.move(to: center); p.addLine(to: tip)
                 }
-                .stroke(Color.primary, style: StrokeStyle(lineWidth: stageMode ? 4 : 3, lineCap: .round))
+                .stroke(theme.tunerNeedle, style: StrokeStyle(lineWidth: stageMode ? 4 : 3, lineCap: .round))
                 .animation(.spring(response: 0.22, dampingFraction: 0.82), value: clamped)
             }
         }
@@ -364,6 +369,8 @@ final class NeedleHoldState: ObservableObject {
 }
 
 struct Gauge: View {
+    @Environment(\.tenneyTheme) private var theme
+
     let cents: Double            // signed cents vs current target (locked or auto)
     let confidence: Double       // 0–1
     let inTuneWindow: Double     // 5¢
@@ -401,7 +408,7 @@ struct Gauge: View {
                         clockwise: false
                     )
                 }
-                .stroke(mode.accentColor.opacity(stageMode ? 0.08 : 0.12), lineWidth: stageMode ? 5 : 7)
+                .stroke(theme.tunerTicks.opacity((stageMode ? 0.08 : 0.12) * theme.tunerTickOpacity), lineWidth: stageMode ? 5 : 7)
                 .blur(radius: stageMode ? 0 : 0.5)
                 .opacity(heldByConfidence ? 0.65 : 1.0)
 
@@ -415,6 +422,9 @@ struct Gauge: View {
                         let t = CGFloat(clamped / 50.0)
                         return (-CGFloat.pi/2) + (t * (dialSweepDeg/2) * .pi/180)
                     }
+                    
+                    let majorTickOpacity = theme.tunerTickOpacity * (heldByConfidence ? 0.70 : 1.0)
+                    let minorTickOpacity = theme.tunerTickOpacity * (heldByConfidence ? 0.70 : 1.0) * 0.45
 
                     // major ticks
                     for c in major {
@@ -436,7 +446,7 @@ struct Gauge: View {
                         path.move(to: p0); path.addLine(to: p1)
 
                         let lw: CGFloat = isZero ? 2.3 : (isEnd ? 2.2 : 2.0)
-                        ctx.stroke(path, with: .color(Color.primary.opacity(heldByConfidence ? 0.75 : 0.95)),
+                        ctx.stroke(path, with: .color(theme.tunerTicks.opacity(majorTickOpacity)),
                                    style: StrokeStyle(lineWidth: lw, lineCap: .butt))
                     }
 
@@ -447,7 +457,7 @@ struct Gauge: View {
                         let p1 = CGPoint(x: pivot.x + (rTickOuter * 0.995) * cos(th), y: pivot.y + (rTickOuter * 0.995) * sin(th))
                         var path = Path()
                         path.move(to: p0); path.addLine(to: p1)
-                        ctx.stroke(path, with: .color(Color.primary.opacity(stageMode ? 0 : 0.45)),
+                        ctx.stroke(path, with: .color(theme.tunerTicks.opacity(stageMode ? 0 : minorTickOpacity)),
                                    style: StrokeStyle(lineWidth: 1.2, lineCap: .butt))
                     }
                 }
@@ -520,6 +530,7 @@ struct Gauge: View {
 }
 
 private struct GaugeNeedle: View {
+    @Environment(\.tenneyTheme) private var theme
     let pivot: CGPoint
     let rNeedle: CGFloat
     let cents: Double
@@ -539,8 +550,8 @@ private struct GaugeNeedle: View {
                 p.move(to: pivot)
                 p.addLine(to: tip)
             }
-            .stroke(Color.primary.opacity(heldByConfidence ? 0.78 : 0.98),
-                    style: StrokeStyle(lineWidth: 3.0, lineCap: .round))
+            .stroke(theme.tunerNeedle.opacity(heldByConfidence ? 0.78 : 0.98),
+            style: StrokeStyle(lineWidth: 3.0, lineCap: .round))
 
             // tiny tail (subtle)
             Path { p in

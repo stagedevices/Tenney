@@ -13,10 +13,25 @@ import UIKit
 enum AppScreenMode: String, CaseIterable, Identifiable { case tuner, lattice; var id: String { rawValue } }
 
 struct ContentView: View {
+    @AppStorage(SettingsKeys.tenneyThemeID) private var tenneyThemeIDRaw: String = LatticeThemeID.classicBO.rawValue
+    @AppStorage(SettingsKeys.tenneyThemeMixBasis) private var mixBasisRaw: String = TenneyMixBasis.complexityWeight.rawValue
+    @AppStorage(SettingsKeys.tenneyThemeMixMode) private var mixModeRaw: String = TenneyMixMode.blend.rawValue
+    @AppStorage(SettingsKeys.tenneyThemeScopeMode) private var scopeModeRaw: String = TenneyScopeColorMode.constant.rawValue
+
     @AppStorage(SettingsKeys.setupWizardDone) private var setupWizardDone: Bool = false
 private let libraryStore = ScaleLibraryStore.shared
     @Environment(\.colorScheme) private var systemScheme
     @AppStorage(SettingsKeys.latticeThemeStyle) private var themeStyleRaw: String = "system"
+    private var resolvedTheme: ResolvedTenneyTheme {
+        TenneyThemeRegistry.resolvedCurrent(
+            themeIDRaw: tenneyThemeIDRaw,
+            scheme: effectiveIsDark ? .dark : .light,
+            mixBasis: TenneyMixBasis(rawValue: mixBasisRaw),
+            mixMode: TenneyMixMode(rawValue: mixModeRaw),
+            scopeMode: TenneyScopeColorMode(rawValue: scopeModeRaw)
+        )
+    }
+
     @State private var venueToast: VenueCalibrationInfo? = nil
 
     @State private var inkVisible = false
@@ -197,6 +212,11 @@ private let libraryStore = ScaleLibraryStore.shared
                     .zIndex(10)
             }
         }
+        .environment(\.tenneyTheme, resolvedTheme)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+        .overlay { resolvedTheme.surfaceTint.ignoresSafeArea().allowsHitTesting(false) }
+
         // Still in ContentView.body view modifiers
         .onAppear {
             presentWhatsNewIfEligible()
@@ -362,7 +382,7 @@ private let libraryStore = ScaleLibraryStore.shared
     private var latticeContent: some View {
         LatticeScreen()
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(0)
+            .padding(.top, -20)
     }
 
     private var tunerCardView: some View {
@@ -562,7 +582,7 @@ extension Notification.Name {
     @State private var currentNearest: RatioResult? = nil
     @Binding var stageActive: Bool
 
-    @Environment(\.tenneyTheme) private var theme
+    @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
 
     private var pillGrad: LinearGradient {
         LinearGradient(
@@ -730,10 +750,7 @@ extension Notification.Name {
 
                 let showFar = abs(rawCents) > 120
 
-                let stageAccentName = UserDefaults.standard.string(forKey: SettingsKeys.stageAccent) ?? "system"
-                let stageAccent: Color = (stageAccentName == "amber" ? .orange
-                                       : stageAccentName == "red"   ? .red
-                                       : .accentColor)
+                let stageAccent: Color = theme.inTuneHighlightColor(activeLimit: store.primeLimit)
 
                 tunerDial(
                     centsShown: centsShown,
@@ -775,7 +792,11 @@ extension Notification.Name {
                         // tiny prime badge guesses from label (fast path; you already have NotationFormatter if needed)
                         let label = store.lockedTarget.map { "\($0.num)/\($0.den)" } ?? model.display.ratioText
                         let primes = label.split(separator: "/").flatMap { Int($0) }.flatMap { factors($0) }.filter { $0 > 2 }
-                        HStack(spacing: 6) { ForEach(Array(Set(primes)).sorted(), id:\.self) { p in BadgeCapsule(text: "\(p)") } }
+                        HStack(spacing: 6) {
+                                                    ForEach(Array(Set(primes)).sorted(), id: \.self) { p in
+                                                        BadgeCapsule(text: "\(p)", style: AnyShapeStyle(theme.primeTint(p)))
+                                                    }
+                                                }
                         Spacer()
                     }
 
@@ -841,7 +862,7 @@ extension Notification.Name {
                                 .overlay(
                                     Capsule().stroke(
                                         selected
-                                        ? AnyShapeStyle(pillGrad)
+                                        ? AnyShapeStyle(theme.primeTint(p))
                                         : AnyShapeStyle(Color.secondary.opacity(0.12)),
                                         lineWidth: 1
                                     )
@@ -881,7 +902,7 @@ private struct RailView: View {
         VStack(alignment: .leading, spacing: 12) {
             RootCardCompact(ns: rootNS, showSheet: $showRootStudio)
          //   StrictnessCard()
-            TestToneCard()
+        //    TestToneCard()
             if model.micPermission == .denied {
                 GlassCard { Text("Microphone access denied. Enable in Settings → Privacy → Microphone.").foregroundStyle(.red) }
             }
@@ -900,7 +921,7 @@ private struct UtilityBar: View {
     /// Reorders the segmented picker so the user's default view appears on the **left**.
     let defaultView: String
 
-    @Environment(\.tenneyTheme) private var theme
+    @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
     @Environment(\.tenneyPracticeActive) private var practiceActive
 
     private var pillGrad: LinearGradient {
@@ -951,14 +972,18 @@ private struct UtilityBar: View {
                                 : AnyShapeStyle(Color.secondary)
                             )
                             .blendMode(on ? (theme.isDark ? .screen : .darken) : .normal)
-
-                        Text(on ? "Sound On" : "Sound Off")
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(
-                                on
-                                ? (theme.isDark ? Color.white : Color.black)
-                                : Color.secondary
-                            )
+// MARK: - UTILITY BAR SOUND ON AND OFF TOGGLE
+                        ZStack {
+                            Text("Off").opacity(on ? 0 : 1)
+                            Text("On").opacity(on ? 1 : 0)
+                        }
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(
+                            on
+                            ? (theme.isDark ? Color.white : Color.black)
+                            : Color.secondary
+                        )
+                        .fixedSize(horizontal: true, vertical: false)
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
@@ -979,6 +1004,7 @@ private struct UtilityBar: View {
                     .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
+                .tenneyChromaShadow(true)
                 .accessibilityLabel(app.latticeAuditionOn ? "Audition sound on" : "Audition sound off")
             } else {
                             Image(systemName: "dot.radiowaves.left.and.right").imageScale(.large)
@@ -1495,7 +1521,7 @@ fileprivate enum RootFavorites {
 }
 private struct PrimeLimitCard: View {
     @EnvironmentObject private var model: AppModel
-    @Environment(\.tenneyTheme) private var theme
+    @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
 
     private var grad: LinearGradient {
         LinearGradient(
@@ -1581,7 +1607,7 @@ struct GlassSelectTile: View {
     let isOn: Bool
     let action: () -> Void
 
-    @Environment(\.tenneyTheme) private var theme
+    @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
 
     private var grad: LinearGradient {
         LinearGradient(
@@ -1643,7 +1669,7 @@ struct GlassSelectTile: View {
 
 
 private struct RootChip<Trailing: View>: View {
-    @Environment(\.tenneyTheme) private var theme
+    @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
 
     let value: Double
     var highlighted: Bool = false
@@ -1951,8 +1977,8 @@ private struct TipMarquee: View {
     private func startIfNeeded() {
         guard contentW > clipW, !started else { return }
         started = true
-        let travel = contentW - clipW + 24
-        let duration = max(6, travel / 30) // ~30pt/s
+        let travel = max(0, contentW - clipW + 24)
+         let duration = max(6.0, Double(travel) / 30.0) // ~30pt/s
         withAnimation(.linear(duration: duration).delay(1).repeatForever(autoreverses: true)) {
             offsetX = -travel
         }

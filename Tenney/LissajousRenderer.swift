@@ -20,6 +20,8 @@ import simd
 import SwiftUI
 
 final class LissajousRenderer: NSObject, MTKViewDelegate {
+    private var theme: ResolvedTenneyTheme
+
     private func ensureLivePointBufferCapacity(_ pointCount: Int) {
         let needBytes = max(1, pointCount) * MemoryLayout<VSIn>.stride
         if livePointBuffer == nil || livePointBuffer!.length < needBytes {
@@ -43,6 +45,7 @@ final class LissajousRenderer: NSObject, MTKViewDelegate {
 
         struct Config: Equatable {
             var mode: Mode = .live
+            var glowEnabled: Bool = false
 
             // Live scope
             var sampleCount: Int = 4096
@@ -75,7 +78,6 @@ final class LissajousRenderer: NSObject, MTKViewDelegate {
     var xRatio: Ratio = .init(num: 1, den: 1, octave: 0)
     var yRatio: Ratio = .init(num: 1, den: 1, octave: 0)
     var rootHz: Double = 415.0
-    var theme: LatticeTheme = ThemeRegistry.theme(.classicBO, dark: false)
     var config = Config()
     
     private var needsClearPersistence = false
@@ -116,11 +118,12 @@ final class LissajousRenderer: NSObject, MTKViewDelegate {
     private var sheenColor = SIMD4<Float>(repeating: 1)
 
     // MARK: - Init
-    init?(mtkView: MTKView) {
+    init?(mtkView: MTKView, theme: ResolvedTenneyTheme) {
         guard let dev = mtkView.device ?? MTLCreateSystemDefaultDevice() else { return nil }
         device = dev
         guard let q = device.makeCommandQueue() else { return nil }
         queue = q
+        self.theme = theme
         super.init()
         mtkView.device = device
         mtkView.colorPixelFormat = .bgra8Unorm
@@ -300,7 +303,7 @@ final class LissajousRenderer: NSObject, MTKViewDelegate {
             return SIMD4(1,1,1,Float(alpha))
             #endif
         }
-        let stroke = rgba(theme.e5, alpha: 0.9)
+        let stroke = rgba(theme.scopeTraceDefault, alpha: 0.9)
 
         // Build verts
         var verts: [VSIn] = []
@@ -444,7 +447,7 @@ final class LissajousRenderer: NSObject, MTKViewDelegate {
         }
     }
 
-    private func deriveInkColors(from theme: LatticeTheme) {
+    private func deriveInkColors(from theme: ResolvedTenneyTheme) {
         func rgba(_ c: Color, alpha: CGFloat) -> SIMD4<Float> {
             #if canImport(UIKit)
             let u = UIColor(c); var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
@@ -455,7 +458,7 @@ final class LissajousRenderer: NSObject, MTKViewDelegate {
             #endif
         }
         coreColor = rgba(theme.e3, alpha: 0.85)
-        sheenColor = rgba(theme.e5, alpha: 0.95)
+        sheenColor = rgba(theme.scopeTraceDefault, alpha: 0.95)
     }
 
     // MARK: - Persistence targets
@@ -519,7 +522,7 @@ final class LissajousRenderer: NSObject, MTKViewDelegate {
                 return SIMD4(1,1,1,Float(alpha))
                 #endif
             }
-            let stroke = rgba(theme.e5, alpha: 0.9)
+            let stroke = rgba(theme.scopeTraceDefault, alpha: 0.9)
 
             let pptr = livePointBuffer!.contents().bindMemory(to: VSIn.self, capacity: max(1, livePointCount))
             if livePointCount > 0 {
@@ -590,14 +593,14 @@ final class LissajousRenderer: NSObject, MTKViewDelegate {
                     if count > 0 {
                         enc.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: count)
                     }
-
-                    enc.setRenderPipelineState(ribbonGlowPSO_NoMSAA)      // <— NO MSAA
-                    enc.setVertexBuffer(rb, offset: 0, index: 0)
-                    if count > 0 {
-                        enc.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: count)
+                    if config.glowEnabled {
+                        enc.setRenderPipelineState(ribbonGlowPSO_NoMSAA)      // <— NO MSAA
+                        enc.setVertexBuffer(rb, offset: 0, index: 0)
+                        if count > 0 {
+                            enc.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: count)
+                        }
                     }
                 }
-
                 enc.endEncoding()
             }
 
@@ -672,7 +675,7 @@ final class LissajousRenderer: NSObject, MTKViewDelegate {
         self.xRatio = x; self.yRatio = y; self.rootHz = rootHz
         needsRebuildCurve = true
     }
-    func setTheme(_ t: LatticeTheme) {
+    func setTheme(_ t: ResolvedTenneyTheme) {
         theme = t
         deriveInkColors(from: t)
         needsRebuildGrid = true

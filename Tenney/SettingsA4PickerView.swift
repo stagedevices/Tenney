@@ -84,6 +84,7 @@ struct SettingsA4PickerView: View {
                         .onTapGesture {
                             withAnimation(.snappy) { select(p) }
                         }
+                        .tenneyChromaShadow(true)
                         .accessibilityAddTraits(selected == p ? .isSelected : [])
                 }
 
@@ -93,7 +94,7 @@ struct SettingsA4PickerView: View {
                         .onTapGesture {
                             withAnimation(.snappy) { select(.custom) }
                         }
-
+                        .tenneyChromaShadow(true)
                     if selected == .custom {
                         HStack {
                             Text("A4")

@@ -8,6 +8,10 @@
 import SwiftUI
 import AVFAudio
 
+enum ThemeStyleChoice: String, CaseIterable, Identifiable {
+    case system, light, dark
+    var id: String { rawValue }
+}
 
 @main
 struct TenneyApp: App {
@@ -16,6 +20,10 @@ struct TenneyApp: App {
         let ud = UserDefaults.standard
         if ud.object(forKey: SettingsKeys.latticeSoundEnabled) == nil {
             ud.set(true, forKey: SettingsKeys.latticeSoundEnabled)
+        }
+        if ud.object(forKey: SettingsKeys.tenneyThemeID) == nil,
+           let legacy = ud.string(forKey: SettingsKeys.latticeThemeID) {
+            ud.set(legacy, forKey: SettingsKeys.tenneyThemeID)
         }
     }
 
