@@ -463,6 +463,12 @@ try? AVAudioSession.sharedInstance().setActive(true, options: [])
         let out = engine.outputNode
         let hwFmt = out.inputFormat(forBus: 0) // what output node expects from mixer
         sampleRate = hwFmt.sampleRate > 0 ? hwFmt.sampleRate : 48_000
+        let srF = Float(sampleRate)
+        for i in voices.indices {
+            voices[i].sr = srF
+            voices[i].phaseInc = voices[i].freq / srF
+            voices[i].scopePhaseInc = voices[i].freq / srF
+        }
 
         sourceNode = AVAudioSourceNode { [weak self] _, _, frameCount, ablPtr -> OSStatus in
             guard let self = self else { return noErr }
@@ -476,6 +482,8 @@ try? AVAudioSession.sharedInstance().setActive(true, options: [])
                         for i in self.voices.indices {
                             self.voices[i].sr = srF
                             self.voices[i].phaseInc = self.voices[i].freq / srF
+                            self.voices[i].scopePhaseInc = self.voices[i].freq / srF
+
                         }
 
                     case let .sustain(id, freq, amp, attackSamps, releaseSamps):

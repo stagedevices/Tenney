@@ -75,7 +75,7 @@ struct TenneyApp: App {
             try s.setCategory(.playAndRecord, mode: .default, options: options)
 
             // Optional tuning knobs (safe no-ops if you don’t set them)
-            let sr = UserDefaults.standard.double(forKey: SettingsKeys.proAudioPreferredSampleRate)
+            let sr = UserDefaults.standard.double(forKey: SettingsKeys.audioPreferredSampleRate)
             if sr > 0 { try s.setPreferredSampleRate(sr) }
 
             let io = UserDefaults.standard.double(forKey: SettingsKeys.proAudioPreferredIOBufferDuration)

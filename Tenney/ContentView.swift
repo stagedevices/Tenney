@@ -624,9 +624,9 @@ extension Notification.Name {
                  stageMode: store.stageMode,
                  accent: stageAccent
              )
-
-         case .phaseScope:
-             PhaseScopeTunerView(vm: model, store: store)
+             // add back in when ready to test phasescope
+     //    case .phaseScope:
+     //        PhaseScopeTunerView(vm: model, store: store)
          }
      }
 
@@ -762,11 +762,12 @@ extension Notification.Name {
                     liveNearest: liveNearest
                 )
                 .frame(maxWidth: .infinity)
-                                .frame(
-                                    minHeight: 260,
-                                    idealHeight: (store.viewStyle == .phaseScope ? 300 : 320),
-                                    maxHeight: (store.viewStyle == .phaseScope ? 360 : nil)
-                                )
+                // add back in when ready to test phasescope
+                          //      .frame(
+                           //         minHeight: 260,
+                             //       idealHeight: (store.viewStyle == .phaseScope ? 300 : 320),
+                               //     maxHeight: (store.viewStyle == .phaseScope ? 360 : nil)
+                              //  )
                 .contentShape(Rectangle())
                 .onLongPressGesture(minimumDuration: 0.35) {
                     UIImpactFeedbackGenerator(style: .soft).impactOccurred()

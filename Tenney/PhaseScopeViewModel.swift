@@ -35,6 +35,7 @@ final class PhaseScopeViewModel: ObservableObject {
     // Narrowband state
     private var srRef: Double = 48000
     private var srMic: Double = 48000
+    private var ownsTestTone: Bool = false
 
     private var partial: Int = 1
     private var referenceOn: Bool = false
@@ -52,6 +53,14 @@ final class PhaseScopeViewModel: ObservableObject {
     func attach(app: AppModel, store: TunerStore) {
         self.app = app
         self.store = store
+
+        app.$rootHz
+            .removeDuplicates()
+            .sink { [weak self] _ in
+                guard let self, self.referenceOn else { return }
+                self.updateReferenceHz()
+            }
+            .store(in: &cancellables)
 
         // 1) ToneOutputEngine reference tap (unchanged)
         ToneOutputEngine.shared.installScopeTap { [weak self] (samples: [Float], sampleRate: Double) in
@@ -85,8 +94,14 @@ final class PhaseScopeViewModel: ObservableObject {
         cancellables.removeAll()
         ToneOutputEngine.shared.removeScopeTap()
         app?.detachMicPCMTap()
+
+        if ownsTestTone {
+            app?.playTestTone = false
+            ownsTestTone = false
+        }
+
         points = []
-        setReferenceEnabled(false)
+        referenceOn = false
     }
 
     func setPartial(_ p: Int) {
@@ -96,9 +111,22 @@ final class PhaseScopeViewModel: ObservableObject {
 
     func setReferenceEnabled(_ on: Bool) {
         referenceOn = on
-        if on { updateReferenceHz() }
-        else { ToneOutputEngine.shared.setEnabled(false) }
+        guard let app else { return }
+
+        if on {
+            // start the shared “test tone” pathway used elsewhere
+            ownsTestTone = true
+            app.playTestTone = true
+            updateReferenceHz()
+        } else {
+            // stop only if we were the one who turned it on
+            if ownsTestTone {
+                app.playTestTone = false
+                ownsTestTone = false
+            }
+        }
     }
+
 
     func onLockChanged() {
         if referenceOn { updateReferenceHz() }
@@ -115,16 +143,14 @@ final class PhaseScopeViewModel: ObservableObject {
         guard let app else { return }
 
         let display = app.display
-        let target = (store?.lockedTarget ?? parseRatio(display.ratioText))
-        let rootHz = app.rootHz
-        let detectedHz = display.hz
-        let confidence = display.confidence
-        let cents = display.cents
-
+        let detectedHz  = display.hz
+        let confidence  = display.confidence
+        let cents       = display.cents
 
         centsSign = cents
 
-        guard referenceOn, let target else {
+        guard referenceOn else {
+
             beatRateDisplay = 0
             beatHUDText = "—"
             directionHUDText = "—"
@@ -132,8 +158,7 @@ final class PhaseScopeViewModel: ObservableObject {
             return
         }
 
-        let targetHz = rootHz * pow(2.0, Double(target.octave)) * (Double(target.num) / Double(target.den))
-        let refHz = targetHz * Double(partial)
+        let refHz = app.rootHz * Double(partial)
 
         // Build a short scope frame
         buildScopeFrame(refHz: refHz, confidence: confidence)
@@ -163,14 +188,9 @@ final class PhaseScopeViewModel: ObservableObject {
 
     private func updateReferenceHz() {
         guard referenceOn, let app else { return }
-        let target = (store?.lockedTarget ?? parseRatio(app.display.ratioText))
-        guard let target else { return }
-
-        let targetHz = app.rootHz * pow(2.0, Double(target.octave)) * (Double(target.num) / Double(target.den))
-        let refHz = targetHz * Double(partial)
-
-        ToneOutputEngine.shared.setEnabled(true)
+        let refHz = app.rootHz * Double(partial)
         ToneOutputEngine.shared.setFrequency(refHz)
+
         // waveform/timbre is already governed by ToneOutputEngine settings (spec 2.1)
     }
 

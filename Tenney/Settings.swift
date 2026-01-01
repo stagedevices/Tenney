@@ -3076,7 +3076,7 @@ struct StudioConsoleView: View {
             }
             .pickerStyle(.segmented)
 
-            Text("Applies immediately across Settings, Tuner, and Lattice.")
+            Text("Applied across Settings, Tuner, and Lattice.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }

@@ -275,7 +275,7 @@ public extension View {
     }
 
     /// For explicitly NOT-themed controls: shadow only (no fill/stroke).
-    func tenneyChromaShadow(_ enabled: Bool = true, radius: CGFloat = 18, y: CGFloat = 8) -> some View {
+    func tenneyChromaShadow(_ enabled: Bool = true, radius: CGFloat = 8, y: CGFloat = 4) -> some View {
         self.modifier(_TenneyChromaShadow(enabled: enabled, radius: radius, y: y))
     }
 }

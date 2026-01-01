@@ -46,14 +46,18 @@ enum TunerUIMode: String, CaseIterable, Identifiable {
 enum TunerViewStyle: String, CaseIterable, Identifiable {
     case Gauge
     case chronoDial
-    case phaseScope   //  NEW
+    // add back in when ready to test phasescope
+
+  //  case phaseScope   //  NEW
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .Gauge:  return "Gauge"
         case .chronoDial:return "Chrono"
-        case .phaseScope: return "Scope"   // ✅ NEW
+            // add back in when ready to test phasescope
+
+    //    case .phaseScope: return "Scope"   // ✅ NEW
         }
     }
 
@@ -61,7 +65,9 @@ enum TunerViewStyle: String, CaseIterable, Identifiable {
         switch self {
         case .Gauge:  return "gauge"
         case .chronoDial:return "circle.dotted"
-        case .phaseScope: return "scope"
+            // add back in when ready to test phasescope
+
+  //      case .phaseScope: return "scope"
         }
     }
 }
@@ -178,7 +184,6 @@ struct TunerModeStrip: View {
         .background(.thinMaterial, in: Capsule())
     }
 }
-
 
 
 // MARK: - Chrono Dial # TUNER NO. 1

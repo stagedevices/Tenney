@@ -24,27 +24,64 @@ struct PhaseScopeTunerView: View {
     private let inTuneWindow: Double = 5.0
 
     private var refToggle: some View {
-        Toggle(isOn: Binding(
-            get: { store.scopeReferenceOn },
-            set: { store.scopeReferenceOn = $0 }
-        )) {
-            Label("Ref", systemImage: "speaker.wave.2.fill")
+        Button {
+            store.scopeReferenceOn.toggle()
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: store.scopeReferenceOn ? "speaker.wave.2.fill" : "speaker.slash.fill")
+                    .symbolRenderingMode(.hierarchical)
+                let on = store.scopeReferenceOn
+
+                ZStack {
+                    Text("Ref Off").opacity(on ? 0 : 1)
+                    Text("Ref On").opacity(on ? 1 : 0)
+                }
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+
+            }
+            .font(.caption.weight(.semibold))
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(.thinMaterial, in: Capsule())
+            .overlay(
+                Capsule().strokeBorder(.white.opacity(store.scopeReferenceOn ? 0.16 : 0.08), lineWidth: 1)
+            )
         }
-        .toggleStyle(.button)
+        .buttonStyle(.plain)
         .onChange(of: store.scopeReferenceOn) { on in
             scopeVM.setReferenceEnabled(on)
         }
     }
 
     private var partialPicker: some View {
-        PartialPicker(partial: Binding(
-            get: { store.scopePartial },
-            set: { store.scopePartial = $0 }
-        ))
+        HStack(spacing: 10) {
+            Label("Harmonic", systemImage: "music.note")
+                .labelStyle(.titleAndIcon)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            Picker("", selection: $store.scopePartial) {
+                Text("1st").tag(1)
+                Text("2nd").tag(2)
+                Text("3rd").tag(3)
+                Text("4th").tag(4)
+            }
+            .pickerStyle(.segmented)
+            .frame(minWidth: 170, idealWidth: 200, maxWidth: 240)
+
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.thinMaterial, in: Capsule())
+        .overlay(Capsule().strokeBorder(.white.opacity(0.08), lineWidth: 1))
         .onChange(of: store.scopePartial) { p in
             scopeVM.setPartial(p)
         }
     }
+
     var body: some View {
         let target = store.lockedTarget ?? parseRatioText(model.display.ratioText)
         let rootHz = model.rootHz
@@ -61,21 +98,17 @@ struct PhaseScopeTunerView: View {
         }()
 
         VStack(spacing: 12) {
-            // Controls row (compact)
-            ViewThatFits(in: .horizontal) {
-                            HStack(spacing: 10) {
-                                refToggle
-                                Spacer()
-                                partialPicker
-                            }
-                            VStack(alignment: .leading, spacing: 8) {
-                                refToggle
-                                partialPicker
-                            }
-                        }
+            // Controls row (single-line)
+            HStack(spacing: 10) {
+                refToggle
+                partialPicker
+                    .layoutPriority(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .font(.caption2.weight(.semibold))
             .padding(.horizontal, 10)
             .padding(.vertical, 2)
+
 
             // Scope pane (dominant)
             ZStack {
@@ -131,16 +164,11 @@ struct PhaseScopeTunerView: View {
             .frame(minHeight: 210, idealHeight: 230, maxHeight: 260) // give height back to controls + rest of card
             .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .onAppear {
-                scopeVM.attach(
-                    app: vm,
-                    store: store
-                )
+                scopeVM.attach(app: app, store: store)
                 scopeVM.setReferenceEnabled(store.scopeReferenceOn)
                 scopeVM.setPartial(store.scopePartial)
             }
-            .onAppear {
-                scopeVM.attach(app: app, store: store)
-            }
+            
             .onDisappear {
                 scopeVM.detach()
             }
