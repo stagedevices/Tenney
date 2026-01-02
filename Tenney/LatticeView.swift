@@ -8,6 +8,12 @@
 import Foundation
 import SwiftUI
 
+#if targetEnvironment(macCatalyst)
+private let USE_STOP_GRADIENTS = false
+#else
+private let USE_STOP_GRADIENTS = true
+#endif
+
 
 extension LatticeCamera {
     mutating func center(in size: CGSize, scale: CGFloat? = nil) {
@@ -414,10 +420,16 @@ struct LatticeView: View {
             g.clip(to: circle)
 
             let washEnd = rimR * (0.25 + 0.85 * shockT)
-            let wash = Gradient(stops: [
+            let wash = USE_STOP_GRADIENTS
+            ? Gradient(stops: [
                 .init(color: tint.opacity(0.00), location: 0.00),
                 .init(color: tint.opacity(0.22 * bA), location: 0.18),
                 .init(color: tint.opacity(0.00), location: 0.55),
+            ])
+            : Gradient(colors: [
+                tint.opacity(0.00),
+                tint.opacity(0.22 * bA),
+                tint.opacity(0.00),
             ])
 
             g.fill(circle, with: .radialGradient(
@@ -3065,10 +3077,16 @@ struct LatticeView: View {
         g.clip(to: circle)
 
         // depth: brighter TL → darker BR
-        let depth = Gradient(stops: [
+        let depth = USE_STOP_GRADIENTS
+        ? Gradient(stops: [
             .init(color: Color.white.opacity(0.10 * alpha), location: 0.00),
             .init(color: Color.white.opacity(0.05 * alpha), location: 0.38),
             .init(color: Color.black.opacity(0.08 * alpha), location: 1.00)
+        ])
+        : Gradient(colors: [
+            Color.white.opacity(0.10 * alpha),
+            Color.white.opacity(0.05 * alpha),
+            Color.black.opacity(0.08 * alpha)
         ])
         g.fill(circle, with: .radialGradient(
             depth,
@@ -3208,10 +3226,16 @@ struct LatticeView: View {
             var g = ctx
             g.clip(to: circle)
 
-            let depth = Gradient(stops: [
+            let depth = USE_STOP_GRADIENTS
+            ? Gradient(stops: [
                 .init(color: Color.white.opacity(0.14 * alpha), location: 0.00),
                 .init(color: Color.white.opacity(0.04 * alpha), location: 0.40),
                 .init(color: Color.black.opacity(0.12 * alpha), location: 1.00)
+            ])
+            : Gradient(colors: [
+                Color.white.opacity(0.14 * alpha),
+                Color.white.opacity(0.04 * alpha),
+                Color.black.opacity(0.12 * alpha)
             ])
             g.fill(circle, with: .radialGradient(
                 depth,

@@ -7,6 +7,12 @@
 
 import SwiftUI
 
+#if targetEnvironment(macCatalyst)
+private let USE_STOP_GRADIENTS = false
+#else
+private let USE_STOP_GRADIENTS = true
+#endif
+
 /// Shared “atmospheric” background for instrument surfaces (Lattice + Tuner).
 /// No visible grain/noise; depth comes from subtle multi-layer gradients + vignette.
 struct TenneySceneBackground: View {
@@ -49,12 +55,20 @@ struct TenneySceneBackground: View {
                     .blendMode(.normal)
 
                     // Vignette (light mode: lighter + non-multiply so it doesn’t gray-out the whole field)
+                    let vignetteGradient = USE_STOP_GRADIENTS
+                    ? Gradient(stops: [
+                        .init(color: Color.clear, location: 0.00),
+                        .init(color: Color.clear, location: isDark ? 0.54 : 0.62),
+                        .init(color: Color.black.opacity(isDark ? 0.72 : 0.10), location: 1.00)
+                    ])
+                    : Gradient(colors: [
+                        Color.clear,
+                        Color.clear,
+                        Color.black.opacity(isDark ? 0.72 : 0.10)
+                    ])
+
                     RadialGradient(
-                        gradient: Gradient(stops: [
-                            .init(color: Color.clear, location: 0.00),
-                            .init(color: Color.clear, location: isDark ? 0.54 : 0.62),
-                            .init(color: Color.black.opacity(isDark ? 0.72 : 0.10), location: 1.00)
-                        ]),
+                        gradient: vignetteGradient,
                         center: .center,
                         startRadius: min(s.width, s.height) * (isDark ? 0.10 : 0.12),
                         endRadius: max(s.width, s.height) * (isDark ? 0.80 : 0.92)
@@ -63,12 +77,20 @@ struct TenneySceneBackground: View {
                     .opacity(isDark ? 1.0 : 0.85)
 
                     // Top-left “ambient” bloom (tinted identity)
+                    let ambientGradient = USE_STOP_GRADIENTS
+                    ? Gradient(stops: [
+                        .init(color: tintA.opacity(isDark ? 0.095 : 0.070), location: 0.00),
+                        .init(color: tintB.opacity(isDark ? 0.050 : 0.035), location: 0.36),
+                        .init(color: Color.clear,                           location: 0.74)
+                    ])
+                    : Gradient(colors: [
+                        tintA.opacity(isDark ? 0.095 : 0.070),
+                        tintB.opacity(isDark ? 0.050 : 0.035),
+                        Color.clear
+                    ])
+
                     RadialGradient(
-                        gradient: Gradient(stops: [
-                            .init(color: tintA.opacity(isDark ? 0.095 : 0.070), location: 0.00),
-                            .init(color: tintB.opacity(isDark ? 0.050 : 0.035), location: 0.36),
-                            .init(color: Color.clear,                           location: 0.74)
-                        ]),
+                        gradient: ambientGradient,
                         center: UnitPoint(x: 0.18, y: 0.18),
                         startRadius: 0,
                         endRadius: max(s.width, s.height) * 0.62
@@ -78,12 +100,20 @@ struct TenneySceneBackground: View {
 
                     // Bottom-right “sink” (dark mode only; in light mode this is what was pushing you to mid-gray)
                     if isDark {
+                        let sinkGradient = USE_STOP_GRADIENTS
+                        ? Gradient(stops: [
+                            .init(color: Color.clear,                 location: 0.00),
+                            .init(color: Color.black.opacity(0.55),   location: 0.78),
+                            .init(color: Color.black.opacity(0.86),   location: 1.00)
+                        ])
+                        : Gradient(colors: [
+                            Color.clear,
+                            Color.black.opacity(0.55),
+                            Color.black.opacity(0.86)
+                        ])
+
                         RadialGradient(
-                            gradient: Gradient(stops: [
-                                .init(color: Color.clear,                 location: 0.00),
-                                .init(color: Color.black.opacity(0.55),   location: 0.78),
-                                .init(color: Color.black.opacity(0.86),   location: 1.00)
-                            ]),
+                            gradient: sinkGradient,
                             center: UnitPoint(x: 0.86, y: 0.86),
                             startRadius: 0,
                             endRadius: max(s.width, s.height) * 0.70
