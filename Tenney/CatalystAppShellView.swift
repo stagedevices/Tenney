@@ -2,7 +2,7 @@
 import SwiftUI
 import UIKit
 
-private enum CatalystDestination: String, CaseIterable, Identifiable {
+ enum CatalystDestination: String, CaseIterable, Identifiable {
     case lattice, tuner, library, learn, preferences
     var id: String { rawValue }
 
@@ -58,22 +58,32 @@ struct CatalystAppShellView: View {
     }
 
     private var sidebar: some View {
-        List(selection: $selection) {
+        List {
             Section("Navigate") {
                 ForEach(CatalystDestination.allCases.filter { $0 != .preferences }) { dest in
-                    Label(dest.title, systemImage: dest.systemImage)
-                        .tag(dest)
+                    Button {
+                        selection = dest
+                    } label: {
+                        Label(dest.title, systemImage: dest.systemImage)
+                    }
+                    .buttonStyle(.plain)
+                    .contentShape(Rectangle())
+                    .listRowBackground(selection == dest ? Color.primary.opacity(0.10) : Color.clear)
+                    .help(dest.title)
                 }
+
                 Button {
                     openWindow(id: "preferences")
                 } label: {
                     Label(CatalystDestination.preferences.title, systemImage: CatalystDestination.preferences.systemImage)
                 }
+                .help("Preferences")
             }
         }
         .listStyle(.sidebar)
         .navigationTitle("Tenney")
     }
+
 
     @ViewBuilder
     private var detail: some View {
@@ -110,8 +120,8 @@ struct CatalystAppShellView: View {
         Group {
             if inspectorVisible {
                 CatalystInspectorView(
-                    destination: selection,
-                    latticeStore: latticeStore
+                    latticeStore: latticeStore,
+                    destination: selection
                 )
                 .environmentObject(app)
                 .frame(minWidth: 280)
@@ -123,7 +133,8 @@ struct CatalystAppShellView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        ToolbarItemGroup {
+
+        ToolbarItemGroup(placement: .navigationBarLeading) {
             Picker("Mode", selection: $selection) {
                 Label("Lattice", systemImage: "hexagon").tag(CatalystDestination.lattice)
                 Label("Tuner", systemImage: "gauge").tag(CatalystDestination.tuner)
@@ -132,35 +143,32 @@ struct CatalystAppShellView: View {
             .frame(width: 220)
 
             if selection == .lattice {
-                Button {
-                    latticeStore.camera.reset()
-                } label: {
+                Button { latticeStore.camera.reset() } label: {
                     Label("Reset Camera", systemImage: "arrow.uturn.backward.circle")
                 }
 
                 Button {
                     let size = latticeViewSize == .zero ? CGSize(width: 1200, height: 760) : latticeViewSize
-                    withAnimation(.snappy) {
-                        latticeStore.resetView(in: size)
-                    }
+                    withAnimation(.snappy) { latticeStore.resetView(in: size) }
                 } label: {
                     Label("Center", systemImage: "dot.circle.and.hand.point.up.left.fill")
                 }
             }
+        }
 
-            Spacer()
-
+        ToolbarItemGroup(placement: .navigationBarTrailing) {
             Button {
                 withAnimation(.easeInOut) {
                     inspectorVisible.toggle()
                     columnVisibility = inspectorVisible ? .all : .doubleColumn
                 }
             } label: {
-                Image(systemName: inspectorVisible ? "sidebar.trailing" : "sidebar.trailing")
+                Image(systemName: "sidebar.trailing")
             }
             .help(inspectorVisible ? "Hide Inspector" : "Show Inspector")
         }
     }
+
 
     private func enforceWindowSizing() {
         guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,

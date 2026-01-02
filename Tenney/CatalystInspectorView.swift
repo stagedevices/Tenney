@@ -86,19 +86,19 @@ struct CatalystInspectorView: View {
 
     private func actionRow(for ref: RatioRef) -> some View {
         HStack {
-            Button("Copy Ratio") { UIPasteboard.general.string = "\(ref.p)/\(ref.q)" }
+            Button("Copy Ratio") { UIPasteboard.general.string = ref.ratioString }
             Button("Copy Hz") {
-                let hz = RatioMath.foldToAudible(RatioMath.ratioToHz(p: ref.p, q: ref.q, octave: ref.octave, rootHz: app.rootHz, centsError: ref.centsError ?? 0))
+                let hz = RatioMath.foldToAudible(RatioMath.ratioToHz(p: ref.p, q: ref.q, octave: ref.octave, rootHz: app.rootHz, centsError: 0))
                 UIPasteboard.general.string = String(format: "%.3f Hz", hz)
             }
             Button("Copy Cents") {
-                let hz = RatioMath.foldToAudible(RatioMath.ratioToHz(p: ref.p, q: ref.q, octave: ref.octave, rootHz: app.rootHz, centsError: ref.centsError ?? 0))
+                let hz = RatioMath.foldToAudible(RatioMath.ratioToHz(p: ref.p, q: ref.q, octave: ref.octave, rootHz: app.rootHz, centsError: 0))
                 let cents = RatioMath.centsFromET(freqHz: hz, refHz: app.rootHz)
                 UIPasteboard.general.string = String(format: "%+.1f¢", cents)
             }
             Button("Add to Scale") { openBuilder(with: ref) }
             Button("Set as Root") {
-                let hz = RatioMath.foldToAudible(RatioMath.ratioToHz(p: ref.p, q: ref.q, octave: ref.octave, rootHz: app.rootHz, centsError: ref.centsError ?? 0))
+                let hz = RatioMath.foldToAudible(RatioMath.ratioToHz(p: ref.p, q: ref.q, octave: ref.octave, rootHz: app.rootHz, centsError: 0))
                 app.rootHz = hz
             }
         }

@@ -1732,7 +1732,7 @@ struct LatticeView: View {
     
     
 #if targetEnvironment(macCatalyst)
-    private var currentCursor: NSCursor {
+    private var currentCursor: CatalystCursorIntent {
         if isMousePanning { return .closedHand }
         if contextTarget != nil { return .pointingHand }
         return .openHand

@@ -8,21 +8,12 @@
          BreakpointExtensionID = "Xcode.Breakpoint.SymbolicBreakpoint">
          <BreakpointContent
             uuid = "3C806054-1018-49B1-9276-761E1B50C796"
-            shouldBeEnabled = "Yes"
+            shouldBeEnabled = "No"
             ignoreCount = "0"
             continueAfterRunningActions = "No"
             symbolName = "-[MTLDebugRenderCommandEncoder validateCommonDrawErrors:]"
             moduleName = "">
             <Locations>
-               <Location
-                  uuid = "3C806054-1018-49B1-9276-761E1B50C796 - c3706a68331d7ee7"
-                  shouldBeEnabled = "Yes"
-                  ignoreCount = "0"
-                  continueAfterRunningActions = "No"
-                  symbolName = "-[MTLDebugRenderCommandEncoder validateCommonDrawErrors:]"
-                  moduleName = "MetalTools"
-                  usesParentBreakpointCondition = "Yes">
-               </Location>
             </Locations>
          </BreakpointContent>
       </BreakpointProxy>

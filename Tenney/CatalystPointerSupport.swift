@@ -1,61 +1,51 @@
 #if targetEnvironment(macCatalyst)
 import SwiftUI
-import AppKit
+import UIKit
 
-struct CatalystMouseTrackingView: NSViewRepresentable {
+/// Lightweight hover tracking for Catalyst (no AppKit).
+/// Use this to capture pointer location for cursor-centered zoom logic.
+struct CatalystHoverTrackingView: UIViewRepresentable {
     var onMove: (CGPoint) -> Void
-    var onScroll: (CGFloat, CGPoint) -> Void
 
-    func makeNSView(context: Context) -> TrackingView {
-        let view = TrackingView()
-        view.onMove = onMove
-        view.onScroll = onScroll
-        return view
+    func makeUIView(context: Context) -> HoverView {
+        let v = HoverView()
+        v.onMove = onMove
+        return v
     }
 
-    func updateNSView(_ nsView: TrackingView, context: Context) {
-        nsView.onMove = onMove
-        nsView.onScroll = onScroll
+    func updateUIView(_ uiView: HoverView, context: Context) {
+        uiView.onMove = onMove
     }
 
-    final class TrackingView: NSView {
+    final class HoverView: UIView {
         var onMove: ((CGPoint) -> Void)?
-        var onScroll: ((CGFloat, CGPoint) -> Void)?
 
-        override func updateTrackingAreas() {
-            super.updateTrackingAreas()
-            trackingAreas.forEach(removeTrackingArea)
-            let opts: NSTrackingArea.Options = [.mouseMoved, .activeAlways, .inVisibleRect]
-            addTrackingArea(NSTrackingArea(rect: bounds, options: opts, owner: self, userInfo: nil))
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            isUserInteractionEnabled = true
+
+            let hover = UIHoverGestureRecognizer(target: self, action: #selector(handleHover(_:)))
+            addGestureRecognizer(hover)
         }
 
-        override func mouseMoved(with event: NSEvent) {
-            super.mouseMoved(with: event)
-            let loc = convert(event.locationInWindow, from: nil)
-            onMove?(loc)
-        }
+        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-        override func scrollWheel(with event: NSEvent) {
-            super.scrollWheel(with: event)
-            let loc = convert(event.locationInWindow, from: nil)
-            onScroll?(event.scrollingDeltaY, loc)
+        @objc private func handleHover(_ g: UIHoverGestureRecognizer) {
+            let p = g.location(in: self)
+            onMove?(p)
         }
     }
 }
 
-struct CatalystCursor: ViewModifier {
-    let cursor: NSCursor
-
-    func body(content: Content) -> some View {
-        content.onHover { hovering in
-            if hovering { cursor.push() } else { NSCursor.pop() }
-        }
-    }
+/// Temporary no-op cursor API for Catalyst so call-sites compile.
+/// (Catalyst does not support NSCursor.)
+enum CatalystCursorIntent {
+    case openHand
+    case closedHand
+    case pointingHand
 }
 
 extension View {
-    func catalystCursor(_ cursor: NSCursor) -> some View {
-        modifier(CatalystCursor(cursor: cursor))
-    }
+    func catalystCursor(_ intent: CatalystCursorIntent) -> some View { self }
 }
 #endif
