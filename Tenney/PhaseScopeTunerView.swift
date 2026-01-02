@@ -84,7 +84,7 @@ struct PhaseScopeTunerView: View {
 
     var body: some View {
         let target = store.lockedTarget ?? parseRatioText(model.display.ratioText)
-        let rootHz = model.rootHz
+        let rootHz = model.effectiveRootHz
         let conf = model.display.confidence
         let cents: Double = {
         let hz = model.display.hz

@@ -67,6 +67,7 @@ final class AppModel: ObservableObject {
             postSetting(SettingsKeys.rootHz, rootHz)
         }
     }
+    @Published var tunerRootOverride: RatioRef? = nil
     @Published var primeLimit: Int = 11   // 3–11; 13 in Advanced later
     @Published var tunerPrimeLimit: Int = {
         let v = UserDefaults.standard.integer(forKey: SettingsKeys.tunerPrimeLimit)
@@ -145,6 +146,19 @@ final class AppModel: ObservableObject {
         let s = xs.sorted()
         return s[s.count / 2]
     }
+
+    var effectiveRootHz: Double {
+        guard let ref = tunerRootOverride else { return rootHz }
+        return frequencyHz(rootHz: rootHz, ratio: ref, foldToAudible: false)
+    }
+    
+    func setTunerRootOverride(_ ref: RatioRef) {
+        tunerRootOverride = ref
+    }
+    
+    func clearTunerRootOverride() {
+        tunerRootOverride = nil
+    }
     
     
     // Instrument profiles you requested
@@ -210,7 +224,7 @@ final class AppModel: ObservableObject {
                 guard let self else { return }
                 self.micPermission = .denied
                 self.micDenied = true
-                self.display = .noInput(rootHz: self.rootHz)
+                self.display = .noInput(rootHz: self.effectiveRootHz)
             }
         )
 
@@ -425,10 +439,10 @@ final class AppModel: ObservableObject {
             
             
             // Your JI mapping & display (preserve RatioSolver & neighbors)
-            let pack = ratioSolver.nearestWithNeighbors(for: fSmoothed, rootHz: rootHz, primeLimit: tunerPrimeLimit)
+            let pack = ratioSolver.nearestWithNeighbors(for: fSmoothed, rootHz: effectiveRootHz, primeLimit: tunerPrimeLimit)
             let view = TunerDisplay(
                 ratioText: pack.main.ratioString,
-                cents: signedCents(actualHz: fSmoothed, rootHz: rootHz, target: pack.main),
+                cents: signedCents(actualHz: fSmoothed, rootHz: effectiveRootHz, target: pack.main),
                 hz: fSmoothed,
                 confidence: res.confidence,
                 lowerText: pack.lower.ratioString,
