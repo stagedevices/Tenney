@@ -322,7 +322,7 @@ struct TunerRailMiniLatticeFocusCard: View {
     private var tunerRootStatus: some View {
         HStack(spacing: 8) {
             if let ref = tunerRootOverride, let hz = overrideHz {
-                Text("Tuner Root: \(ratioDisplayString(ref)) · \(String(format: \"%.1f Hz\", hz)) (Override)")
+                Text("Tuner Root: \(ratioDisplayString(ref)) · \(String(format: "%.1f Hz", hz)) (Override)")
                     .foregroundStyle(.secondary)
             } else {
                 Text(String(format: "Tuner Root: Global (%.1f Hz)", globalRootHz))
@@ -337,6 +337,7 @@ struct TunerRailMiniLatticeFocusCard: View {
         }
         .font(.footnote)
     }
+
 
     var body: some View {
         TunerRailCardShell(
