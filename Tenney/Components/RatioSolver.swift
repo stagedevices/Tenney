@@ -8,16 +8,16 @@
 
 import Foundation
 
-public struct RatioCandidate: Identifiable, Hashable {
-    public let ref: RatioRef
-    public let hz: Double
-    public let cents: Double
-    public let tenneyHeight: Int
+ struct RatioCandidate: Identifiable, Hashable {
+     let ref: RatioRef
+     let hz: Double
+     let cents: Double
+     let tenneyHeight: Int
 
-    public var id: String { ref.id }
-    public var ratioText: String { RatioMath.unitLabel(ref.p, ref.q) }
+     var id: String { ref.id }
+     var ratioText: String { RatioMath.unitLabel(ref.p, ref.q) }
 
-    public init(ref: RatioRef, hz: Double, cents: Double) {
+     init(ref: RatioRef, hz: Double, cents: Double) {
         self.ref = ref
         self.hz = hz
         self.cents = cents
@@ -159,7 +159,7 @@ public final class RatioSolver {
         return .init(main: main, lower: lowerPick, higher: higherPick)
     }
 
-    public static func candidates(aroundHz hz: Double,
+     static func candidates(aroundHz hz: Double,
                                   rootHz: Double,
                                   primeLimit: Int,
                                   axisShift: [Int:Int],
@@ -167,7 +167,7 @@ public final class RatioSolver {
         shared.candidates(aroundHz: hz, rootHz: rootHz, primeLimit: primeLimit, axisShift: axisShift, count: count)
     }
 
-    public func candidates(aroundHz hz: Double,
+     func candidates(aroundHz hz: Double,
                            rootHz: Double,
                            primeLimit: Int,
                            axisShift: [Int:Int],
