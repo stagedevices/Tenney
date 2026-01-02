@@ -87,6 +87,7 @@ final class AppModel: ObservableObject {
     }
     /// Controls showing the onboarding wizard as a liquid-glass modal overlay.
     @Published var showOnboardingWizard: Bool = false
+    @Published var openSettingsToTunerRail: Bool = false
     // Lattice audition state (UtilityBar ↔ LatticeScreen sync)
     @Published var latticeAuditionOn: Bool = false
     // Library detent presentation

@@ -55,6 +55,7 @@ private let libraryStore = ScaleLibraryStore.shared
     @AppStorage(SettingsKeys.stageKeepAwake)  private var stageKeepAwake: Bool = true
     @AppStorage(SettingsKeys.stageMinimalUI)  private var stageMinimalUI: Bool = false
     @AppStorage(SettingsKeys.defaultView) private var defaultView: String = "tuner" // "lattice" | "tuner"
+    @AppStorage(SettingsKeys.tunerRailShow) private var tunerRailShow: Bool = true
     @State private var swapFlashWhite: Bool = false // legacy, no longer used
         // ===== Footer (first-run wizard) =====
         @State private var footerRouteLabel: String = ""
@@ -296,6 +297,17 @@ private let libraryStore = ScaleLibraryStore.shared
                         withAnimation(.snappy) { mode = (val == "lattice" ? .lattice : .tuner) }
                     }
                 }
+#if targetEnvironment(macCatalyst)
+                .onAppear {
+                    tunerRailStore.setShowRail(tunerRailShow)
+                }
+                .onChange(of: tunerRailShow) { show in
+                    tunerRailStore.setShowRail(show)
+                }
+                .onChange(of: tunerRailStore.showRail) { show in
+                    tunerRailShow = show
+                }
+#endif
         // Capture wizard top Y (global)
             .onPreferenceChange(WizardTopPref.self) { wizardTopY = $0 }
             .alert("Microphone Access Needed", isPresented: $app.micDenied) {
@@ -372,33 +384,48 @@ private let libraryStore = ScaleLibraryStore.shared
     private func tunerContent(in geo: GeometryProxy) -> some View {
         let isLandscape = geo.size.width > geo.size.height
 
-        if isLandscape {
-            HStack(spacing: 16) {
-                tunerCardView
+        return Group {
+            if isLandscape {
+                HStack(spacing: 16) {
+                    tunerCardView
 #if targetEnvironment(macCatalyst)
-                if tunerRailStore.showRail {
-                    TunerContextRailHost(
-                        store: tunerRailStore,
-                        app: app,
-                        showSettings: $showSettings
-                    ) {
-                        requestedSettingsCategory = .tuner
+                    if tunerRailShow {
+                        TunerContextRailHost(
+                            store: tunerRailStore,
+                            app: app,
+                            showSettings: $showSettings
+                        ) {
+                            requestedSettingsCategory = .tuner
+                        }
+                        .opacity(stageActive ? 0 : 1)
+                        .allowsHitTesting(!stageActive)
                     }
-                    .opacity(stageActive ? 0 : 1)
-                    .allowsHitTesting(!stageActive)
-                }
 #else
-                railView(in: geo, isLandscape: true)
+                    railView(in: geo, isLandscape: true)
 #endif
+                }
+            } else {
+                VStack(spacing: 16) {
+                    tunerCardView
+                    railView(in: geo, isLandscape: false)
+                }
             }
-            .padding(16)
-        } else {
-            VStack(spacing: 16) {
-                tunerCardView
-                railView(in: geo, isLandscape: false)
-            }
-            .padding(16)
         }
+        .padding(16)
+#if targetEnvironment(macCatalyst)
+        .contextMenu {
+            Toggle(isOn: $tunerRailShow) {
+                Label("Show Rail", systemImage: "sidebar.right")
+            }
+
+            Button {
+                app.openSettingsToTunerRail = true
+                showSettings = true
+            } label: {
+                Label("Customize…", systemImage: "slider.horizontal.3")
+            }
+        }
+#endif
     }
 
     private var latticeContent: some View {
