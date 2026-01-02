@@ -476,10 +476,16 @@ struct StudioConsoleView: View {
     }
     
     @State private var activeCategory: SettingsCategory? = nil // nil = home screen
+    private let initialCategory: SettingsCategory?
     private let catAnim = Animation.easeInOut(duration: 0.22)
 
+    init(initialCategory: SettingsCategory? = nil) {
+        self.initialCategory = initialCategory
+        _activeCategory = State(initialValue: initialCategory)
+    }
+
     
-    private enum SettingsCategory: String, CaseIterable, Identifiable {
+    enum SettingsCategory: String, CaseIterable, Identifiable {
         var pageTitle: String {
             switch self {
             case .lattice:      return "Lattice UI"

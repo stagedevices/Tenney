@@ -24,7 +24,7 @@ import CoreGraphics
 /// - stops audition audio on background/disappear
 /// - provides a clean, iOS-26-native toolbar surface
 struct LatticeScreen: View {
-    @StateObject private var store = LatticeStore()
+    @StateObject private var store: LatticeStore
     @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var app: AppModel
     
@@ -33,6 +33,10 @@ struct LatticeScreen: View {
     
     @AppStorage(SettingsKeys.latticeRecenterPending)
         private var latticeRecenterPending: Bool = false
+
+    init(store: LatticeStore? = nil) {
+        _store = StateObject(wrappedValue: store ?? LatticeStore())
+    }
 
     var body: some View {
         LatticeView()
