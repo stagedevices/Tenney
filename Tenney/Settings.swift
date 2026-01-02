@@ -363,6 +363,15 @@ struct StudioConsoleView: View {
         whatsNewLastSeenBuild = AppInfo.build
         whatsNewLastSeenMajorMinor = AppInfo.majorMinor
     }
+
+    private func handleTunerRailDeepLinkIfNeeded() {
+        guard app.openSettingsToTunerRail else { return }
+        shouldScrollToTunerRail = true
+        if activeCategory != .tuner {
+            withAnimation(catAnim) { activeCategory = .tuner }
+        }
+        app.openSettingsToTunerRail = false
+    }
     
     @AppStorage(SettingsKeys.latticeDefaultZoomPreset)
     private var latticeDefaultZoomPresetRaw: String = LatticeZoomPreset.close.rawValue
@@ -395,6 +404,8 @@ struct StudioConsoleView: View {
     @AppStorage(SettingsKeys.tenneyThemeScopeMode) private var scopeModeRaw: String = TenneyScopeColorMode.constant.rawValue
     @EnvironmentObject private var tunerRailStore: TunerRailStore
     @State private var showTunerRailPalette: Bool = false
+    @State private var shouldScrollToTunerRail: Bool = false
+    private let tunerRailSectionID = "settings.tunerRail.section"
 
     // Tuning
     @AppStorage(SettingsKeys.a4Choice)   private var a4Choice = A4Choice._440.rawValue
@@ -785,7 +796,6 @@ struct StudioConsoleView: View {
                                 var list = tunerRailStore.enabledCards
                                 list.append(card)
                                 tunerRailStore.updateEnabledCards(list)
-                                showTunerRailPalette = false
                             } label: {
                                 Label(card.title, systemImage: card.systemImage)
                             }
@@ -794,6 +804,9 @@ struct StudioConsoleView: View {
                     .navigationTitle("Add Cards")
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) {
+                            Button("Cancel") { showTunerRailPalette = false }
+                        }
+                        ToolbarItem(placement: .confirmationAction) {
                             Button("Done") { showTunerRailPalette = false }
                         }
                     }
@@ -805,6 +818,7 @@ struct StudioConsoleView: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
+        .id(tunerRailSectionID)
     }
 
     private func removeCard(_ card: TunerRailCardID) {
@@ -2791,12 +2805,14 @@ struct StudioConsoleView: View {
                         mixBasis: TenneyMixBasis(rawValue: mixBasisRaw) ?? .complexityWeight,
                         mixMode: TenneyMixMode(rawValue: mixModeRaw) ?? .blend,
                         scopeMode: TenneyScopeColorMode(rawValue: scopeModeRaw) ?? .constant
-                    )
+                 )
                 )
 
                 
             .statusBar(hidden: stageHideStatus)
             .preferredColorScheme(settingsScheme)
+            .onAppear { handleTunerRailDeepLinkIfNeeded() }
+            .onChange(of: app.openSettingsToTunerRail) { _ in handleTunerRailDeepLinkIfNeeded() }
             .sheet(isPresented: $showWhatsNewSheet, onDismiss: {
                 markWhatsNewSeen()
             }) {
@@ -2971,19 +2987,37 @@ struct StudioConsoleView: View {
                 homeScreen
                     .transition(.opacity)
             } else if let cat = activeCategory {
-                ScrollView {
-                    VStack(spacing: 16) {
-                        categoryContent(for: cat)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(spacing: 16) {
+                            categoryContent(for: cat)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 18)
+                        .padding(.top, 84)     // clears back button + top bar
+                        .padding(.bottom, 20)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 18)
-                   .padding(.top, 84)     // clears back button + top bar
-                   .padding(.bottom, 20)
+                    .onAppear {
+                        scrollToTunerRailIfNeeded(proxy: proxy, category: cat)
+                    }
+                    .onChange(of: shouldScrollToTunerRail) { _ in
+                        scrollToTunerRailIfNeeded(proxy: proxy, category: cat)
+                    }
                 }
                 .transition(.opacity)
             }
         }
         .animation(catAnim, value: activeCategory)
+    }
+
+    private func scrollToTunerRailIfNeeded(proxy: ScrollViewProxy, category: SettingsCategory) {
+        guard shouldScrollToTunerRail, category == .tuner else { return }
+        DispatchQueue.main.async {
+            withAnimation(catAnim) {
+                proxy.scrollTo(tunerRailSectionID, anchor: .top)
+            }
+            shouldScrollToTunerRail = false
+        }
     }
     private var showQuickThemeHomeTile: Bool {
         let q = homeQuery.trimmingCharacters(in: .whitespacesAndNewlines)
