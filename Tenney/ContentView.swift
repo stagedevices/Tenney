@@ -9,7 +9,6 @@ import Foundation
 import SwiftUI
 import AVFoundation
 import UIKit
-
 enum AppScreenMode: String, CaseIterable, Identifiable { case tuner, lattice; var id: String { rawValue } }
 
 struct ContentView: View {
@@ -42,7 +41,10 @@ private let libraryStore = ScaleLibraryStore.shared
     @EnvironmentObject private var app: AppModel
     @State private var mode: AppScreenMode = .tuner
     @State private var showSettings = false
+    
+#if targetEnvironment(macCatalyst)
     @StateObject private var tunerRailStore = TunerRailStore()
+#endif
     @State private var requestedSettingsCategory: StudioConsoleView.SettingsCategory? = nil
     @AppStorage(SettingsKeys.tunerStageMode) private var stageActive: Bool = false
     @Namespace private var stageNS
@@ -373,33 +375,40 @@ private let libraryStore = ScaleLibraryStore.shared
         let isLandscape = geo.size.width > geo.size.height
 
         if isLandscape {
-            HStack(spacing: 16) {
-                tunerCardView
-#if targetEnvironment(macCatalyst)
-                if tunerRailStore.showRail {
-                    TunerContextRailHost(
-                        store: tunerRailStore,
-                        app: app,
-                        showSettings: $showSettings
-                    ) {
-                        requestedSettingsCategory = .tuner
+    let spacing: CGFloat = {
+    #if targetEnvironment(macCatalyst)
+                    0
+    #else
+                    16
+    #endif
+                }()
+    
+                HStack(spacing: spacing) {
+                     tunerCardView
+                     railView(in: geo, isLandscape: true)
+                 }
+                 .padding(16)
+    #if targetEnvironment(macCatalyst)
+                .contextMenu {
+                    Toggle(isOn: Binding(get: { tunerRailStore.showRail }, set: tunerRailStore.setShowRail)) {
+                        Label("Show Rail", systemImage: "sidebar.trailing")
                     }
-                    .opacity(stageActive ? 0 : 1)
-                    .allowsHitTesting(!stageActive)
+                    Button {
+                        app.openSettingsToTunerRail = true
+                        showSettings = true
+                    } label: {
+                        Label("Customize…", systemImage: "slider.horizontal.3")
+                    }
                 }
-#else
-                railView(in: geo, isLandscape: true)
-#endif
-            }
-            .padding(16)
-        } else {
-            VStack(spacing: 16) {
-                tunerCardView
-                railView(in: geo, isLandscape: false)
-            }
-            .padding(16)
-        }
-    }
+    #endif
+             } else {
+                 VStack(spacing: 16) {
+                     tunerCardView
+                     railView(in: geo, isLandscape: false)
+                 }
+                 .padding(16)
+             }
+         }
 
     private var latticeContent: some View {
         LatticeScreen()
@@ -415,11 +424,28 @@ private let libraryStore = ScaleLibraryStore.shared
             .frame(maxWidth: .infinity)
     }
 
-    private func railView(in geo: GeometryProxy, isLandscape: Bool) -> some View {
+    @ViewBuilder private func railView(in geo: GeometryProxy, isLandscape: Bool) -> some View {
+#if targetEnvironment(macCatalyst)
+        if isLandscape, tunerRailStore.showRail {
+            TunerContextRailHost(
+                store: tunerRailStore,
+                app: app,
+                showSettings: $showSettings,
+                onCustomize: {
+                    app.openSettingsToTunerRail = true
+                }
+            )
+            .opacity(stageActive ? 0 : 1)
+            .allowsHitTesting(!stageActive)
+        } else {
+            EmptyView()
+        }
+#else
         RailView(showRootStudio: $showRootStudio, rootNS: rootNS)
             .frame(width: isLandscape ? min(400, geo.size.width * 0.34) : nil)
             .opacity(stageActive ? 0 : 1)
             .allowsHitTesting(!stageActive)
+#endif
     }
 
     private func updateIdleTimer(stageOn: Bool) {

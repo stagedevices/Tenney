@@ -7,6 +7,7 @@
 
 import Foundation
 import SwiftUI
+import Combine
 
 enum TunerRailCardID: String, CaseIterable, Identifiable, Codable {
     case nowTuning

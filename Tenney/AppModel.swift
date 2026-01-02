@@ -91,6 +91,9 @@ final class AppModel: ObservableObject {
     @Published var latticeAuditionOn: Bool = false
     // Library detent presentation
     @Published var showScaleLibraryDetent: Bool = false
+    
+    // Settings deep-link (Mac Catalyst)
+    @Published var openSettingsToTunerRail: Bool = false
     private let audio = AudioEngineService()
     // Scene activity + desired mic state
     @Published private(set) var sceneIsActive: Bool = true
