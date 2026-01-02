@@ -42,6 +42,8 @@ private let libraryStore = ScaleLibraryStore.shared
     @EnvironmentObject private var app: AppModel
     @State private var mode: AppScreenMode = .tuner
     @State private var showSettings = false
+    @StateObject private var tunerRailStore = TunerRailStore()
+    @State private var requestedSettingsCategory: StudioConsoleView.SettingsCategory? = nil
     @AppStorage(SettingsKeys.tunerStageMode) private var stageActive: Bool = false
     @Namespace private var stageNS
     @Namespace private var rootNS
@@ -373,7 +375,21 @@ private let libraryStore = ScaleLibraryStore.shared
         if isLandscape {
             HStack(spacing: 16) {
                 tunerCardView
+#if targetEnvironment(macCatalyst)
+                if tunerRailStore.showRail {
+                    TunerContextRailHost(
+                        store: tunerRailStore,
+                        app: app,
+                        showSettings: $showSettings
+                    ) {
+                        requestedSettingsCategory = .tuner
+                    }
+                    .opacity(stageActive ? 0 : 1)
+                    .allowsHitTesting(!stageActive)
+                }
+#else
                 railView(in: geo, isLandscape: true)
+#endif
             }
             .padding(16)
         } else {
@@ -477,10 +493,14 @@ private let libraryStore = ScaleLibraryStore.shared
         )
     }
     private var settingsSheet: some View {
-        StudioConsoleView()
+        StudioConsoleView(initialCategory: requestedSettingsCategory)
+            .environmentObject(tunerRailStore)
             .statusBar(hidden: stageHideStatus && stageActive)
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
+            .onDisappear {
+                requestedSettingsCategory = nil
+            }
     }
 
     @ViewBuilder

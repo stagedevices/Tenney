@@ -125,6 +125,13 @@ enum SettingsKeys {
     static let tunerPrimeLimit = "tenney.tuner.primeLimit" // Int (default 11)
     static let tunerStageMode  = "tenney.tuner.stageMode"  // Bool
     static let tunerMode       = "tenney.tuner.mode"       // "auto" | "strict" | "live"
+
+    // Mac Catalyst: Tuner Rail
+    static let tunerRailShow            = "tenney.tunerRail.show"
+    static let tunerRailActivePresetID  = "tenney.tunerRail.activePresetID"
+    static let tunerRailPresetsJSON     = "tenney.tunerRail.presetsJSON"
+    static let tunerRailIntervalTapeMs  = "tenney.tunerRail.intervalTape.ms"
+    static let tunerRailMiniLatticeLimit = "tenney.tunerRail.miniLattice.primeLimit"
     
     // Audio Settings
        static let audioPreferredInputPortUID = "tenney.audio.preferredInputPortUID"
