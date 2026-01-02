@@ -11,6 +11,14 @@ import AVFoundation
 import UIKit
 enum AppScreenMode: String, CaseIterable, Identifiable { case tuner, lattice; var id: String { rawValue } }
 
+private func loadLatticeAxisShiftSnapshot() -> [Int:Int] {
+    if let data = UserDefaults.standard.data(forKey: "lattice.persist.v1"),
+       let blob = try? JSONDecoder().decode(LatticeStore.PersistBlob.self, from: data) {
+        return blob.axisShift
+    }
+    return [:]
+}
+
 struct ContentView: View {
     @AppStorage(SettingsKeys.tenneyThemeID) private var tenneyThemeIDRaw: String = LatticeThemeID.classicBO.rawValue
     @AppStorage(SettingsKeys.tenneyThemeMixBasis) private var mixBasisRaw: String = TenneyMixBasis.complexityWeight.rawValue
@@ -38,6 +46,10 @@ private let libraryStore = ScaleLibraryStore.shared
     @State private var effectiveIsDark = false
     @Environment(\.tenneyPracticeActive) private var practiceActive
 
+    @StateObject private var tunerStore = TunerStore()
+#if targetEnvironment(macCatalyst)
+    @State private var latticeAxisShift: [Int:Int] = loadLatticeAxisShiftSnapshot()
+#endif
     @EnvironmentObject private var app: AppModel
     @State private var mode: AppScreenMode = .tuner
     @State private var showSettings = false
@@ -417,7 +429,7 @@ private let libraryStore = ScaleLibraryStore.shared
     }
 
     private var tunerCardView: some View {
-        TunerCard(stageActive: $stageActive)
+        TunerCard(store: tunerStore, stageActive: $stageActive)
             .matchedGeometryEffect(id: "tunerHero", in: stageNS)
             .opacity(stageActive ? 0 : 1)
             .allowsHitTesting(!stageActive)   //  critical: don't let the invisible source eat taps
@@ -431,6 +443,14 @@ private let libraryStore = ScaleLibraryStore.shared
                 store: tunerRailStore,
                 app: app,
                 showSettings: $showSettings,
+                globalPrimeLimit: app.tunerPrimeLimit,
+                globalAxisShift: latticeAxisShift,
+                onLockTarget: { ref in
+                    tunerStore.lockedTarget = RatioResult(num: ref.p, den: ref.q, octave: ref.octave)
+                },
+                onExportScale: { payload in
+                    app.builderPayload = payload
+                },
                 onCustomize: {
                     app.openSettingsToTunerRail = true
                 }
@@ -495,7 +515,7 @@ private let libraryStore = ScaleLibraryStore.shared
                     .allowsHitTesting(false)
                     .animation(.easeInOut(duration: 0.18), value: stageActive)
 
-                TunerCard(stageActive: $stageActive)
+                TunerCard(store: tunerStore, stageActive: $stageActive)
                     .matchedGeometryEffect(id: "tunerHeroStage", in: stageNS)
                     .frame(maxWidth: min(520, proxy.size.width - 32))
                     .padding(16)
@@ -624,7 +644,7 @@ extension Notification.Name {
 
  struct TunerCard: View {
     @EnvironmentObject private var model: AppModel
-    @StateObject private var store = TunerStore()
+    @ObservedObject var store: TunerStore
     private var liveHz: Double { model.display.hz }
     private var liveCents: Double { model.display.cents }
     private var liveConf: Double { model.display.confidence }

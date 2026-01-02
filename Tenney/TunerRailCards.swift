@@ -8,6 +8,7 @@
 import SwiftUI
 import Combine
 import CoreGraphics
+import UIKit
 
 // MARK: - Shared rail models / helpers
 
@@ -804,12 +805,12 @@ struct TunerContextRailHost: View {
             TunerRailNearestTargetsCard(
                 snapshot: clock.snapshot,
                 rootHz: app.rootHz,
-                primeLimit: app.primeLimit,
+                primeLimit: globalPrimeLimit,
                 axisShift: globalAxisShift,
                 session: session,
                 onLock: onLockTarget,
                 onExportSingleToScale: { ref in
-                    let payload = ScaleBuilderPayload(rootHz: app.rootHz, primeLimit: app.primeLimit, items: [ref])
+                    let payload = ScaleBuilderPayload(rootHz: app.rootHz, primeLimit: globalPrimeLimit, items: [ref])
                     onExportScale(payload)
                 },
                 collapsed: binding(for: id)
@@ -820,7 +821,7 @@ struct TunerContextRailHost: View {
                 snapshot: clock.snapshot,
                 session: session,
                 rootHz: app.rootHz,
-                primeLimit: app.primeLimit,
+                primeLimit: globalPrimeLimit,
                 onExportScale: onExportScale,
                 onLock: onLockTarget,
                 collapsed: binding(for: id)
