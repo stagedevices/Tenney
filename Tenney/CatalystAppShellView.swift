@@ -28,6 +28,7 @@ import UIKit
 }
 
 struct CatalystAppShellView: View {
+    @StateObject private var tunerStore = TunerStore()
     @EnvironmentObject private var latticeStore: LatticeStore
     @EnvironmentObject private var app: AppModel
     @Environment(\.openWindow) private var openWindow
@@ -94,7 +95,7 @@ struct CatalystAppShellView: View {
                 .id("lattice")
         case .tuner:
             NavigationStack {
-                TunerCard(stageActive: .constant(false))
+                TunerCard(store: tunerStore, stageActive: .constant(false))
                     .environmentObject(app)
                     .padding(20)
                     .navigationTitle("Tuner")

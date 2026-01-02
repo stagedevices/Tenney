@@ -144,8 +144,9 @@ private struct LatticePracticeHost: View {
 
 private struct TunerPracticeHost: View {
     @State private var stageActive = false
+    @StateObject private var tunerStore = TunerStore()
     var body: some View {
-        TunerCard(stageActive: $stageActive)
+        TunerCard(store: tunerStore, stageActive: $stageActive)
     }
 }
 
