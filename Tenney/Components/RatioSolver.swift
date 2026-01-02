@@ -8,6 +8,23 @@
 
 import Foundation
 
+public struct RatioCandidate: Identifiable, Hashable {
+    public let ref: RatioRef
+    public let hz: Double
+    public let cents: Double
+    public let tenneyHeight: Int
+
+    public var id: String { ref.id }
+    public var ratioText: String { RatioMath.unitLabel(ref.p, ref.q) }
+
+    public init(ref: RatioRef, hz: Double, cents: Double) {
+        self.ref = ref
+        self.hz = hz
+        self.cents = cents
+        self.tenneyHeight = RatioMath.tenneyHeight(p: ref.p, q: ref.q)
+    }
+}
+
 public struct RatioResult: Hashable {
     public let num: Int
     public let den: Int
@@ -59,6 +76,8 @@ public final class RatioSolver {
     // Cache: primeLimit -> unit ratios
     private var cache: [Int: [UnitRatio]] = [:]
     private let lock = NSLock()
+
+    private static let shared = RatioSolver()
 
     public init(config: Config = .init()) {
         self.config = config
@@ -138,6 +157,71 @@ public final class RatioSolver {
         }()
 
         return .init(main: main, lower: lowerPick, higher: higherPick)
+    }
+
+    public static func candidates(aroundHz hz: Double,
+                                  rootHz: Double,
+                                  primeLimit: Int,
+                                  axisShift: [Int:Int],
+                                  count: Int) -> [RatioCandidate] {
+        shared.candidates(aroundHz: hz, rootHz: rootHz, primeLimit: primeLimit, axisShift: axisShift, count: count)
+    }
+
+    public func candidates(aroundHz hz: Double,
+                           rootHz: Double,
+                           primeLimit: Int,
+                           axisShift: [Int:Int],
+                           count: Int) -> [RatioCandidate] {
+        guard hz.isFinite, hz > 0, rootHz.isFinite, rootHz > 0, count > 0 else { return [] }
+
+        let units = unitRatios(for: max(2, primeLimit))
+        if units.isEmpty { return [] }
+
+        let targetRatio = hz / rootHz
+
+        func applyAxisShift(num: Int, den: Int) -> (Int, Int) {
+            var n = num
+            var d = den
+            for (prime, exp) in axisShift {
+                guard prime > 1, exp != 0 else { continue }
+                if exp > 0 {
+                    n = RatioMath.powMul(n, base: prime, exp: exp)
+                } else {
+                    d = RatioMath.powMul(d, base: prime, exp: -exp)
+                }
+            }
+            return RatioMath.canonicalPQUnit(n, d)
+        }
+
+        var seen = Set<String>()
+        var out: [(cand: RatioCandidate, absCents: Double)] = []
+        out.reserveCapacity(min(count * 2, 64))
+
+        for u in units {
+            let (pAdj, qAdj) = applyAxisShift(num: u.num, den: u.den)
+            let baseValue = Double(pAdj) / Double(qAdj)
+            guard baseValue.isFinite, baseValue > 0 else { continue }
+
+            let octave = Int(round(log2(targetRatio / baseValue)))
+            let candHz = ldexp(rootHz * baseValue, octave)
+            guard candHz.isFinite, candHz > 0 else { continue }
+
+            let cents = 1200.0 * log2(hz / candHz)
+            let key = "\(pAdj)/\(qAdj)@\(octave)"
+            if seen.contains(key) { continue }
+            seen.insert(key)
+
+            let ref = RatioRef(p: pAdj, q: qAdj, octave: octave)
+            let cand = RatioCandidate(ref: ref, hz: candHz, cents: cents)
+            out.append((cand, abs(cents)))
+        }
+
+        out.sort {
+            if $0.absCents != $1.absCents { return $0.absCents < $1.absCents }
+            return $0.cand.tenneyHeight < $1.cand.tenneyHeight
+        }
+
+        return out.prefix(count).map { $0.cand }
     }
 
     // MARK: - Unit ratio generation

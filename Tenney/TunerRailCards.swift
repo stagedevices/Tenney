@@ -73,7 +73,7 @@ private func parsePQ(_ s: String) -> (p: Int, q: Int)? {
 /// If you already have a project helper, you can swap this impl to that.
 private func ratioRefFrom(_ ratioText: String) -> RatioRef? {
     guard let pq = parsePQ(ratioText) else { return nil }
-    return RatioRef(p: pq.p, q: pq.q, octave: 0, monzo: RatioMath.monzo(p: pq.p, q: pq.q))
+    return RatioRef(p: pq.p, q: pq.q, octave: 0)
 }
 
 
@@ -301,7 +301,7 @@ struct TunerRailMiniLatticeFocusCard: View {
                   let dict = try? JSONDecoder().decode([Int:Int].self, from: data) else { return [:] }
             return dict
         }
-        set {
+        nonmutating set {
             if let data = try? JSONEncoder().encode(newValue),
                let s = String(data: data, encoding: .utf8) {
                 axisShiftRaw = s
@@ -523,6 +523,7 @@ struct TunerRailNearestTargetsCard: View {
     @Binding var collapsed: Bool
     @State private var sortByComplexity = false
     @State private var candidates: [RatioCandidate] = []
+    private let solver = RatioSolver()
     
     var body: some View {
         TunerRailCardShell(
@@ -567,20 +568,19 @@ struct TunerRailNearestTargetsCard: View {
             session.capture(.init(ratio: cand.ratioText, hz: cand.hz, cents: cand.cents, timestamp: Date()))
         }
         Button("Add to Scale") { onExportSingleToScale(cand.ref) }
+    }
+    
+    private func refresh() {
+        candidates = solver.candidates(
+            aroundHz: snapshot.hz,
+            rootHz: rootHz,
+            primeLimit: primeLimit,
+            axisShift: axisShift,
+            count: 12
+        )
         
-        
-        private func refresh() {
-            candidates = RatioSolver.candidates(
-                aroundHz: snapshot.hz,
-                rootHz: rootHz,
-                primeLimit: primeLimit,
-                axisShift: axisShift,
-                count: 12
-            )
-            
-            if sortByComplexity {
-                candidates.sort { $0.tenneyHeight < $1.tenneyHeight }
-            }
+        if sortByComplexity {
+            candidates.sort { $0.tenneyHeight < $1.tenneyHeight }
         }
     }
 }
