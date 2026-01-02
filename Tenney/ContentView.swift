@@ -454,7 +454,7 @@ private let libraryStore = ScaleLibraryStore.shared
                     .animation(.easeInOut(duration: 0.18), value: stageActive)
 
                 TunerCard(stageActive: $stageActive)
-                    .matchedGeometryEffect(id: "tunerHero", in: stageNS)
+                    .matchedGeometryEffect(id: "tunerHeroStage", in: stageNS)
                     .frame(maxWidth: min(520, proxy.size.width - 32))
                     .padding(16)
                     .opacity(stageActive ? 1 : 0)

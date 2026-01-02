@@ -301,7 +301,7 @@ final class PitchTracker {
         let node = AVAudioSourceNode { [weak self] _, _, frameCount, ablPtr -> OSStatus in
             guard let self else { return noErr }
             let s = self.toneState.get()                      // atomic snapshot
-            let sr = max(1.0, self.sampleRate)
+            let sr = max(self.sampleRate, 48_000)
             let w = 2.0 * .pi * s.hz / sr
             let amp = s.amp
 
@@ -521,7 +521,7 @@ final class PitchTracker {
         guard analysisRunning else { return }
         var buf = [Float](repeating: 0, count: 4096)
         let s = toneState.get()
-        let sr = max(1.0, sampleRate)
+        let sr = max(sampleRate, 48_000)
         let w = 2.0 * .pi * s.hz / sr
         let amp = s.amp
         for i in 0..<buf.count {

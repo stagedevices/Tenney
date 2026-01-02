@@ -161,17 +161,18 @@ final class AppModel: ObservableObject {
         PitchAccuracyHarness.run()
 #endif
         
-        AudioSession.requestMicPermission { [weak self] (granted: Bool) in
-            Task { @MainActor in
-                self?.micPermission = granted ? .granted : .denied
-                // Only start immediately if the scene is active and we actually want the mic.
-                if self?.sceneIsActive == true, self?.desiredMicActive == true, granted {
-                    self?.restartPipeline()
-                } else {
-                    self?.audio.stop()
-                }
-            }
+        // seed UI state immediately
+        switch MicrophonePermission.status() {
+        case .granted:      micPermission = .granted
+        case .denied:       micPermission = .denied
+        case .undetermined: micPermission = .unknown
         }
+
+        // IMPORTANT: restartPipeline() is what will trigger the macOS prompt (via ensureGranted)
+        if sceneIsActive && desiredMicActive {
+            restartPipeline()
+        }
+
     }
     
     func restartPipeline() {
@@ -181,8 +182,8 @@ final class AppModel: ObservableObject {
         analysisBuffer.removeAll(); lastHzEstimate = nil
         
         // Only start if we are active and allowed to run.
-        guard sceneIsActive, desiredMicActive, micPermission == .granted else { return }
-        
+        guard sceneIsActive, desiredMicActive else { return }
+
         // Create the config here
         let config = AudioIOConfig(
             preferredInputPortUID: preferredInputPortUID,
@@ -190,23 +191,26 @@ final class AppModel: ObservableObject {
             preferredSampleRate: preferredSampleRate,
             bufferFrames: preferredBufferFrames
         )
-        
+        print("mic status:", MicrophonePermission.status())
+
         // Pass the config to audio.start (only after permission is granted)
-                MicrophonePermission.ensureGranted(
-                    { [weak self] in
-                        guard let self else { return }
-                        self.micDenied = false
-                        self.audio.start(config: config) { [weak self] samples, sr in
-                            self?.process(samples: samples, sr: sr)
-                        }
-                    },
-                    onDenied: { [weak self] in
-                        guard let self else { return }
-                        self.micDenied = true
-                        // Optional: keep UI stable if the tuner is visible
-                        self.display = .noInput(rootHz: self.rootHz)
-                    }
-                )
+        MicrophonePermission.ensureGranted(
+            { [weak self] in
+                guard let self else { return }
+                self.micPermission = .granted
+                self.micDenied = false
+                self.audio.start(config: config) { [weak self] samples, sr in
+                    self?.process(samples: samples, sr: sr)
+                }
+            },
+            onDenied: { [weak self] in
+                guard let self else { return }
+                self.micPermission = .denied
+                self.micDenied = true
+                self.display = .noInput(rootHz: self.rootHz)
+            }
+        )
+
     }
     
     func stop() { audio.stop(deactivateSession: true); toneOutput.stop() }
