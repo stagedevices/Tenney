@@ -47,24 +47,24 @@ struct TenneyApp: App {
     }
 
     var body: some Scene {
-#if targetEnvironment(macCatalyst)
+#if os(macOS)
         WindowGroup {
-            CatalystAppShellView()
+            MacRootView()
                 .environmentObject(latticeStore)
                 .environmentObject(appModel)
                 .preferredColorScheme(appScheme)
                 .onAppear { appModel.configureAndStart() }
         }
-        .defaultSize(width: 1200, height: 760)
+        .defaultSize(width: 1320, height: 820)
 
         WindowGroup(id: "preferences") {
-            PreferencesRootView()
+            MacPreferencesRootView()
                 .environmentObject(appModel)
                 .preferredColorScheme(appScheme)
         }
 
         .commands {
-            CatalystCommands()
+            MacCommands()
         }
 #else
         WindowGroup {

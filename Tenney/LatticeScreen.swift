@@ -74,9 +74,11 @@ struct LatticeScreen: View {
                 store.stopSelectionAudio(hard: true)
                store.stopAllLatticeVoices(hard: true)
             }
+#if !os(macOS)
             .navigationTitle("Lattice")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { toolbarContent }
+#endif
     }
 
     @ToolbarContentBuilder
