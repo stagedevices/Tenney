@@ -7,6 +7,10 @@
 
 import Foundation
 import SwiftUI
+import UIKit
+#if targetEnvironment(macCatalyst)
+import AppKit
+#endif
 
 #if targetEnvironment(macCatalyst)
 private let USE_STOP_GRADIENTS = false
@@ -151,6 +155,17 @@ struct LatticeView: View {
         let screen: CGPoint
         let exps: [Int:Int]   // prime -> exponent (absolute, includes axisShift where appropriate)
     }
+#if targetEnvironment(macCatalyst)
+    private struct ContextTarget {
+        let label: String
+        let hz: Double
+        let cents: Double
+        let coord: LatticeCoord?
+        let num: Int
+        let den: Int
+        let monzo: [Int:Int]
+    }
+#endif
 
     private func tenneyDistanceNodes() -> [TenneyDistanceNode] {
         // Use the unified, chronological selection order (plane + ghosts).
@@ -263,6 +278,11 @@ struct LatticeView: View {
     
     @State private var selectionHapticTick: Int = 0
     @State private var focusHapticTick: Int = 0
+#if targetEnvironment(macCatalyst)
+    @State private var lastPointerLocation: CGPoint = .zero
+    @State private var isMousePanning: Bool = false
+    @State private var contextTarget: ContextTarget? = nil
+#endif
 
     private struct SelectionRimMetrics {
         let pad: CGFloat
@@ -1657,6 +1677,9 @@ struct LatticeView: View {
                     focusedPoint = nil
                     return
                 }
+#if targetEnvironment(macCatalyst)
+                contextTarget = makeContextTarget(from: cand)
+#endif
                 
                 let (cn, cd) = canonicalPQ(cand.p, cand.q)
                 let raw = app.rootHz * (Double(cn) / Double(cd))
@@ -1707,6 +1730,97 @@ struct LatticeView: View {
         return x
     }
     
+    
+#if targetEnvironment(macCatalyst)
+    private var currentCursor: NSCursor {
+        if isMousePanning { return .closedHand }
+        if contextTarget != nil { return .pointingHand }
+        return .openHand
+    }
+
+    private func updateContextTarget(at point: CGPoint, in size: CGSize) {
+        let viewRect = CGRect(origin: .zero, size: size)
+        guard let cand = hitTestCandidate(at: point, viewRect: viewRect) else {
+            contextTarget = nil
+            return
+        }
+        guard let target = makeContextTarget(from: cand) else {
+            contextTarget = nil
+            return
+        }
+        contextTarget = target
+    }
+
+    private func applyScrollZoom(deltaY: CGFloat, location: CGPoint) {
+        let factor = exp(-deltaY / 600.0)
+        store.camera.zoom(by: factor, anchor: location)
+    }
+
+    private func makeContextTarget(
+        from cand: (pos: CGPoint, label: String, isPlane: Bool, coord: LatticeCoord?, p: Int, q: Int, ghost: (prime:Int, e3:Int, e5:Int, eP:Int)?)
+    ) -> ContextTarget? {
+        let (cn, cd) = canonicalPQ(cand.p, cand.q)
+        let rawHz = app.rootHz * (Double(cn) / Double(cd))
+        let freq = RatioMath.foldToAudible(rawHz)
+        let cents = RatioMath.centsFromET(freqHz: freq, refHz: app.rootHz)
+
+        var monzo: [Int:Int] = [:]
+        if let c = cand.coord {
+            monzo[3] = c.e3 + store.pivot.e3 + (store.axisShift[3] ?? 0)
+            monzo[5] = c.e5 + store.pivot.e5 + (store.axisShift[5] ?? 0)
+        }
+        if let g = cand.ghost {
+            monzo[g.prime] = g.eP
+            monzo[3] = (monzo[3] ?? 0) + g.e3
+            monzo[5] = (monzo[5] ?? 0) + g.e5
+        }
+
+        return ContextTarget(
+            label: "\(cn)/\(cd)",
+            hz: freq,
+            cents: cents,
+            coord: cand.coord,
+            num: cn,
+            den: cd,
+            monzo: monzo
+        )
+    }
+
+    @ViewBuilder
+    private func latticeContextMenu() -> some View {
+        if let target = contextTarget {
+            Button("Copy Ratio") { copyToPasteboard(target.label) }
+            Button("Copy Hz") {
+                copyToPasteboard(String(format: "%.3f Hz", target.hz))
+            }
+            Button("Copy Cents") {
+                copyToPasteboard(String(format: "%+.1f¢", target.cents))
+            }
+            Button("Add to Scale") { addTargetToBuilder(target) }
+            Button("Set as Root") { app.rootHz = target.hz }
+        }
+    }
+
+    private func addTargetToBuilder(_ target: ContextTarget) {
+        let ref = RatioRef(
+            p: target.num,
+            q: target.den,
+            octave: 0,
+            monzo: target.monzo
+        )
+        let payload = ScaleBuilderPayload(
+            rootHz: app.rootHz,
+            primeLimit: app.primeLimit,
+            refs: [ref]
+        )
+        store.beginStaging()
+        app.builderPayload = payload
+    }
+
+    private func copyToPasteboard(_ text: String) {
+        UIPasteboard.general.string = text
+    }
+#endif
     
     // ⬇️ REPLACE your releaseInfoVoice(...) with:
     private func releaseInfoVoice(hard: Bool = true) {
@@ -2998,6 +3112,25 @@ struct LatticeView: View {
                             .onPreferenceChange(SelectionTrayHeightKey.self) { trayHeight = $0 }
                             .onPreferenceChange(BottomHUDHeightKey.self) { bottomHUDHeight = $0 }
                     }
+            .onAppear { viewSize = geo.size }
+            .onChange(of: geo.size) { viewSize = $0 }
+#if targetEnvironment(macCatalyst)
+            .background(
+                CatalystMouseTrackingView(
+                    onMove: { loc in
+                        lastPointerLocation = loc
+                        updateContextTarget(at: loc, in: geo.size)
+                    },
+                    onScroll: { delta, loc in
+                        lastPointerLocation = loc
+                        applyScrollZoom(deltaY: delta, location: loc)
+                    }
+                )
+                .allowsHitTesting(false)
+            )
+            .contextMenu { latticeContextMenu() }
+            .catalystCursor(currentCursor)
+#endif
             .onChange(of: latticeSoundEnabled) { enabled in
                 guard !enabled else { return }
                 // ✅ kill any local preview voice immediately
@@ -3623,6 +3756,9 @@ struct LatticeView: View {
     private func panGesture() -> some Gesture {
         DragGesture(minimumDistance: 2)
             .onChanged { v in
+#if targetEnvironment(macCatalyst)
+                isMousePanning = true
+#endif
                 let dx = v.translation.width - lastDrag.width
                 let dy = v.translation.height - lastDrag.height
                 store.camera.pan(by: CGSize(width: dx, height: dy))
@@ -3634,6 +3770,9 @@ struct LatticeView: View {
                     LearnEventBus.shared.send(.latticeCameraChanged(pan: Double(pan), zoom: 1.0))
                 }
                 lastDrag = .zero
+#if targetEnvironment(macCatalyst)
+                isMousePanning = false
+#endif
             }
     }
     

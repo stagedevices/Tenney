@@ -47,6 +47,26 @@ struct TenneyApp: App {
     }
 
     var body: some Scene {
+#if targetEnvironment(macCatalyst)
+        WindowGroup {
+            CatalystAppShellView()
+                .environmentObject(latticeStore)
+                .environmentObject(appModel)
+                .preferredColorScheme(appScheme)
+                .onAppear { appModel.configureAndStart() }
+        }
+        .defaultSize(width: 1200, height: 760)
+
+        WindowGroup(id: "preferences") {
+            PreferencesRootView()
+                .environmentObject(appModel)
+                .preferredColorScheme(appScheme)
+        }
+
+        .commands {
+            CatalystCommands()
+        }
+#else
         WindowGroup {
             ContentView()
                 .environmentObject(latticeStore)
@@ -55,6 +75,7 @@ struct TenneyApp: App {
                 .onAppear { appModel.configureAndStart() }
 
         }
+#endif
     }
 
     // MARK: - Audio Session
