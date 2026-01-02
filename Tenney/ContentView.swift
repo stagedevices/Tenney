@@ -807,7 +807,7 @@ extension Notification.Name {
                 // Chrono dial (rectangular card contains it)
                 let rawCents: Double = {
                     if let locked = store.lockedTarget {
-                        return signedCents(actualHz: liveHz, rootHz: model.rootHz, target: locked)
+                        return signedCents(actualHz: liveHz, rootHz: model.effectiveRootHz, target: locked)
                     } else {
                         return liveCents
                     }

@@ -61,6 +61,16 @@ final class PhaseScopeViewModel: ObservableObject {
                 self.updateReferenceHz()
             }
             .store(in: &cancellables)
+        
+        app.$tunerRootOverride
+            .removeDuplicates { lhs, rhs in
+                lhs?.id == rhs?.id
+            }
+            .sink { [weak self] _ in
+                guard let self, self.referenceOn else { return }
+                self.updateReferenceHz()
+            }
+            .store(in: &cancellables)
 
         // 1) ToneOutputEngine reference tap (unchanged)
         ToneOutputEngine.shared.installScopeTap { [weak self] (samples: [Float], sampleRate: Double) in
@@ -158,7 +168,7 @@ final class PhaseScopeViewModel: ObservableObject {
             return
         }
 
-        let refHz = app.rootHz * Double(partial)
+        let refHz = app.effectiveRootHz * Double(partial)
 
         // Build a short scope frame
         buildScopeFrame(refHz: refHz, confidence: confidence)
@@ -188,7 +198,7 @@ final class PhaseScopeViewModel: ObservableObject {
 
     private func updateReferenceHz() {
         guard referenceOn, let app else { return }
-        let refHz = app.rootHz * Double(partial)
+        let refHz = app.effectiveRootHz * Double(partial)
         ToneOutputEngine.shared.setFrequency(refHz)
 
         // waveform/timbre is already governed by ToneOutputEngine settings (spec 2.1)

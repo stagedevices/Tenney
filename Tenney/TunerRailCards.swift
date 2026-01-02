@@ -286,7 +286,10 @@ struct TunerRailMiniLatticeFocusCard: View {
     let centerRatioText: String
     let globalPrimeLimit: Int
     let globalAxisShift: [Int:Int]
-    let onLock: (RatioRef) -> Void
+    let globalRootHz: Double
+    let tunerRootOverride: RatioRef?
+    let onSetOverride: (RatioRef) -> Void
+    let onClearOverride: () -> Void
 
     @Binding var collapsed: Bool
 
@@ -305,9 +308,34 @@ struct TunerRailMiniLatticeFocusCard: View {
         nonmutating set {
             if let data = try? JSONEncoder().encode(newValue),
                let s = String(data: data, encoding: .utf8) {
-                axisShiftRaw = s
+               axisShiftRaw = s
             }
         }
+    }
+
+    private var overrideHz: Double? {
+        guard let ref = tunerRootOverride else { return nil }
+        return frequencyHz(rootHz: globalRootHz, ratio: ref, foldToAudible: false)
+    }
+
+    @ViewBuilder
+    private var tunerRootStatus: some View {
+        HStack(spacing: 8) {
+            if let ref = tunerRootOverride, let hz = overrideHz {
+                Text("Tuner Root: \(ratioDisplayString(ref)) · \(String(format: \"%.1f Hz\", hz)) (Override)")
+                    .foregroundStyle(.secondary)
+            } else {
+                Text(String(format: "Tuner Root: Global (%.1f Hz)", globalRootHz))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            if tunerRootOverride != nil {
+                Button("Clear Override") { onClearOverride() }
+                    .font(.footnote)
+                    .buttonStyle(.borderless)
+            }
+        }
+        .font(.footnote)
     }
 
     var body: some View {
@@ -327,6 +355,8 @@ struct TunerRailMiniLatticeFocusCard: View {
                         .font(.footnote)
                         .buttonStyle(.borderless)
                 }
+
+                tunerRootStatus
 
                 ZStack {
                     miniLattice
@@ -353,6 +383,8 @@ struct TunerRailMiniLatticeFocusCard: View {
                     primeLimit = globalPrimeLimit
                     axisShift = globalAxisShift
                 }
+                Button("Clear Root Override") { onClearOverride() }
+                    .disabled(tunerRootOverride == nil)
             }
         }
     }
@@ -403,7 +435,7 @@ struct TunerRailMiniLatticeFocusCard: View {
                         let y = cy + CGFloat(n.dy - 3) * spacing
                         Button {
                             if let ref = ratioRefFrom(n.ratio) {
-                                onLock(ref)
+                                onSetOverride(ref)
                             }
                         } label: {
                             Color.clear
@@ -553,6 +585,9 @@ struct TunerRailNearestTargetsCard: View {
             }
             // refresh via the throttled rail clock (10–20 Hz)
             .onChange(of: snapshot.hz) { _ in refresh() }
+            .onChange(of: rootHz) { _ in refresh() }
+            .onChange(of: primeLimit) { _ in refresh() }
+            .onChange(of: axisShift) { _ in refresh() }
             .onAppear { refresh() }
         }
     }
@@ -794,23 +829,26 @@ struct TunerContextRailHost: View {
 
         case .miniLatticeFocus:
             TunerRailMiniLatticeFocusCard(
-                centerRatioText: clock.snapshot.ratioText,
+                centerRatioText: "1/1",
                 globalPrimeLimit: globalPrimeLimit,
                 globalAxisShift: globalAxisShift,
-                onLock: onLockTarget,
+                globalRootHz: app.rootHz,
+                tunerRootOverride: app.tunerRootOverride,
+                onSetOverride: { ref in app.setTunerRootOverride(ref) },
+                onClearOverride: { app.clearTunerRootOverride() },
                 collapsed: binding(for: id)
             )
 
         case .nearestTargets:
             TunerRailNearestTargetsCard(
                 snapshot: clock.snapshot,
-                rootHz: app.rootHz,
+                rootHz: app.effectiveRootHz,
                 primeLimit: globalPrimeLimit,
                 axisShift: globalAxisShift,
                 session: session,
                 onLock: onLockTarget,
                 onExportSingleToScale: { ref in
-                    let payload = ScaleBuilderPayload(rootHz: app.rootHz, primeLimit: globalPrimeLimit, items: [ref])
+                    let payload = ScaleBuilderPayload(rootHz: app.effectiveRootHz, primeLimit: globalPrimeLimit, items: [ref])
                     onExportScale(payload)
                 },
                 collapsed: binding(for: id)
@@ -820,7 +858,7 @@ struct TunerContextRailHost: View {
             TunerRailSessionCaptureCard(
                 snapshot: clock.snapshot,
                 session: session,
-                rootHz: app.rootHz,
+                rootHz: app.effectiveRootHz,
                 primeLimit: globalPrimeLimit,
                 onExportScale: onExportScale,
                 onLock: onLockTarget,
