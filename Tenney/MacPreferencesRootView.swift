@@ -2,8 +2,10 @@
 import SwiftUI
 
 struct MacPreferencesRootView: View {
+    @StateObject private var tunerRailStore = TunerRailStore()
     var body: some View {
         StudioConsoleView()
+            .environmentObject(tunerRailStore)
             .frame(minWidth: 900, minHeight: 640)
             .padding(16)
             .background(
