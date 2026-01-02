@@ -338,6 +338,8 @@ struct StudioConsoleView: View {
     // Needle
     @AppStorage(SettingsKeys.tunerNeedleHoldMode)
     private var tunerNeedleHoldRaw: String = NeedleHoldMode.snapHold.rawValue
+    @AppStorage(SettingsKeys.tunerRailEnabledCards)
+    private var tunerRailEnabledRaw: String = TunerRailCard.defaultRaw
 
     @AppStorage(SettingsKeys.latticeSoundEnabled)
     private var latticeSoundEnabled: Bool = true
@@ -3084,10 +3086,26 @@ struct StudioConsoleView: View {
         }
     }
 
+    private var tunerRailEnabledSet: Set<TunerRailCard> {
+        get {
+            let parts = tunerRailEnabledRaw
+                .split(separator: ",")
+                .compactMap { TunerRailCard(rawValue: String($0)) }
+            let set = Set(parts)
+            return set.isEmpty ? Set(TunerRailCard.defaultCards) : set
+        }
+        set {
+            let ordered = TunerRailCard.allCases.filter { newValue.contains($0) }
+            let raw = ordered.map(\.rawValue).joined(separator: ",")
+            tunerRailEnabledRaw = raw.isEmpty ? TunerRailCard.defaultRaw : raw
+        }
+    }
+
     private var tunerCategoryStack: some View {
         VStack(spacing: 14) {
             tuningSection
             tunerNeedleSection
+            tunerRailSection
             stageSection
             // (Optional: add any other tuner-only UX controls here later)
         }
@@ -3899,6 +3917,41 @@ private struct GlassNavTile<Destination: View>: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
 
+        }
+    }
+
+    @ViewBuilder private var tunerRailSection: some View {
+        glassCard(
+            icon: "sidebar.trailing",
+            title: "Context Rail (mac)",
+            subtitle: "Choose cards shown next to the tuner"
+        ) {
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(TunerRailCard.allCases) { card in
+                    Toggle(title(for: card), isOn: Binding(
+                        get: { tunerRailEnabledSet.contains(card) },
+                        set: { on in
+                            var next = tunerRailEnabledSet
+                            if on { next.insert(card) } else { next.remove(card) }
+                            tunerRailEnabledSet = next
+                            postSetting(SettingsKeys.tunerRailEnabledCards, tunerRailEnabledRaw)
+                        }
+                    ))
+                }
+
+                Text("Applies to macOS & Catalyst layout. Rail hides automatically on narrow windows.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func title(for card: TunerRailCard) -> String {
+        switch card {
+        case .miniLattice: return "Mini lattice focus"
+        case .nearestTargets: return "Nearest targets"
+        case .stabilityTrace: return "Stability trace"
+        case .sessionCapture: return "Session capture"
         }
     }
 

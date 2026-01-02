@@ -55,6 +55,10 @@ enum SettingsKeys {
     // Confidence / needle behavior
     static let tunerNeedleHoldMode = "Tenney.Tuner.NeedleHoldMode"
 
+    // Tuner context rail (mac-only)
+    static let tunerRailEnabledCards = "Tenney.Tuner.Rail.EnabledCards"
+    static let tunerRailCardOrder    = "Tenney.Tuner.Rail.CardOrder"
+
     // NEW: Themes
     static let tenneyThemeID          = "tenney.theme.id"                 // String (builtin rawValue or "custom:<uuid>")
     static let tenneyThemeMixBasis    = "tenney.theme.mixing.basis"       // String (TenneyMixBasis)

@@ -31,7 +31,7 @@ struct MacRootView: View {
                     .accessibilityIdentifier("mac.lattice-pane")
                 } trailing: {
                     MacPane {
-                        TunerCard(stageActive: $stageActive)
+                        TunerDesktopPane(stageActive: $stageActive)
                             .environmentObject(app)
                             .padding(16)
                     }

@@ -35,6 +35,13 @@ public struct RatioNeighborPack: Hashable {
     public let higher: RatioResult
 }
 
+public struct RatioCandidate: Hashable {
+    public let result: RatioResult
+    public let cents: Double
+    public let hz: Double
+    public let complexity: Int
+}
+
 public final class RatioSolver {
     
     
@@ -138,6 +145,46 @@ public final class RatioSolver {
         }()
 
         return .init(main: main, lower: lowerPick, higher: higherPick)
+    }
+
+    public func nearestCandidates(
+        for hz: Double,
+        rootHz: Double,
+        primeLimit: Int,
+        maxCount: Int = 8
+    ) -> [RatioCandidate] {
+        guard hz.isFinite, hz > 0, rootHz.isFinite, rootHz > 0, maxCount > 0 else { return [] }
+
+        let r = hz / rootHz
+        let units = unitRatios(for: max(2, primeLimit))
+        guard !units.isEmpty else { return [] }
+
+        var out: [RatioCandidate] = []
+        out.reserveCapacity(maxCount * 2)
+
+        for u in units {
+            let k = Int(round(log2(r / u.value)))
+            let candHz = ldexp(rootHz * u.value, k) // rootHz * u * 2^k
+            if !(candHz.isFinite && candHz > 0) { continue }
+
+            let cents = 1200.0 * log2(hz / candHz)
+            let cand = RatioResult(num: u.num, den: u.den, octave: k)
+
+            out.append(.init(result: cand, cents: cents, hz: candHz, complexity: u.complexity))
+        }
+
+        out.sort {
+            let a = abs($0.cents)
+            let b = abs($1.cents)
+            if a != b { return a < b }
+            if $0.complexity != $1.complexity { return $0.complexity < $1.complexity }
+            return $0.hz < $1.hz
+        }
+
+        if out.count > maxCount {
+            return Array(out.prefix(maxCount))
+        }
+        return out
     }
 
     // MARK: - Unit ratio generation

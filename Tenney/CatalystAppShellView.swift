@@ -94,7 +94,7 @@ struct CatalystAppShellView: View {
                 .id("lattice")
         case .tuner:
             NavigationStack {
-                TunerCard(stageActive: .constant(false))
+                TunerDesktopPane(stageActive: .constant(false))
                     .environmentObject(app)
                     .padding(20)
                     .navigationTitle("Tuner")

@@ -578,7 +578,7 @@ extension Notification.Name {
 
  struct TunerCard: View {
     @EnvironmentObject private var model: AppModel
-    @StateObject private var store = TunerStore()
+    @StateObject private var store: TunerStore
     private var liveHz: Double { model.display.hz }
     private var liveCents: Double { model.display.cents }
     private var liveConf: Double { model.display.confidence }
@@ -589,6 +589,11 @@ extension Notification.Name {
     @Binding var stageActive: Bool
 
     @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
+
+    init(stageActive: Binding<Bool>, store: TunerStore? = nil) {
+        _stageActive = stageActive
+        _store = StateObject(wrappedValue: store ?? TunerStore())
+    }
 
     private var pillGrad: LinearGradient {
         LinearGradient(

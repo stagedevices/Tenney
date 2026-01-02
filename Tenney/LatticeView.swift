@@ -2934,9 +2934,6 @@ struct LatticeView: View {
             gestureCatcher(in: geo, viewRect: viewRect)
                 .zIndex(1)
             
-            chipsOverlayLayer
-                .zIndex(2)
-            
             infoOverlayLayer
                 .zIndex(3)
             
@@ -2991,23 +2988,6 @@ struct LatticeView: View {
                 .allowsHitTesting(false)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-    }
-    
-    private var chipsOverlayLayer: some View {
-        VStack {
-            HStack {
-                if !latticePreviewMode && !latticePreviewHideChips {
-                    VStack(alignment: .leading, spacing: 8) {
-                        overlayChips
-                    }
-                    .padding(8)
-                    .allowsHitTesting(true)
-                }
-                
-                Spacer()
-            }
-            Spacer()
-        }
     }
     
     private var infoOverlayLayer: some View {
@@ -3165,6 +3145,18 @@ struct LatticeView: View {
 
                     if !newValue.isEmpty {
                         LearnEventBus.shared.send(.latticeNodeSelected("selected"))
+                    }
+                }
+                .safeAreaInset(edge: .top) {
+                    if !latticePreviewMode && !latticePreviewHideChips {
+#if targetEnvironment(macCatalyst)
+                        let topPad: CGFloat = utilityBarHeight + 6
+#else
+                        let topPad: CGFloat = 10
+#endif
+                        overlayChips
+                            .padding(.top, topPad)
+                            .padding(.horizontal, 10)
                     }
                 }
 
@@ -3407,6 +3399,33 @@ struct LatticeView: View {
     }
     
     // MARK: - Overlays (UI)
+    private struct PrimeOverlayChip: View {
+        let title: String
+        let tint: Color
+        let active: Bool
+
+        var body: some View {
+            let shape = Capsule(style: .continuous)
+            Text(title)
+                .font(.footnote.weight(.semibold))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(
+                    Group {
+                        if #available(iOS 26.0, *) {
+                            Color.clear
+                                .glassEffect(.regular.tint(tint.opacity(active ? 0.32 : 0.18)), in: shape)
+                        } else {
+                            Color.clear.background(.thinMaterial)
+                        }
+                    }
+                )
+                .overlay(
+                    shape.strokeBorder(Color.white.opacity(0.14), lineWidth: 0.8)
+                )
+        }
+    }
+
     private var overlayChips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             let primes = overlayChipPrimes
@@ -3415,18 +3434,20 @@ struct LatticeView: View {
                 ForEach(primes, id: \.self) { p in
                     let on = store.visiblePrimes.contains(p)
 
-                    GlassChip(
-                        title: on ? "● \(p)" : "○ \(p)",
-                        active: on,
-                        color: activeTheme.primeTint(p)
-                    ) {
-                        // If a long-press just fired, swallow the “button tap” that can follow on release.
+                    Button {
                         if overlayPrimeHoldConsumedTap {
                             overlayPrimeHoldConsumedTap = false
                             return
                         }
                         store.setPrimeVisible(p, !on, animated: true)
+                    } label: {
+                        PrimeOverlayChip(
+                            title: on ? "● \(p)" : "○ \(p)",
+                            tint: activeTheme.primeTint(p),
+                            active: on
+                        )
                     }
+                    .buttonStyle(.plain)
                     .highPriorityGesture(
                         LongPressGesture(minimumDuration: 0.35)
                             .onEnded { _ in
@@ -3440,7 +3461,7 @@ struct LatticeView: View {
                     )
                 }
             }
-            .padding(8)
+            .padding(.vertical, 8)
         }
     }
 
