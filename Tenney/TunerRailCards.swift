@@ -70,11 +70,49 @@ private func parsePQ(_ s: String) -> (p: Int, q: Int)? {
     return (p, q)
 }
 
+private func primesUpTo(_ max: Int) -> [Int] {
+    guard max >= 2 else { return [] }
+    var isPrime = [Bool](repeating: true, count: max + 1)
+    isPrime[0] = false
+    isPrime[1] = false
+    let r = Int(Double(max).squareRoot())
+    if r >= 2 {
+        for p in 2...r where isPrime[p] {
+            var m = p * p
+            while m <= max {
+                isPrime[m] = false
+                m += p
+            }
+        }
+    }
+    return (2...max).filter { isPrime[$0] }
+}
+
+private func monzoFromPQ(p: Int, q: Int, primeLimit: Int = 13) -> [Int:Int]? {
+    guard p > 0, q > 0 else { return nil }
+    var num = p
+    var den = q
+    var exps: [Int:Int] = [:]
+
+    for prime in primesUpTo(max(2, primeLimit)) {
+        var cNum = 0
+        while num % prime == 0 { num /= prime; cNum += 1 }
+        var cDen = 0
+        while den % prime == 0 { den /= prime; cDen += 1 }
+        let exp = cNum - cDen
+        if exp != 0 { exps[prime] = exp }
+    }
+
+    if num != 1 || den != 1 { return nil }
+    return exps
+}
+
 /// Build a RatioRef from "p/q" (unit-octave) + computed monzo for primes up to 11.
 /// If you already have a project helper, you can swap this impl to that.
 private func ratioRefFrom(_ ratioText: String) -> RatioRef? {
     guard let pq = parsePQ(ratioText) else { return nil }
-    return RatioRef(p: pq.p, q: pq.q, octave: 0)
+    let monzo = monzoFromPQ(p: pq.p, q: pq.q) ?? [:]
+    return RatioRef(p: pq.p, q: pq.q, octave: 0, monzo: monzo)
 }
 
 private struct TunerRailListeningOverlay: View {
@@ -317,13 +355,16 @@ struct TunerRailIntervalTapeCard: View {
 }
 
 struct TunerRailMiniLatticeFocusCard: View {
-    let centerRatioText: String
+    let snapshot: TunerRailSnapshot
+    let lockedTarget: RatioResult?
     let globalPrimeLimit: Int
     let globalAxisShift: [Int:Int]
     let globalRootHz: Double
     let tunerRootOverride: RatioRef?
     let onSetOverride: (RatioRef) -> Void
     let onClearOverride: () -> Void
+    let onLock: (RatioRef) -> Void
+    let onPreview: ((RatioRef?) -> Void)?
 
     @Binding var collapsed: Bool
 
@@ -332,6 +373,8 @@ struct TunerRailMiniLatticeFocusCard: View {
 
     @State private var pan: CGPoint = .zero
     @State private var zoom: CGFloat = 1.0
+    @State private var centerRef: RatioRef? = nil
+    @State private var centerKey: String = ""
 
     private var axisShift: [Int:Int] {
         get {
@@ -421,64 +464,65 @@ struct TunerRailMiniLatticeFocusCard: View {
                 Button("Clear Root Override") { onClearOverride() }
                     .disabled(tunerRootOverride == nil)
             }
+            .onAppear { refreshCenter() }
+            .onChange(of: lockedTarget) { _ in refreshCenter() }
+            .onChange(of: snapshot.targetKey) { _ in refreshCenter() }
         }
     }
 
     private var miniLattice: some View {
         GeometryReader { geo in
-            let nodes = makeNodes(center: centerRatioText, primeLimit: primeLimit, axisShift: axisShift)
-            Canvas { ctx, size in
-                let w = size.width
-                let h = size.height
-                let cx = w * 0.5 + pan.x
-                let cy = h * 0.5 + pan.y
-                let spacing: CGFloat = 28 * zoom
+            let center = resolvedCenter
+            let snapshot = center.flatMap { buildMiniSnapshot(center: $0, primeLimit: primeLimit, axisShift: axisShift) }
+            let mapper = snapshot.map { MiniLatticeMapper(snapshot: $0, size: geo.size, pan: pan, zoom: zoom) }
 
-                for n in nodes {
-                    let x = cx + CGFloat(n.dx - 2) * spacing
-                    let y = cy + CGFloat(n.dy - 3) * spacing
-                    let r = CGRect(x: x - 11*zoom, y: y - 11*zoom, width: 22*zoom, height: 22*zoom)
-
-                    ctx.fill(Path(ellipseIn: r), with: .color(.secondary.opacity(0.20)))
-                    ctx.stroke(Path(ellipseIn: r), with: .color(.secondary.opacity(0.35)), lineWidth: 1)
-
-                    let text = Text(n.ratio)
-                        .font(.system(size: 9*zoom, weight: .regular, design: .monospaced))
-                    ctx.draw(text, at: CGPoint(x: x, y: y))
+            ZStack {
+                Canvas { ctx, _ in
+                    guard let snapshot, let mapper else { return }
+                    for node in snapshot.nodes {
+                        drawMiniNode(node, mapper: mapper, in: &ctx)
+                    }
                 }
-            }
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { v in
-                        pan = CGPoint(x: pan.x + v.translation.width * 0.25,
-                                      y: pan.y + v.translation.height * 0.25)
-                    }
-            )
-            .overlay(alignment: .topLeading) {
-                // hit targets: invisible buttons per node
-                let w = geo.size.width
-                let h = geo.size.height
-                let cx = w * 0.5 + pan.x
-                let cy = h * 0.5 + pan.y
-                let spacing: CGFloat = 28 * zoom
-                let nodes = makeNodes(center: centerRatioText, primeLimit: primeLimit, axisShift: axisShift)
-
-                ZStack {
-                    ForEach(nodes, id: \.id) { n in
-                        let x = cx + CGFloat(n.dx - 2) * spacing
-                        let y = cy + CGFloat(n.dy - 3) * spacing
-                        Button {
-                            if let ref = ratioRefFrom(n.ratio) {
-                                onSetOverride(ref)
-                            }
-                        } label: {
-                            Color.clear
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { v in
+                            pan = CGPoint(x: pan.x + v.translation.width * 0.25,
+                                          y: pan.y + v.translation.height * 0.25)
                         }
-                        .frame(width: 26*zoom, height: 26*zoom)
-                        .position(x: x, y: y)
-                        .buttonStyle(.plain)
+                )
+                .overlay(alignment: .topLeading) {
+                    if let snapshot, let mapper {
+                        ZStack {
+                            ForEach(snapshot.nodes) { node in
+                                let pos = mapper.screenPosition(for: node.worldOffset)
+                                Button {
+                                    onLock(node.ref)
+                                    onPreview?(nil)
+                                } label: {
+                                    Color.clear
+                                }
+                                .frame(width: mapper.hitSize, height: mapper.hitSize)
+                                .position(x: pos.x, y: pos.y)
+                                .buttonStyle(.plain)
+#if targetEnvironment(macCatalyst)
+                                .onHover { hovering in
+                                    onPreview?(hovering ? node.ref : nil)
+                                }
+#endif
+                                .contextMenu {
+                                    Button("Set as Tuner Root") { onSetOverride(node.ref) }
+                                    Button("Copy Ratio") { RailPasteboard.copy(node.label) }
+                                }
+                            }
+                        }
                     }
+                }
+
+                if snapshot == nil {
+                    Text("Waiting for target…")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
             }
         }
@@ -487,93 +531,244 @@ struct TunerRailMiniLatticeFocusCard: View {
     private func resetView() {
         pan = .zero
         zoom = 1.0
+        onPreview?(nil)
     }
 
-    private struct MiniNode: Identifiable {
+    private var resolvedCenter: RatioRef? {
+        if let locked = lockedTarget {
+            return ratioRef(from: locked)
+        }
+        if let centerRef { return centerRef }
+        return ratioRefFrom(snapshot.ratioText)
+    }
+
+    private func ratioRef(from result: RatioResult) -> RatioRef {
+        RatioRef(
+            p: result.num,
+            q: result.den,
+            octave: result.octave,
+            monzo: monzoFromPQ(p: result.num, q: result.den) ?? [:]
+        )
+    }
+
+    private func refreshCenter() {
+        if let lockedTarget {
+            applyCenter(
+                ratioRef(from: lockedTarget),
+                key: "lock:\(lockedTarget.num)/\(lockedTarget.den)@\(lockedTarget.octave)"
+            )
+            return
+        }
+
+        if let live = ratioRefFrom(snapshot.ratioText) {
+            applyCenter(live, key: "live:\(snapshot.targetKey)")
+        }
+    }
+
+    private func applyCenter(_ ref: RatioRef, key: String) {
+        guard centerKey != key else { return }
+        centerKey = key
+        centerRef = ref
+    }
+
+    private struct MiniLatticeNode: Identifiable {
         let id = UUID()
-        let dx: Int
-        let dy: Int
-        let ratio: String
+        let worldOffset: CGPoint
+        let label: String
+        let ref: RatioRef
+        let isOverlay: Bool
+        let prime: Int?
     }
 
-    /// 5×7 grid: dx ∈ [-2…2], dy ∈ [-3…3]
-    /// We implement a simple 3/5 lattice step (multiply by 3^dx * 5^dy, then fold into [1,2)).
-    private func makeNodes(center: String, primeLimit: Int, axisShift: [Int:Int]) -> [MiniNode] {
-        guard let base = parsePQ(center) else {
-            return (0..<35).map { i in
-                MiniNode(dx: i % 5, dy: i / 5, ratio: "—")
-            }
+    private struct MiniLatticeSnapshot {
+        let nodes: [MiniLatticeNode]
+        let bounds: CGRect
+    }
+
+    private struct MiniLatticeMapper {
+        let snapshot: MiniLatticeSnapshot
+        let size: CGSize
+        let pan: CGPoint
+        let zoom: CGFloat
+
+        var scale: CGFloat {
+            let padding: CGFloat = 24
+            let width = max(snapshot.bounds.width, 1)
+            let height = max(snapshot.bounds.height, 1)
+            let availW = max(1, size.width - padding * 2)
+            let availH = max(1, size.height - padding * 2)
+            let base = min(availW / width, availH / height) * 0.92
+            return base * zoom
         }
 
-        func applyPrimeShift(_ p: inout Int, _ q: inout Int) {
-            for (prime, exp) in axisShift {
-                guard exp != 0 else { continue }
-                let powv = Int(pow(Double(prime), Double(abs(exp))))
-                if exp > 0 { p *= powv } else { q *= powv }
-            }
+        var center: CGPoint {
+            CGPoint(x: size.width * 0.5 + pan.x, y: size.height * 0.5 + pan.y)
         }
 
-        func foldUnit(_ pIn: Int, _ qIn: Int) -> (p: Int, q: Int) {
-            var p = pIn
-            var q = qIn
-            let g = gcd(p, q)
-            p /= g; q /= g
-            // fold into [1,2)
-            while p < q { p *= 2 }
-            while p >= 2*q { q *= 2 }
-            let g2 = gcd(p, q)
-            return (p / g2, q / g2)
-        }
+        var hitSize: CGFloat { max(22, 26 * zoom) }
 
-        var out: [MiniNode] = []
-        out.reserveCapacity(35)
+        func screenPosition(for offset: CGPoint) -> CGPoint {
+            CGPoint(
+                x: center.x + offset.x * scale,
+                y: center.y + offset.y * scale
+            )
+        }
+    }
+
+    private func buildMiniSnapshot(center: RatioRef, primeLimit: Int, axisShift: [Int:Int]) -> MiniLatticeSnapshot? {
+        let layout = LatticeLayout()
+        let monzo = center.monzo.isEmpty ? (monzoFromPQ(p: center.p, q: center.q, primeLimit: primeLimit) ?? [:]) : center.monzo
+        let shift3 = axisShift[3] ?? 0
+        let shift5 = axisShift[5] ?? 0
+
+        let pivot = LatticeCoord(
+            e3: (monzo[3] ?? 0) - shift3,
+            e5: (monzo[5] ?? 0) - shift5
+        )
+        let pivotWorld = layout.position(for: pivot)
+
+        var nodes: [MiniLatticeNode] = []
+        var bounds = CGRect.null
+
+        func appendNode(offset: CGPoint, label: String, ref: RatioRef, isOverlay: Bool, prime: Int?) {
+            nodes.append(.init(worldOffset: offset, label: label, ref: ref, isOverlay: isOverlay, prime: prime))
+            let r: CGRect = .init(x: offset.x, y: offset.y, width: 0, height: 0)
+            bounds = bounds.union(r)
+        }
 
         for dy in -3...3 {
             for dx in -2...2 {
-                var p = base.p
-                var q = base.q
-
-                // axis shift (independent state)
-                applyPrimeShift(&p, &q)
-
-                // 3/5 steps
-                if dx != 0 {
-                    let pow3 = Int(pow(3.0, Double(abs(dx))))
-                    if dx > 0 { p *= pow3 } else { q *= pow3 }
-                }
-                if dy != 0 {
-                    let pow5 = Int(pow(5.0, Double(abs(dy))))
-                    if dy > 0 { p *= pow5 } else { q *= pow5 }
-                }
-
-                // prime-limit clamp (simple): if any factor exceeds primeLimit, show placeholder
-                if maxPrimeFactor(p) > primeLimit || maxPrimeFactor(q) > primeLimit {
-                    out.append(.init(dx: dx + 2, dy: dy + 3, ratio: "×"))
-                } else {
-                    let f = foldUnit(p, q)
-                    out.append(.init(dx: dx + 2, dy: dy + 3, ratio: "\(f.p)/\(f.q)"))
-                }
+                let coord = LatticeCoord(e3: pivot.e3 + dx, e5: pivot.e5 + dy)
+                guard let pq = planePQ(e3: coord.e3 + shift3, e5: coord.e5 + shift5) else { continue }
+                let (cp, cq) = RatioMath.canonicalPQUnit(pq.p, pq.q)
+                let label = RatioMath.unitLabel(cp, cq)
+                let ref = RatioRef(p: cp, q: cq, octave: 0, monzo: [3: coord.e3 + shift3, 5: coord.e5 + shift5])
+                let world = layout.position(for: coord)
+                let offset = CGPoint(x: world.x - pivotWorld.x, y: world.y - pivotWorld.y)
+                appendNode(offset: offset, label: label, ref: ref, isOverlay: false, prime: nil)
             }
         }
-        return out
+
+        let overlayPrimes = overlayPrimeSet(centerMonzo: monzo, axisShift: axisShift, primeLimit: primeLimit)
+        let baseE3 = pivot.e3 + shift3
+        let baseE5 = pivot.e5 + shift5
+        let centerPrimeOffsets: [Int:Int] = {
+            var out: [Int:Int] = [:]
+            for p in overlayPrimes {
+                let shiftP = axisShift[p] ?? 0
+                out[p] = (monzo[p] ?? 0) - shiftP
+            }
+            return out
+        }()
+
+        for prime in overlayPrimes {
+            let shiftP = axisShift[prime] ?? 0
+            let centerEp = centerPrimeOffsets[prime] ?? 0
+            for ep in (centerEp - 2)...(centerEp + 2) {
+                let eP = ep + shiftP
+                guard let pq = overlayPQ(e3: baseE3, e5: baseE5, prime: prime, eP: eP) else { continue }
+                let (cp, cq) = RatioMath.canonicalPQUnit(pq.p, pq.q)
+                let label = RatioMath.unitLabel(cp, cq)
+                let refMonzo: [Int:Int] = [3: baseE3, 5: baseE5, prime: eP]
+                let ref = RatioRef(p: cp, q: cq, octave: 0, monzo: refMonzo)
+                let world = layout.position(monzo: refMonzo)
+                let offset = CGPoint(x: world.x - pivotWorld.x, y: world.y - pivotWorld.y)
+                appendNode(offset: offset, label: label, ref: ref, isOverlay: true, prime: prime)
+            }
+        }
+
+        guard !nodes.isEmpty else { return nil }
+        return MiniLatticeSnapshot(nodes: nodes, bounds: bounds)
+    }
+
+    private func drawMiniNode(_ node: MiniLatticeNode, mapper: MiniLatticeMapper, in ctx: inout GraphicsContext) {
+        let pos = mapper.screenPosition(for: node.worldOffset)
+        let tenney = max(1, RatioMath.tenneyHeight(p: node.ref.p, q: node.ref.q))
+        let base: CGFloat = 12
+        let lift = CGFloat(18.0 * (1.0 / sqrt(Double(tenney))))
+        let sz = max(8, base + lift)
+        let rect = CGRect(x: pos.x - sz * 0.5, y: pos.y - sz * 0.5, width: sz, height: sz)
+
+        let fill = node.isOverlay ? Color.accentColor : Color.secondary
+        ctx.fill(Path(ellipseIn: rect), with: .color(fill.opacity(0.22)))
+        ctx.stroke(Path(ellipseIn: rect), with: .color(fill.opacity(0.40)), lineWidth: 1)
+
+        let text = Text(node.label)
+            .font(.system(size: 9 * max(0.75, mapper.zoom), weight: .semibold, design: .monospaced))
+            .foregroundStyle(Color.primary.opacity(0.9))
+        ctx.draw(text, at: CGPoint(x: pos.x, y: pos.y - sz * 0.75), anchor: .center)
+    }
+
+    private func planePQ(e3: Int, e5: Int) -> (Int, Int)? {
+        var num = 1
+        var den = 1
+
+        func mul(_ x: inout Int, _ factor: Int?) -> Bool {
+            guard let f = factor, let r = safeMul(x, f) else { return false }
+            x = r
+            return true
+        }
+
+        if e3 >= 0 { if !mul(&num, safePowInt(3, exp: e3)) { return nil } }
+        else       { if !mul(&den, safePowInt(3, exp: -e3)) { return nil } }
+
+        if e5 >= 0 { if !mul(&num, safePowInt(5, exp: e5)) { return nil } }
+        else       { if !mul(&den, safePowInt(5, exp: -e5)) { return nil } }
+
+        let g = gcd(num, den)
+        return (num / g, den / g)
+    }
+
+    private func overlayPQ(e3: Int, e5: Int, prime: Int, eP: Int) -> (Int, Int)? {
+        var num = 1
+        var den = 1
+
+        func mul(_ x: inout Int, _ factor: Int?) -> Bool {
+            guard let f = factor, let r = safeMul(x, f) else { return false }
+            x = r
+            return true
+        }
+
+        if e3 >= 0 { if !mul(&num, safePowInt(3, exp: e3)) { return nil } }
+        else       { if !mul(&den, safePowInt(3, exp: -e3)) { return nil } }
+
+        if e5 >= 0 { if !mul(&num, safePowInt(5, exp: e5)) { return nil } }
+        else       { if !mul(&den, safePowInt(5, exp: -e5)) { return nil } }
+
+        if eP >= 0 { if !mul(&num, safePowInt(prime, exp: eP)) { return nil } }
+        else       { if !mul(&den, safePowInt(prime, exp: -eP)) { return nil } }
+
+        let g = gcd(num, den)
+        return (num / g, den / g)
+    }
+
+    private func overlayPrimeSet(centerMonzo: [Int:Int], axisShift: [Int:Int], primeLimit: Int) -> Set<Int> {
+        var primes = Set([7, 11].filter { $0 <= primeLimit })
+        for p in centerMonzo.keys where p > 5 && p <= primeLimit { primes.insert(p) }
+        for (p, shift) in axisShift where p > 5 && shift != 0 && p <= primeLimit { primes.insert(p) }
+        return primes
+    }
+
+    private func safeMul(_ a: Int, _ b: Int) -> Int? {
+        let (r, o) = a.multipliedReportingOverflow(by: b)
+        return o ? nil : r
+    }
+
+    private func safePowInt(_ base: Int, exp: Int) -> Int? {
+        guard exp >= 0 else { return nil }
+        if exp == 0 { return 1 }
+        var r = 1
+        for _ in 0..<exp {
+            guard let next = safeMul(r, base) else { return nil }
+            r = next
+        }
+        return r
     }
 
     private func gcd(_ a: Int, _ b: Int) -> Int {
-        var x = a, y = b
+        var x = abs(a), y = abs(b)
         while y != 0 { let t = x % y; x = y; y = t }
-        return abs(x)
-    }
-
-    private func maxPrimeFactor(_ n: Int) -> Int {
-        var x = abs(n)
-        var maxp = 1
-        var p = 2
-        while p*p <= x {
-            while x % p == 0 { maxp = max(maxp, p); x /= p }
-            p += (p == 2 ? 1 : 2)
-        }
-        if x > 1 { maxp = max(maxp, x) }
-        return maxp
+        return max(1, x)
     }
 }
 
@@ -759,6 +954,7 @@ struct TunerRailSessionCaptureCard: View {
 #if targetEnvironment(macCatalyst)
 struct TunerContextRailHost: View {
     let app: AppModel
+    @ObservedObject var tunerStore: TunerStore
     let onLockTarget: (RatioRef) -> Void
     let onExportScale: (ScaleBuilderPayload) -> Void
     let globalAxisShift: [Int:Int]
@@ -781,6 +977,7 @@ struct TunerContextRailHost: View {
     init(
         store: TunerRailStore,
         app: AppModel,
+        tunerStore: TunerStore,
         showSettings: Binding<Bool>,
         globalPrimeLimit: Int,
         globalAxisShift: [Int:Int],
@@ -790,6 +987,7 @@ struct TunerContextRailHost: View {
     ) {
         self.store = store
         self.app = app
+        self.tunerStore = tunerStore
         self._showSettings = showSettings
         self.globalPrimeLimit = globalPrimeLimit
         self.globalAxisShift = globalAxisShift
@@ -887,13 +1085,16 @@ struct TunerContextRailHost: View {
 
         case .miniLatticeFocus:
             TunerRailMiniLatticeFocusCard(
-                centerRatioText: "1/1",
+                snapshot: clock.snapshot,
+                lockedTarget: tunerStore.lockedTarget,
                 globalPrimeLimit: globalPrimeLimit,
                 globalAxisShift: globalAxisShift,
                 globalRootHz: app.rootHz,
                 tunerRootOverride: app.tunerRootOverride,
                 onSetOverride: { ref in app.setTunerRootOverride(ref) },
                 onClearOverride: { app.clearTunerRootOverride() },
+                onLock: onLockTarget,
+                onPreview: nil,
                 collapsed: binding(for: id)
             )
 
