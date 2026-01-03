@@ -279,8 +279,9 @@ struct LatticeView: View {
     @State private var selectionHapticTick: Int = 0
     @State private var focusHapticTick: Int = 0
 #if os(macOS) || targetEnvironment(macCatalyst)
-    @State private var lastPointerLocation: CGPoint? = nil
+    @State private var pointerInLattice: CGPoint? = nil
     @State private var lastPointerLog: Date? = nil
+    @State private var isHoveringLattice: Bool = false
 #endif
 #if targetEnvironment(macCatalyst)
     @State private var isMousePanning: Bool = false
@@ -3116,22 +3117,38 @@ struct LatticeView: View {
                     }
             .onAppear { viewSize = geo.size }
             .onChange(of: geo.size) { viewSize = $0 }
+#if os(macOS) || targetEnvironment(macCatalyst)
+            .overlay(alignment: .topLeading) {
+                LatticeTrackpadBridge(
+                    onPointer: { loc in
+                        pointerInLattice = loc
+                        logPointer(loc)
 #if targetEnvironment(macCatalyst)
-            .background(
-                CatalystMouseTrackingView(
-                    onMove: { loc in
-                        lastPointerLocation = loc
-                        logPointer(loc)
                         updateContextTarget(at: loc, in: geo.size)
+#endif
                     },
-                    onScroll: { delta, loc in
-                        lastPointerLocation = loc
-                        logPointer(loc)
+                    onScrollPan: { delta in
                         applyTrackpadPan(delta: delta)
+                    },
+                    onZoom: { factor in
+                        let anchor = zoomAnchor(in: geo)
+                        applyZoom(by: factor, anchor: anchor)
+                    },
+                    onHover: { hovering in
+                        isHoveringLattice = hovering
+                        if !hovering {
+                            pointerInLattice = nil
+#if targetEnvironment(macCatalyst)
+                            contextTarget = nil
+#endif
+                        }
                     }
                 )
-                .allowsHitTesting(false)
-            )
+                .frame(width: geo.size.width, height: geo.size.height)
+                .contentShape(Rectangle())
+            }
+#endif
+#if targetEnvironment(macCatalyst)
             .contextMenu { latticeContextMenu() }
             .catalystCursor(currentCursor)
 #elseif os(macOS)
@@ -3186,6 +3203,9 @@ struct LatticeView: View {
                         LearnEventBus.shared.send(.latticeNodeSelected("selected"))
                     }
                 }
+#if os(macOS) || targetEnvironment(macCatalyst)
+                .scrollDisabled(isHoveringLattice)
+#endif
 
         }
     }
@@ -3779,19 +3799,19 @@ struct LatticeView: View {
         let now = Date()
         if let last = lastPointerLog, now.timeIntervalSince(last) < 0.15 { return }
         lastPointerLog = now
-        print("[LatticePointer] loc=\(String(format: "%.1f", point.x)), \(String(format: "%.1f", point.y))")
+        print("[LatticePointer] loc=\(String(format: \"%.1f\", point.x)), \(String(format: \"%.1f\", point.y))")
 #endif
     }
 
     private func logTrackpadPan(delta: CGSize, before: CGPoint, after: CGPoint) {
 #if DEBUG
-        print("[LatticePan] delta=(\(String(format: "%.2f", delta.width)), \(String(format: "%.2f", delta.height))) -> translation (\(String(format: "%.2f", before.x)), \(String(format: "%.2f", before.y))) -> (\(String(format: "%.2f", after.x)), \(String(format: "%.2f", after.y)))")
+        print("[LatticePan] delta=(\(String(format: \"%.2f\", delta.width)), \(String(format: \"%.2f\", delta.height))) -> translation (\(String(format: \"%.2f\", before.x)), \(String(format: \"%.2f\", before.y))) -> (\(String(format: \"%.2f\", after.x)), \(String(format: \"%.2f\", after.y)))")
 #endif
     }
 
     private func logZoom(factor: CGFloat, anchor: CGPoint, before: LatticeCamera, after: LatticeCamera) {
 #if DEBUG
-        print("[LatticeZoom] factor=\(String(format: "%.3f", factor)) anchor=\(String(format: "%.1f", anchor.x)), \(String(format: "%.1f", anchor.y)) scale \(String(format: "%.2f", before.scale)) -> \(String(format: "%.2f", after.scale)) translation (\(String(format: "%.2f", before.translation.x)), \(String(format: "%.2f", before.translation.y))) -> (\(String(format: "%.2f", after.translation.x)), \(String(format: "%.2f", after.translation.y)))")
+        print("[LatticeZoom] factor=\(String(format: \"%.3f\", factor)) anchor=\(String(format: \"%.1f\", anchor.x)), \(String(format: \"%.1f\", anchor.y)) scale \(String(format: \"%.2f\", before.scale)) -> \(String(format: \"%.2f\", after.scale)) translation (\(String(format: \"%.2f\", before.translation.x)), \(String(format: \"%.2f\", before.translation.y))) -> (\(String(format: \"%.2f\", after.translation.x)), \(String(format: \"%.2f\", after.translation.y)))")
 #endif
     }
 
@@ -3804,7 +3824,7 @@ struct LatticeView: View {
     private func zoomAnchor(in geo: GeometryProxy) -> CGPoint {
         // Mac/Catalyst: anchor zoom around the hovered cursor so the world point
         // under the pointer stays pinned during magnification.
-        lastPointerLocation ?? CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)
+        pointerInLattice ?? CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)
     }
 
     private func applyZoom(by factor: CGFloat, anchor: CGPoint) {
