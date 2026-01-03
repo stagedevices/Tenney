@@ -124,10 +124,10 @@ final class TunerViewModel: ObservableObject {
         // “too far” threshold (post-selection)
         isFarValue = abs(best.cents) > 120
 
-        displayRatio = "\(best.target.num)/\(best.target.den)"
+        displayRatio = tunerDisplayRatioString(best.target)
         centsText = String(format: "%+0.1f cents", best.cents)
         hzText = String(format: "%0.2f Hz", hz)
-        altRatios = alts.map { "\($0.num)/\($0.den)" }
+        altRatios = alts.map { tunerDisplayRatioString($0) }
     }
 
 }

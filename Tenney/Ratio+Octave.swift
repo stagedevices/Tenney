@@ -53,6 +53,28 @@ private func canonicalPQAroundUnison(_ p: Int, _ q: Int, octave: Int) -> (Int, I
     return (num / g, den / g)
 }
 
+/// Returns a reduced fraction that applies octave offset directly (no unit-octave folding).
+func unfoldedRatioString(_ r: RatioRef) -> String {
+    guard r.p > 0 && r.q > 0 else { return "\(r.p)/\(r.q)" }
+
+    var num = r.p
+    var den = r.q
+
+    if r.octave > 0 {
+        for _ in 0..<r.octave { num &*= 2 }
+    } else if r.octave < 0 {
+        for _ in 0..<(-r.octave) { den &*= 2 }
+    }
+
+    let g = gcd(num, den)
+    return "\(num / g)/\(den / g)"
+}
+
+/// Tuner-only helper: formats RatioResult without folding into the unit octave.
+func tunerDisplayRatioString(_ r: RatioResult) -> String {
+    unfoldedRatioString(RatioRef(p: r.num, q: r.den, octave: r.octave))
+}
+
 
 /// Frequency from RatioRef with canonicalized p/q (1 ≤ p/q < 2), no fold unless asked.
 func frequencyHz(rootHz: Double, ratio: RatioRef, foldToAudible: Bool = false,
