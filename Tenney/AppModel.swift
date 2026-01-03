@@ -450,12 +450,12 @@ final class AppModel: ObservableObject {
             // Your JI mapping & display (preserve RatioSolver & neighbors)
             let pack = ratioSolver.nearestWithNeighbors(for: fSmoothed, rootHz: effectiveRootHz, primeLimit: tunerPrimeLimit)
             let view = TunerDisplay(
-                ratioText: pack.main.ratioString,
+                ratioText: tunerDisplayRatioString(pack.main),
                 cents: signedCents(actualHz: fSmoothed, rootHz: effectiveRootHz, target: pack.main),
                 hz: fSmoothed,
                 confidence: res.confidence,
-                lowerText: pack.lower.ratioString,
-                higherText: pack.higher.ratioString
+                lowerText: tunerDisplayRatioString(pack.lower),
+                higherText: tunerDisplayRatioString(pack.higher)
             )
             
             Task { @MainActor in
