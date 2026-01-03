@@ -38,8 +38,8 @@ struct TenneyApp: App {
         }
     }
 
-    @StateObject private var latticeStore = LatticeStore()
     @StateObject private var appModel = AppModel()
+    @StateObject private var latticeStore = LatticeStore()
 
     init() {
         seedLatticeSoundDefaultIfNeeded()
