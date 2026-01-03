@@ -278,8 +278,10 @@ struct LatticeView: View {
     
     @State private var selectionHapticTick: Int = 0
     @State private var focusHapticTick: Int = 0
+#if os(macOS) || targetEnvironment(macCatalyst)
+    @State private var lastPointerLocation: CGPoint? = nil
+#endif
 #if targetEnvironment(macCatalyst)
-    @State private var lastPointerLocation: CGPoint = .zero
     @State private var isMousePanning: Bool = false
     @State private var contextTarget: ContextTarget? = nil
 #endif
@@ -1751,11 +1753,6 @@ struct LatticeView: View {
         contextTarget = target
     }
 
-    private func applyScrollZoom(deltaY: CGFloat, location: CGPoint) {
-        let factor = exp(-deltaY / 600.0)
-        store.camera.zoom(by: factor, anchor: location)
-    }
-
     private func makeContextTarget(
         from cand: (pos: CGPoint, label: String, isPlane: Bool, coord: LatticeCoord?, p: Int, q: Int, ghost: (prime:Int, e3:Int, e5:Int, eP:Int)?)
     ) -> ContextTarget? {
@@ -3127,13 +3124,26 @@ struct LatticeView: View {
                     },
                     onScroll: { delta, loc in
                         lastPointerLocation = loc
-                        applyScrollZoom(deltaY: delta, location: loc)
+                        applyTrackpadPan(delta: delta)
                     }
                 )
                 .allowsHitTesting(false)
             )
             .contextMenu { latticeContextMenu() }
             .catalystCursor(currentCursor)
+#elseif os(macOS)
+            .background(
+                MacMouseTrackingView(
+                    onMove: { loc in
+                        lastPointerLocation = loc
+                    },
+                    onScroll: { delta, loc in
+                        lastPointerLocation = loc
+                        applyTrackpadPan(delta: delta)
+                    }
+                )
+                .allowsHitTesting(false)
+            )
 #endif
             .onChange(of: latticeSoundEnabled) { enabled in
                 guard !enabled else { return }
@@ -3757,6 +3767,22 @@ struct LatticeView: View {
         while vec.last == 0 && vec.count > 1 { _ = vec.popLast() }
         return "<" + vec.map(String.init).joined(separator: ", ") + ">"
     }
+
+#if os(macOS) || targetEnvironment(macCatalyst)
+    private func applyTrackpadPan(delta: CGSize) {
+        store.camera.pan(by: delta)
+    }
+
+    private func zoomAnchor(in geo: GeometryProxy) -> CGPoint {
+        // Mac/Catalyst: anchor zoom around the hovered cursor so the world point
+        // under the pointer stays pinned during magnification.
+        lastPointerLocation ?? CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)
+    }
+#else
+    private func zoomAnchor(in geo: GeometryProxy) -> CGPoint {
+        CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)
+    }
+#endif
     
     // MARK: - Gestures
     
@@ -3788,7 +3814,7 @@ struct LatticeView: View {
             .onChanged { scale in
                 // apply *delta* zoom for smoothness
                 let factor = max(0.5, min(2.0, scale / max(0.01, lastMag)))
-                let anchor = CGPoint(x: geo.size.width/2, y: geo.size.height/2)
+                let anchor = zoomAnchor(in: geo)
                 store.camera.zoom(by: factor, anchor: anchor)
                 lastMag = scale
             }
