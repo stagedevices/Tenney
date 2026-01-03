@@ -769,10 +769,6 @@ final class LatticeStore: ObservableObject {
                 .removeDuplicates()
                 .sink { [weak self] on in
                     guard let self else { return }
-                    if let app = AppModelLocator.shared, app.latticeAuditionOn != on {
-                        app.latticeAuditionOn = on
-                    }
-
                     if self.auditionEnabled != on { self.auditionEnabled = on }
                 }
                 .store(in: &cancellables)
@@ -783,6 +779,9 @@ final class LatticeStore: ObservableObject {
             .dropFirst()
             .sink { [weak self] on in
                 guard let self = self else { return }
+                if let app = AppModelLocator.shared, app.latticeAuditionOn != on {
+                    app.latticeAuditionOn = on
+                }
                 AppModelLocator.shared?.playTestTone = false
                 if on {
                     guard self.latticeSoundEnabled else { return }

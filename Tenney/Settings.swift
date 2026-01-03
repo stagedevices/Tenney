@@ -339,9 +339,6 @@ struct StudioConsoleView: View {
     @AppStorage(SettingsKeys.tunerNeedleHoldMode)
     private var tunerNeedleHoldRaw: String = NeedleHoldMode.snapHold.rawValue
 
-    @AppStorage(SettingsKeys.latticeSoundEnabled)
-    private var latticeSoundEnabled: Bool = true
-
     @State private var settingsHeaderBaselineMinY: CGFloat? = nil
     @AppStorage(SettingsKeys.latticeConnectionMode)
     private var latticeConnectionModeRaw: String = LatticeConnectionMode.chain.rawValue
@@ -388,6 +385,12 @@ struct StudioConsoleView: View {
     @Environment(\.horizontalSizeClass) private var hSizeClass
     @Environment(\.colorScheme) private var systemScheme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    private var latticeSoundBinding: Binding<Bool> {
+        Binding(
+            get: { app.latticeAuditionOn },
+            set: { app.latticeAuditionOn = $0 }
+        )
+    }
 
 //  THeme
     private var effectiveIsDark: Bool {
@@ -4076,7 +4079,7 @@ private struct GlassNavTile<Destination: View>: View {
         ) {
             LatticeUIControlsPager(
                 latticeConnectionModeRaw: $latticeConnectionModeRaw,
-                soundOn: $latticeSoundEnabled,
+                soundOn: latticeSoundBinding,
                 nodeSizeRaw: $nodeSize,
                 labelDensity: $labelDensity,
                 guidesOn: $guidesOn,

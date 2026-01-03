@@ -29,6 +29,9 @@ final class AppModel: ObservableObject {
         micPCMTap = nil
     }
 
+    @AppStorage(SettingsKeys.latticeSoundEnabled)
+    private var latticeSoundSetting: Bool = true
+
     @Published var builderPresented: Bool = false
     private var _recenterObserver: NSObjectProtocol?
     init() {
@@ -42,6 +45,7 @@ final class AppModel: ObservableObject {
             UserDefaults.standard.set(true, forKey: SettingsKeys.latticeRecenterPending)
         }
         AppModelLocator.shared = self
+        latticeAuditionOn = latticeSoundSetting
         let done = UserDefaults.standard.bool(forKey: SettingsKeys.setupWizardDone)
             self.showOnboardingWizard = !done
     }
@@ -89,7 +93,12 @@ final class AppModel: ObservableObject {
     /// Controls showing the onboarding wizard as a liquid-glass modal overlay.
     @Published var showOnboardingWizard: Bool = false
     // Lattice audition state (UtilityBar ↔ LatticeScreen sync)
-    @Published var latticeAuditionOn: Bool = false
+    @Published var latticeAuditionOn: Bool = true {
+        didSet {
+            latticeSoundSetting = latticeAuditionOn
+            postSetting(SettingsKeys.latticeSoundEnabled, latticeAuditionOn)
+        }
+    }
     // Library detent presentation
     @Published var showScaleLibraryDetent: Bool = false
     
