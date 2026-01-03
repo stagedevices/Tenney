@@ -2769,20 +2769,7 @@ struct StudioConsoleView: View {
                 }
                 .overlay(alignment: .topTrailing) {
                     if activeCategory == nil {
-                        Button {
-                            dismiss()
-                        } label: {
-                            ZStack {
-                                Circle()
-                                    .modifier(GlassBlueCircle()) // ✅ reuse same blue glass modifier
-                                Image(systemName: "checkmark")
-                                    .font(.system(size: 18, weight: .bold))
-                                    .foregroundStyle(.white)
-                            }
-                            .frame(width: 44, height: 44)
-                            .contentShape(Circle())
-                        }
-                        .buttonStyle(.plain)
+                        GlassDismissCircleButton { dismiss() }
                         .padding(.top, 20)
                         .padding(.trailing, 20)
                         .transition(.opacity)
