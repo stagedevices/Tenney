@@ -156,7 +156,7 @@ final class LatticeStore: ObservableObject {
 
     private func inkDuration(targetOn: Bool) -> Double {
         // camera.scale: smaller = zoomed out, larger = zoomed in
-        let z = Double(camera.scale)
+        let z = Double(camera.appliedScale)
 
         // Tune these once you feel it:
         let z0 = 24.0
@@ -918,4 +918,3 @@ extension LatticeStore {
         return (selectionOrder[0], selectionOrder[1])
     }
 }
-
