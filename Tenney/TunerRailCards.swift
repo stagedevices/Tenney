@@ -640,7 +640,7 @@ struct TunerRailMiniLatticeFocusCard: View {
             for dx in -2...2 {
                 let coord = LatticeCoord(e3: pivot.e3 + dx, e5: pivot.e5 + dy)
                 guard let pq = planePQ(e3: coord.e3 + shift3, e5: coord.e5 + shift5) else { continue }
-                let (cp, cq) = RatioMath.canonicalPQUnit(pq.p, pq.q)
+                let (cp, cq) = RatioMath.canonicalPQUnit(pq.0, pq.1)
                 let label = RatioMath.unitLabel(cp, cq)
                 let ref = RatioRef(p: cp, q: cq, octave: 0, monzo: [3: coord.e3 + shift3, 5: coord.e5 + shift5])
                 let world = layout.position(for: coord)
@@ -667,7 +667,7 @@ struct TunerRailMiniLatticeFocusCard: View {
             for ep in (centerEp - 2)...(centerEp + 2) {
                 let eP = ep + shiftP
                 guard let pq = overlayPQ(e3: baseE3, e5: baseE5, prime: prime, eP: eP) else { continue }
-                let (cp, cq) = RatioMath.canonicalPQUnit(pq.p, pq.q)
+                let (cp, cq) = RatioMath.canonicalPQUnit(pq.0, pq.1)
                 let label = RatioMath.unitLabel(cp, cq)
                 let refMonzo: [Int:Int] = [3: baseE3, 5: baseE5, prime: eP]
                 let ref = RatioRef(p: cp, q: cq, octave: 0, monzo: refMonzo)
@@ -693,10 +693,19 @@ struct TunerRailMiniLatticeFocusCard: View {
         ctx.fill(Path(ellipseIn: rect), with: .color(fill.opacity(0.22)))
         ctx.stroke(Path(ellipseIn: rect), with: .color(fill.opacity(0.40)), lineWidth: 1)
 
+        let fontSize = 9 * max(0.75, mapper.zoom)
+
         let text = Text(node.label)
-            .font(.system(size: 9 * max(0.75, mapper.zoom), weight: .semibold, design: .monospaced))
-            .foregroundStyle(Color.primary.opacity(0.9))
-        ctx.draw(text, at: CGPoint(x: pos.x, y: pos.y - sz * 0.75), anchor: .center)
+
+        .font(.system(size: fontSize, weight: .semibold, design: .monospaced))
+
+        let w = max(28, CGFloat(node.label.count) * fontSize * 0.60)
+
+        let h = fontSize * 1.25
+
+        let textRect = CGRect(x: pos.x - w * 0.5, y: (pos.y - sz * 0.75) - h * 0.5, width: w, height: h)
+
+        ctx.draw(text, in: textRect)
     }
 
     private func planePQ(e3: Int, e5: Int) -> (Int, Int)? {

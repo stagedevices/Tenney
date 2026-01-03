@@ -112,7 +112,7 @@ final class TunerRailClock: ObservableObject {
     private static func isListening(
         display: TunerDisplay,
         targetKey: String,
-        micPermission: MicPermissionState
+        micPermission: AppModel.MicPermissionState
     ) -> Bool {
         let ratioMissing = display.ratioText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || display.ratioText == "—"
         let invalidHz = !display.hz.isFinite || display.hz <= 0
