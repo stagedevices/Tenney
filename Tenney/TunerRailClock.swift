@@ -104,8 +104,9 @@ final class TunerRailClock: ObservableObject {
     }
 
     private static func targetKey(for display: TunerDisplay) -> String {
-        guard display.hz.isFinite, display.hz > 0 else { return "" }
-        return "\(display.ratioText)|\(String(format: "%.0f", display.hz))"
+        let ratio = display.ratioText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !ratio.isEmpty, ratio != "—" else { return "" }
+        return ratio
     }
 
     private static func isListening(

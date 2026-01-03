@@ -445,6 +445,7 @@ private let libraryStore = ScaleLibraryStore.shared
             TunerContextRailHost(
                 store: tunerRailStore,
                 app: app,
+                tunerStore: tunerStore,
                 showSettings: $showSettings,
                 globalPrimeLimit: app.tunerPrimeLimit,
                 globalAxisShift: latticeAxisShift,
