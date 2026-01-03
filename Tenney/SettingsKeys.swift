@@ -131,9 +131,6 @@ enum SettingsKeys {
     static let tunerRailActivePresetID  = "tenney.tunerRail.activePresetID"
     static let tunerRailPresetsJSON     = "tenney.tunerRail.presetsJSON"
     static let tunerRailIntervalTapeMs  = "tenney.tunerRail.intervalTape.ms"
-    static let tunerRailMiniLatticeLimit = "tenney.tunerRail.miniLattice.primeLimit"
-    static let railMiniLatticePrimeLimit = tunerRailMiniLatticeLimit
-    static let railMiniLatticeAxisShift  = "tenney.tunerRail.miniLattice.axisShift"
     
     // Audio Settings
        static let audioPreferredInputPortUID = "tenney.audio.preferredInputPortUID"

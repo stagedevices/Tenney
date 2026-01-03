@@ -12,7 +12,6 @@ import Combine
 enum TunerRailCardID: String, CaseIterable, Identifiable, Codable {
     case nowTuning
     case intervalTape
-    case miniLatticeFocus
     case nearestTargets
     case sessionCapture
 
@@ -22,7 +21,6 @@ enum TunerRailCardID: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .nowTuning:        return "Now Tuning"
         case .intervalTape:     return "Interval Tape"
-        case .miniLatticeFocus: return "Mini Lattice Focus"
         case .nearestTargets:   return "Nearest Targets"
         case .sessionCapture:   return "Session Capture"
         }
@@ -32,7 +30,6 @@ enum TunerRailCardID: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .nowTuning:        return "tuningfork"
         case .intervalTape:     return "timeline.selection"
-        case .miniLatticeFocus: return "hexagon"
         case .nearestTargets:   return "list.bullet.rectangle"
         case .sessionCapture:   return "tray.and.arrow.down"
         }
@@ -48,6 +45,26 @@ struct TunerRailPreset: Identifiable, Codable, Equatable {
         self.id = id
         self.name = name
         self.enabledOrderedCards = enabledOrderedCards
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, enabledOrderedCards
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        let rawCards = (try? container.decode([String].self, forKey: .enabledOrderedCards)) ?? []
+        let mapped = rawCards.compactMap { TunerRailCardID(rawValue: $0) }
+        enabledOrderedCards = mapped.isEmpty ? TunerRailStore.defaultPreset.enabledOrderedCards : mapped
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(enabledOrderedCards.map(\.rawValue), forKey: .enabledOrderedCards)
     }
 }
 
@@ -204,7 +221,7 @@ final class TunerRailStore: ObservableObject {
 
     static let defaultPreset = TunerRailPreset(
         name: "Default",
-        enabledOrderedCards: [.nowTuning, .nearestTargets, .miniLatticeFocus, .intervalTape, .sessionCapture]
+        enabledOrderedCards: [.nowTuning, .nearestTargets, .intervalTape, .sessionCapture]
     )
 
     static let minimalPreset = TunerRailPreset(
