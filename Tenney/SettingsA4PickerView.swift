@@ -68,16 +68,6 @@ struct SettingsA4PickerView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             // Style: match Theme cards / titles
-            HStack(spacing: 10) {
-                Image(systemName: "tuningfork")
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(headerGrad)
-                    .imageScale(.large)
-                Text("Equal-Temperament Reference (A4)")
-                    .font(.headline)
-            }
-            .padding(.horizontal, 4)
-
             LazyVGrid(columns: cols, spacing: 12) {
                 ForEach([Preset._425, ._440, ._442, ._444]) { p in
                     A4Card(label: p.label, isSelected: selected == p)

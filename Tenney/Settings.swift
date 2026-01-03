@@ -4000,7 +4000,7 @@ private struct GlassNavTile<Destination: View>: View {
     @ViewBuilder private var tuningSection: some View {
         glassCard(
             icon: "tuningfork",
-            title: "Reference Pitch (A4)",
+            title: "12-TET Reference Pitch (A4)",
             subtitle: "Staff & equal temperament base"
         ) {
             SettingsA4PickerView()

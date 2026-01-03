@@ -45,6 +45,7 @@ private let libraryStore = ScaleLibraryStore.shared
     @State private var inkIsDark = false
     @State private var effectiveIsDark = false
     @Environment(\.tenneyPracticeActive) private var practiceActive
+    @Environment(\.verticalSizeClass) private var vSize
 
     @StateObject private var tunerStore = TunerStore()
     @State private var latticeAxisShift: [Int:Int] = loadLatticeAxisShiftSnapshot()
@@ -405,7 +406,14 @@ private let libraryStore = ScaleLibraryStore.shared
     private func tunerContent(in geo: GeometryProxy) -> some View {
         let isLandscape = geo.size.width > geo.size.height
 
-        if isLandscape {
+        let isPhoneLandscapeCompact = (!isMacCatalyst && UIDevice.current.userInterfaceIdiom == .phone && vSize == .compact)
+        
+                if isLandscape && isPhoneLandscapeCompact {
+                    // iPhone landscape: single card only (no external rail)
+                    tunerCardView
+                        .frame(maxHeight: geo.size.height - 32)
+                        .padding(16)
+                } else if isLandscape {
             let spacing: CGFloat = isMacCatalyst ? 0 : 16
 
             let stack =
@@ -709,7 +717,8 @@ extension Notification.Name {
     @Binding var stageActive: Bool
 
     @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
-
+@Environment(\.verticalSizeClass) private var vSize
+     
     private var pillGrad: LinearGradient {
         LinearGradient(
             colors: [theme.e3, theme.e5],
@@ -815,11 +824,28 @@ extension Notification.Name {
          .accessibilityHint("Boosts contrast, thicker strobe, calmer text motion for performance.")
      }
 
-    var body: some View {
-        GlassCard(corner: 20) {
-            VStack(spacing: 14) {
+     private var isPhoneLandscapeCompact: Bool {
+     #if targetEnvironment(macCatalyst)
+             return false
+     #else
+             return (UIDevice.current.userInterfaceIdiom == .phone && vSize == .compact)
+     #endif
+         }
+     
+         var body: some View {
+             GlassCard(corner: 20) {
+                 if isPhoneLandscapeCompact {
+                     landscapeBody
+                 } else {
+                     portraitBody
+                 }
+             }
+         }
+     
+         private var portraitBody: some View {
+             VStack(spacing: 14) {
 
-                // Header row: Mode glyph strip (left) • Style strip • Stage toggle (right)
+                 // Header row: Mode glyph strip (left) • Style strip • Stage toggle (right)
                 ViewThatFits(in: .horizontal) {
 
                     // ✅ Preferred (fits on wider devices)
@@ -1004,8 +1030,184 @@ extension Notification.Name {
                 .onAppear { store.primeLimit = model.tunerPrimeLimit }
 
             }
-        }
+         }
 
+    // iPhone landscape (compact vertical): dial left, metrics right — single card.
+    private var landscapeBody: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
+            let padH: CGFloat = 14
+            let padV: CGFloat = 12
+            let innerW = max(0, w - padH*2)
+            let innerH = max(0, h - padV*2)
+
+            let spacing: CGFloat = 14
+            let rightW: CGFloat = max(190, min(260, innerW * 0.36))
+            let dialAvailW = max(0, innerW - rightW - spacing)
+            let dialSize = max(0, min(innerH, dialAvailW))
+
+            // Match portrait semantics (lock-aware cents + needle hold).
+            let rawCents: Double = {
+                if let locked = store.lockedTarget {
+                    return signedCents(actualHz: liveHz, rootHz: model.effectiveRootHz, target: locked)
+                } else {
+                    return liveCents
+                }
+            }()
+
+            let (centsShown, held) = hold.output(
+                rawCents: rawCents,
+                confidence: liveConf,
+                mode: store.needleHoldMode,
+                threshold: 0.35
+            )
+
+            let showFar = abs(rawCents) > 120
+            let stageAccent: Color = theme.inTuneHighlightColor(activeLimit: store.primeLimit)
+
+            HStack(alignment: .center, spacing: spacing) {
+                tunerDial(
+                    centsShown: centsShown,
+                    liveConf: liveConf,
+                    stageAccent: stageAccent,
+                    showFar: showFar,
+                    held: held,
+                    currentNearest: currentNearest,
+                    liveNearest: liveNearest
+                )
+                .frame(width: dialSize, height: dialSize)
+                .contentShape(Rectangle())
+                .onLongPressGesture(minimumDuration: 0.35) {
+                    UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                    store.toggleLock(currentNearest: (currentNearest ?? liveNearest))
+                }
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 18, coordinateSpace: .local)
+                        .onEnded { v in
+                            let dx = v.translation.width
+                            let dy = v.translation.height
+                            guard dy < -32, abs(dx) < 80 else { return }
+                            UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                            stepTargetOnSwipeUp()
+                        }
+                )
+                .overlay(alignment: .topTrailing) {
+                    if store.lockedTarget != nil {
+                        BadgeCapsule(text: "Current \(model.display.ratioText)", style: AnyShapeStyle(Color.secondary.opacity(0.15)))
+                            .padding(6)
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                    }
+                }
+                .onChange(of: model.display.ratioText) { txt in
+                    currentNearest = parseRatio(txt) // for long-press locking
+                }
+                .frame(maxHeight: .infinity, alignment: .center)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Spacer()
+                        stageButton
+                            .frame(minWidth: 92, alignment: .trailing) // a tad wider in landscape only
+                    }
+
+                    Text(model.display.ratioText)
+                        .font(.system(size: 34, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.3)
+
+                    HStack(spacing: 10) {
+                        StatTile(label: model.strictness == .strict ? "ET" : "JI",
+                                 value: String(format: "%+.1f", centsShown))
+                        StatTile(label: "Hz", value: String(format: "%.1f", liveHz))
+                    }
+
+                    StatTile(label: "Conf", value: String(format: "%.0f%%", liveConf*100))
+
+                    HStack(spacing: 10) {
+                        NextChip(title: "Lower",  text: model.display.lowerText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .onTapGesture {
+                                if let r = parseRatio(model.display.lowerText) {
+                                    withAnimation(.snappy) { store.lockedTarget = r }
+                                }
+                            }
+
+                        NextChip(title: "Higher", text: model.display.higherText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .onTapGesture {
+                                if let r = parseRatio(model.display.higherText) {
+                                    withAnimation(.snappy) { store.lockedTarget = r }
+                                }
+                            }
+                    }
+
+                    HStack(spacing: 8) {
+                        Text("Prime limit")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        ForEach([3,5,7,11,13], id: \.self) { p in
+                            let selected = (store.primeLimit == p)
+                            Button {
+                                withAnimation(.snappy) { store.primeLimit = p }
+                            } label: {
+                                Text("\(p)")
+                                    .font(.footnote.weight(selected ? .semibold : .regular))
+                                    .foregroundStyle(
+                                        selected
+                                        ? (theme.isDark ? Color.white : Color.black)
+                                        : Color.secondary
+                                    )
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 5)
+                                    .background(
+                                        selected
+                                        ? AnyShapeStyle(.thinMaterial)
+                                        : AnyShapeStyle(.ultraThinMaterial),
+                                        in: Capsule()
+                                    )
+                                    .overlay(
+                                        Capsule().stroke(
+                                            selected
+                                            ? AnyShapeStyle(theme.primeTint(p))
+                                            : AnyShapeStyle(Color.secondary.opacity(0.12)),
+                                            lineWidth: 1
+                                        )
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.top, 2)
+                    .onChange(of: store.primeLimit) { model.tunerPrimeLimit = $0 }
+                    .onAppear { store.primeLimit = model.tunerPrimeLimit }
+
+                    Spacer(minLength: 0)
+                }
+                .frame(width: rightW, alignment: .topLeading)
+            }
+            .padding(.horizontal, padH)
+            .padding(.vertical, padV)
+        }
+    }
+
+    private func stepTargetOnSwipeUp() {
+        let lower = parseRatio(model.display.lowerText)
+        let higher = parseRatio(model.display.higherText)
+
+        withAnimation(.snappy) {
+            if let locked = store.lockedTarget, let h = higher, locked == h, let l = lower {
+                store.lockedTarget = l
+            } else if let h = higher {
+                store.lockedTarget = h
+            } else if let l = lower {
+                store.lockedTarget = l
+            } else {
+                store.toggleLock(currentNearest: (currentNearest ?? liveNearest))
+            }
+        }
     }
 }
 
@@ -1158,14 +1360,22 @@ private struct UtilityBar: View {
                             }
                             .buttonStyle(.plain)
                         } else {
-                            HStack(spacing: 6) {
-                                Image(systemName: "tuningfork").imageScale(.medium)
-                                Text(String(format: "%.1f Hz", app.rootHz))
-                                    .font(.footnote.monospacedDigit())
+                            Button {
+                                showRootStudio = true
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "tuningfork").imageScale(.medium)
+                                    Text(String(format: "%.1f Hz", app.rootHz))
+                                        .font(.footnote.monospacedDigit())
+                                }
+                                .padding(.horizontal, 8).padding(.vertical, 6)
+                                .background(.ultraThinMaterial, in: Capsule())
+                                .contentShape(Capsule())
                             }
-                            .padding(.horizontal, 8).padding(.vertical, 6)
-                            .background(.ultraThinMaterial, in: Capsule())
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Root pitch")
                         }
+
              
 
             // Gear
