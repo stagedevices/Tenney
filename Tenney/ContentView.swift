@@ -47,16 +47,12 @@ private let libraryStore = ScaleLibraryStore.shared
     @Environment(\.tenneyPracticeActive) private var practiceActive
 
     @StateObject private var tunerStore = TunerStore()
-#if targetEnvironment(macCatalyst)
     @State private var latticeAxisShift: [Int:Int] = loadLatticeAxisShiftSnapshot()
-#endif
     @EnvironmentObject private var app: AppModel
     @State private var mode: AppScreenMode = .tuner
     @State private var showSettings = false
     
-#if targetEnvironment(macCatalyst)
     @StateObject private var tunerRailStore = TunerRailStore()
-#endif
     @State private var requestedSettingsCategory: StudioConsoleView.SettingsCategory? = nil
     @AppStorage(SettingsKeys.tunerStageMode) private var stageActive: Bool = false
     @Namespace private var stageNS
@@ -89,6 +85,26 @@ private let libraryStore = ScaleLibraryStore.shared
     // Helper
     private var currentBuild: String {
         (Bundle.main.infoDictionary?["CFBundleVersion"] as? String) ?? "0"
+    }
+    private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
+    private var isMacCatalyst: Bool {
+        #if targetEnvironment(macCatalyst)
+        return true
+        #else
+        return false
+        #endif
+    }
+    private var supportsTunerContextRailOnThisDevice: Bool { isPad || isMacCatalyst }
+
+    private func shouldShowTunerContextRail(isLandscape: Bool) -> Bool {
+        guard supportsTunerContextRailOnThisDevice else { return false }
+        guard isLandscape else { return false }
+        return tunerRailStore.showRail
+    }
+
+    private func shouldShowTunerContextRailMenu(isLandscape: Bool) -> Bool {
+        guard isLandscape else { return false }
+        return isMacCatalyst || isPad
     }
     private func shouldShowWhatsNew() -> Bool {
         lastSeenBuild != currentBuild
@@ -390,21 +406,17 @@ private let libraryStore = ScaleLibraryStore.shared
         let isLandscape = geo.size.width > geo.size.height
 
         if isLandscape {
-    let spacing: CGFloat = {
-    #if targetEnvironment(macCatalyst)
-                    0
-    #else
-                    16
-    #endif
-                }()
-    
+            let spacing: CGFloat = isMacCatalyst ? 0 : 16
+
+            let stack =
                 HStack(spacing: spacing) {
-                     tunerCardView
-                     railView(in: geo, isLandscape: true)
-                 }
-                 .padding(16)
-    #if targetEnvironment(macCatalyst)
-                .contextMenu {
+                    tunerCardView
+                    railView(in: geo, isLandscape: true)
+                }
+                .padding(16)
+
+            if shouldShowTunerContextRailMenu(isLandscape: isLandscape) {
+                stack.contextMenu {
                     Toggle(isOn: Binding(get: { tunerRailStore.showRail }, set: tunerRailStore.setShowRail)) {
                         Label("Show Rail", systemImage: "sidebar.trailing")
                     }
@@ -415,15 +427,17 @@ private let libraryStore = ScaleLibraryStore.shared
                         Label("Customize…", systemImage: "slider.horizontal.3")
                     }
                 }
-    #endif
-             } else {
-                 VStack(spacing: 16) {
-                     tunerCardView
-                     railView(in: geo, isLandscape: false)
-                 }
-                 .padding(16)
-             }
-         }
+            } else {
+                stack
+            }
+        } else {
+            VStack(spacing: 16) {
+                tunerCardView
+                railView(in: geo, isLandscape: false)
+            }
+            .padding(16)
+        }
+    }
 
     private var latticeContent: some View {
         LatticeScreen()
@@ -440,8 +454,7 @@ private let libraryStore = ScaleLibraryStore.shared
     }
 
     @ViewBuilder private func railView(in geo: GeometryProxy, isLandscape: Bool) -> some View {
-#if targetEnvironment(macCatalyst)
-        if isLandscape, tunerRailStore.showRail {
+        if shouldShowTunerContextRail(isLandscape: isLandscape) {
             TunerContextRailHost(
                 store: tunerRailStore,
                 app: app,
@@ -461,15 +474,14 @@ private let libraryStore = ScaleLibraryStore.shared
             )
             .opacity(stageActive ? 0 : 1)
             .allowsHitTesting(!stageActive)
-        } else {
+        } else if isMacCatalyst {
             EmptyView()
+        } else {
+            RailView(showRootStudio: $showRootStudio, rootNS: rootNS)
+                .frame(width: isLandscape ? min(400, geo.size.width * 0.34) : nil)
+                .opacity(stageActive ? 0 : 1)
+                .allowsHitTesting(!stageActive)
         }
-#else
-        RailView(showRootStudio: $showRootStudio, rootNS: rootNS)
-            .frame(width: isLandscape ? min(400, geo.size.width * 0.34) : nil)
-            .opacity(stageActive ? 0 : 1)
-            .allowsHitTesting(!stageActive)
-#endif
     }
 
     private func updateIdleTimer(stageOn: Bool) {
@@ -544,9 +556,7 @@ private let libraryStore = ScaleLibraryStore.shared
     }
     private var settingsSheet: some View {
         StudioConsoleView(initialCategory: requestedSettingsCategory)
-        #if targetEnvironment(macCatalyst)
             .environmentObject(tunerRailStore)
-        #endif
             .environmentObject(app)
             .statusBar(hidden: stageHideStatus && stageActive)
             .presentationDetents([.large])
