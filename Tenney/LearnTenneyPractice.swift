@@ -109,11 +109,13 @@ private struct PracticeContent: View {
 
 private struct LatticePracticeHost: View {
     let stepIndex: Int
+    @StateObject private var tunerStore = TunerStore()
 
     var body: some View {
         ZStack {
             // ✅ Always keep the real sandbox mounted (this is where your UtilityBar comes from)
             ContentView()
+                .environmentObject(tunerStore)
                 .environment(\.tenneyPracticeActive, true)
                 .ignoresSafeArea()
                 .toolbar(.hidden, for: .navigationBar)

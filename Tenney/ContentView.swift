@@ -47,7 +47,7 @@ private let libraryStore = ScaleLibraryStore.shared
     @Environment(\.tenneyPracticeActive) private var practiceActive
     @Environment(\.verticalSizeClass) private var vSize
 
-    @StateObject private var tunerStore = TunerStore()
+    @EnvironmentObject private var tunerStore: TunerStore
     @State private var latticeAxisShift: [Int:Int] = loadLatticeAxisShiftSnapshot()
     @EnvironmentObject private var app: AppModel
     @State private var mode: AppScreenMode = .tuner

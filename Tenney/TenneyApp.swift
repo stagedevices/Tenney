@@ -39,6 +39,7 @@ struct TenneyApp: App {
     }
 
     @StateObject private var appModel = AppModel()
+    @StateObject private var tunerStore = TunerStore()
     @StateObject private var latticeStore = LatticeStore()
 
     init() {
@@ -71,6 +72,7 @@ struct TenneyApp: App {
             ContentView()
                 .environmentObject(latticeStore)
                 .environmentObject(appModel)
+                .environmentObject(tunerStore)
                 .preferredColorScheme(appScheme)   // ← global scheme driven by Settings
                 .onAppear { appModel.configureAndStart() }
 
