@@ -227,6 +227,9 @@ private let libraryStore = ScaleLibraryStore.shared
                     .transition(.opacity)
                     .zIndex(10)
             }
+#if targetEnvironment(macCatalyst)
+            macKeyboardShortcuts
+#endif
         }
         .environment(\.tenneyTheme, resolvedTheme)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -581,6 +584,43 @@ private let libraryStore = ScaleLibraryStore.shared
             .presentationDragIndicator(.visible)
             .presentationBackground(.ultraThinMaterial)
     }
+
+#if targetEnvironment(macCatalyst)
+    private var macKeyboardShortcuts: some View {
+        Group {
+            Button(action: toggleRailShortcut) { EmptyView() }
+                .keyboardShortcut("r", modifiers: [.command, .option])
+            Button(action: lockTargetShortcut) { EmptyView() }
+                .keyboardShortcut("l", modifiers: .command)
+            Button(action: captureShortcut) { EmptyView() }
+                .keyboardShortcut(.return, modifiers: .command)
+            Button(action: { switchAltShortcut(delta: -1) }) { EmptyView() }
+                .keyboardShortcut("[", modifiers: .command)
+            Button(action: { switchAltShortcut(delta: 1) }) { EmptyView() }
+                .keyboardShortcut("]", modifiers: .command)
+        }
+        .frame(width: 0, height: 0)
+    }
+
+    private func toggleRailShortcut() {
+        tunerRailStore.setShowRail(!tunerRailStore.showRail)
+    }
+
+    private func lockTargetShortcut() {
+        let nearest = parseRatio(app.display.ratioText)
+        tunerStore.toggleLock(currentNearest: nearest)
+    }
+
+    private func captureShortcut() {
+        tunerRailStore.captureCurrentSnapshot()
+    }
+
+    private func switchAltShortcut(delta: Int) {
+        let targetText = delta < 0 ? app.display.lowerText : app.display.higherText
+        guard !targetText.isEmpty, let ref = parseRatio(targetText) else { return }
+        tunerStore.lockedTarget = ref
+    }
+#endif
 
 }
 

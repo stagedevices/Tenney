@@ -18,6 +18,12 @@ struct TunerRailSnapshot: Equatable {
     var isListening: Bool
     var targetKey: String
 
+    var hasLivePitch: Bool {
+        isListening && hz.isFinite && hz > 0 && confidence >= 0.3
+    }
+
+    var isListeningPlaceholder: Bool { !hasLivePitch }
+
     static let empty = TunerRailSnapshot(
         ratioText: "—",
         cents: 0,

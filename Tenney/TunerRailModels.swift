@@ -51,21 +51,29 @@ struct TunerRailPreset: Identifiable, Codable, Equatable {
     }
 }
 
+struct TunerRailPresetContainer: Codable, Equatable {
+    var activePresetID: UUID
+    var presets: [TunerRailPreset]
+}
+
 /// Simple persistence helper for the Mac-only tuner rail.
 final class TunerRailStore: ObservableObject {
     @Published var presets: [TunerRailPreset] = []
     @Published var activePresetID: UUID
     @Published var enabledCards: [TunerRailCardID] = []
     @Published var showRail: Bool
+    @Published var lastSnapshot: TunerRailSnapshot = .empty
+
+    let session = TunerRailSessionCaptureModel()
 
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
 
-        let seeded = Self.loadPresets(from: defaults)
+        let seeded = Self.loadContainer(from: defaults)
         presets = seeded.presets
-        activePresetID = seeded.activeID
+        activePresetID = seeded.activePresetID
         showRail = defaults.object(forKey: SettingsKeys.tunerRailShow) as? Bool ?? true
         enabledCards = presets.first(where: { $0.id == activePresetID })?.enabledOrderedCards
             ?? Self.defaultPreset.enabledOrderedCards
@@ -104,6 +112,7 @@ final class TunerRailStore: ObservableObject {
         let preset = TunerRailPreset(name: name, enabledOrderedCards: enabledCards.isEmpty ? Self.defaultPreset.enabledOrderedCards : enabledCards)
         presets.append(preset)
         activePresetID = preset.id
+        enabledCards = preset.enabledOrderedCards
         persist()
         return preset
     }
@@ -127,7 +136,7 @@ final class TunerRailStore: ObservableObject {
         let wasActive = (id == activePresetID)
         presets.removeAll { $0.id == id }
         if presets.isEmpty {
-            presets = Self.defaultPresets
+            presets = [Self.defaultPreset]
         }
         if wasActive {
             activePresetID = presets.first?.id ?? Self.defaultPreset.id
@@ -136,61 +145,85 @@ final class TunerRailStore: ObservableObject {
         persist()
     }
 
+    func updateSnapshot(_ snapshot: TunerRailSnapshot) {
+        lastSnapshot = snapshot
+    }
+
+    func captureCurrentSnapshot() {
+        guard lastSnapshot.hasLivePitch else { return }
+        let entry = TapeEntry(
+            ratio: lastSnapshot.ratioText,
+            hz: lastSnapshot.hz,
+            cents: lastSnapshot.cents,
+            timestamp: Date()
+        )
+        session.capture(entry)
+    }
+
     var defaultCards: [TunerRailCardID] { Self.defaultPreset.enabledOrderedCards }
 
     private func persist() {
+        let container = TunerRailPresetContainer(activePresetID: activePresetID, presets: presets)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
-        if let data = try? encoder.encode(presets),
+        if let data = try? encoder.encode(container),
            let json = String(data: data, encoding: .utf8) {
             defaults.set(json, forKey: SettingsKeys.tunerRailPresetsJSON)
         }
-        defaults.set(activePresetID.uuidString, forKey: SettingsKeys.tunerRailActivePresetID)
         defaults.set(showRail, forKey: SettingsKeys.tunerRailShow)
     }
 
-    private static func loadPresets(from defaults: UserDefaults) -> (presets: [TunerRailPreset], activeID: UUID) {
+    private static func loadContainer(from defaults: UserDefaults) -> TunerRailPresetContainer {
         let decoder = JSONDecoder()
         if let json = defaults.string(forKey: SettingsKeys.tunerRailPresetsJSON),
            let data = json.data(using: .utf8),
-           let decoded = try? decoder.decode([TunerRailPreset].self, from: data),
-           !decoded.isEmpty {
-            let activeID = UUID(uuidString: defaults.string(forKey: SettingsKeys.tunerRailActivePresetID) ?? "") ?? decoded.first!.id
-            return (decoded, activeID)
+           let decoded = try? decoder.decode(TunerRailPresetContainer.self, from: data),
+           !decoded.presets.isEmpty {
+            let activeID = decoded.presets.contains(where: { $0.id == decoded.activePresetID }) ? decoded.activePresetID : (decoded.presets.first?.id ?? Self.defaultPreset.id)
+            return TunerRailPresetContainer(activePresetID: activeID, presets: decoded.presets)
+        }
+
+        if let json = defaults.string(forKey: SettingsKeys.tunerRailPresetsJSON),
+           let data = json.data(using: .utf8),
+           let legacyPresets = try? decoder.decode([TunerRailPreset].self, from: data),
+           !legacyPresets.isEmpty {
+            let legacyActive = UUID(uuidString: defaults.string(forKey: SettingsKeys.tunerRailActivePresetID) ?? "") ?? legacyPresets.first!.id
+            let container = TunerRailPresetContainer(activePresetID: legacyActive, presets: legacyPresets)
+            persist(container, defaults: defaults)
+            return container
         }
 
         // Seed defaults
-        let defaultsList = defaultPresets
-        let active = defaultsList.first?.id ?? defaultPreset.id
-        let encoder = JSONEncoder()
-        if let data = try? encoder.encode(defaultsList),
-           let json = String(data: data, encoding: .utf8) {
-            defaults.set(json, forKey: SettingsKeys.tunerRailPresetsJSON)
-            defaults.set(active.uuidString, forKey: SettingsKeys.tunerRailActivePresetID)
-        }
-        defaults.set(true, forKey: SettingsKeys.tunerRailShow)
-        return (defaultsList, active)
-    }
-
-    static var defaultPreset: TunerRailPreset {
-        TunerRailPreset(
-            name: "Default",
-            enabledOrderedCards: [.nowTuning, .nearestTargets, .miniLatticeFocus, .intervalTape, .sessionCapture]
+        let fallback = TunerRailPresetContainer(
+            activePresetID: defaultPreset.id,
+            presets: [defaultPreset]
         )
+        persist(fallback, defaults: defaults)
+        return fallback
     }
 
-    static var minimalPreset: TunerRailPreset {
-        TunerRailPreset(
-            name: "Minimal",
-            enabledOrderedCards: [.nowTuning, .nearestTargets]
-        )
-    }
+    static let defaultPreset = TunerRailPreset(
+        name: "Default",
+        enabledOrderedCards: [.nowTuning, .nearestTargets, .miniLatticeFocus, .intervalTape, .sessionCapture]
+    )
 
-    static var defaultPresets: [TunerRailPreset] {
-        [defaultPreset, minimalPreset]
-    }
+    static let minimalPreset = TunerRailPreset(
+        name: "Minimal",
+        enabledOrderedCards: [.nowTuning, .nearestTargets]
+    )
+
+    static var defaultPresets: [TunerRailPreset] { [defaultPreset, minimalPreset] }
 
     var availableCards: [TunerRailCardID] {
         TunerRailCardID.allCases.filter { !enabledCards.contains($0) }
+    }
+
+    private static func persist(_ container: TunerRailPresetContainer, defaults: UserDefaults) {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        guard let data = try? encoder.encode(container),
+              let json = String(data: data, encoding: .utf8) else { return }
+        defaults.set(json, forKey: SettingsKeys.tunerRailPresetsJSON)
+        defaults.set(true, forKey: SettingsKeys.tunerRailShow)
     }
 }

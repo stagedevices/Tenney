@@ -99,17 +99,18 @@ struct TunerRailCardShell<Content: View>: View {
     }
 
     private var header: some View {
-        HStack {
-            Label(title, systemImage: systemImage)
-                .font(.headline)
-            Spacer()
-            Button(action: onToggleCollapse) {
+        Button(action: onToggleCollapse) {
+            HStack {
+                Label(title, systemImage: systemImage)
+                    .font(.headline)
+                Spacer()
                 Image(systemName: isCollapsed ? "chevron.down" : "chevron.up")
                     .imageScale(.small)
                     .padding(6)
             }
-            .buttonStyle(.plain)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
         .padding(.bottom, 2)
     }
 }
@@ -127,24 +128,34 @@ struct TunerRailNowTuningCard: View {
             isCollapsed: collapsed,
             onToggleCollapse: { collapsed.toggle() }
         ) {
+            let placeholder = snapshot.isListeningPlaceholder
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
-                    Text(snapshot.ratioText).font(.title3.weight(.semibold))
+                    Text(placeholder ? "—" : snapshot.ratioText)
+                        .font(.title3.weight(.semibold))
                     Spacer()
-                    Text(String(format: "%.1f Hz", snapshot.hz)).monospacedDigit()
+                    Text(placeholder ? "— Hz" : String(format: "%.1f Hz", snapshot.hz))
+                        .monospacedDigit()
                 }
                 HStack {
-                    Text(String(format: "%+.1f ¢", snapshot.cents)).monospacedDigit()
+                    Text(placeholder ? "— ¢" : String(format: "%+.1f ¢", snapshot.cents))
+                        .monospacedDigit()
                     Spacer()
-                    Text(String(format: "Conf %.2f", snapshot.confidence)).font(.footnote)
+                    Text(
+                        placeholder
+                        ? "—"
+                        : String(format: "Conf %.2f", snapshot.confidence)
+                    )
+                    .font(.footnote)
                 }
-                if !snapshot.lowerText.isEmpty || !snapshot.higherText.isEmpty {
+                if placeholder {
+                    Text("Listening…")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } else if !snapshot.lowerText.isEmpty || !snapshot.higherText.isEmpty {
                     Text("Lower: \(snapshot.lowerText) · Higher: \(snapshot.higherText)")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
-                }
-                if !snapshot.isListening {
-                    Text("Listening…").font(.footnote).foregroundStyle(.secondary)
                 }
             }
         }
@@ -175,8 +186,13 @@ struct TunerRailIntervalTapeCard: View {
             isCollapsed: collapsed,
             onToggleCollapse: { collapsed.toggle() }
         ) {
+            let listening = snapshot.isListeningPlaceholder
             VStack(alignment: .leading, spacing: 6) {
-                if entries.isEmpty {
+                if listening {
+                    Text("Listening…")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } else if entries.isEmpty {
                     Text("Waiting for stable targets…")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
@@ -218,6 +234,11 @@ struct TunerRailIntervalTapeCard: View {
     }
 
     private func handleSnapshot() {
+        guard !snapshot.isListeningPlaceholder else {
+            stableStart = nil
+            stableKey = ""
+            return
+        }
         // stability gate: same targetKey for ≥450ms + confidence ≥0.6
         guard snapshot.confidence >= minConfidence else {
             stableStart = nil
@@ -250,6 +271,7 @@ struct TunerRailIntervalTapeCard: View {
     }
 
     private func appendCurrent() {
+        guard snapshot.hasLivePitch else { return }
         let e = TapeEntry(
             ratio: snapshot.ratioText,
             hz: snapshot.hz,
@@ -571,17 +593,23 @@ struct TunerRailNearestTargetsCard: View {
                     .toggleStyle(.switch)
                     .font(.footnote)
                     .onChange(of: sortByComplexity) { _ in refresh() }
-                
-                ForEach(candidates.prefix(12)) { cand in
-                    HStack(spacing: 10) {
-                        Text(cand.ratioText).font(.footnote.monospaced())
-                        Spacer()
-                        Text(String(format: "%+.1f¢", cand.cents)).monospacedDigit()
-                        Text(String(format: "%.1f Hz", cand.hz)).monospacedDigit()
+
+                if snapshot.isListeningPlaceholder {
+                    Text("Listening…")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(candidates.prefix(12)) { cand in
+                        HStack(spacing: 10) {
+                            Text(cand.ratioText).font(.footnote.monospaced())
+                            Spacer()
+                            Text(String(format: "%+.1f¢", cand.cents)).monospacedDigit()
+                            Text(String(format: "%.1f Hz", cand.hz)).monospacedDigit()
+                        }
+                        .contentShape(Rectangle())
+                        .onTapGesture { onLock(cand.ref) }
+                        .contextMenu { rowMenu(cand) }
                     }
-                    .contentShape(Rectangle())
-                    .onTapGesture { onLock(cand.ref) }
-                    .contextMenu { rowMenu(cand) }
                 }
             }
             // refresh via the throttled rail clock (10–20 Hz)
@@ -608,6 +636,10 @@ struct TunerRailNearestTargetsCard: View {
     }
     
     private func refresh() {
+        guard snapshot.hasLivePitch else {
+            candidates = []
+            return
+        }
         candidates = solver.candidates(
             aroundHz: snapshot.hz,
             rootHz: rootHz,
@@ -641,12 +673,20 @@ struct TunerRailSessionCaptureCard: View {
             isCollapsed: collapsed,
             onToggleCollapse: { collapsed.toggle() }
         ) {
+            let hasLivePitch = snapshot.hasLivePitch
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 10) {
                     Button("Capture") { captureCurrent() }
+                        .disabled(!hasLivePitch)
                     Button("Export as Scale") { exportAsScale() }
                 }
                 .buttonStyle(.borderedProminent)
+
+                if !hasLivePitch {
+                    Text("Listening…")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
 
                 if session.entries.isEmpty {
                     Text("Captured items will appear here for export.")
@@ -671,6 +711,7 @@ struct TunerRailSessionCaptureCard: View {
     }
 
     private func captureCurrent() {
+        guard snapshot.hasLivePitch else { return }
         session.capture(.init(ratio: snapshot.ratioText, hz: snapshot.hz, cents: snapshot.cents, timestamp: Date()))
     }
 
@@ -705,7 +746,6 @@ struct TunerRailSessionCaptureCard: View {
 
 #if targetEnvironment(macCatalyst)
 struct TunerContextRailHost: View {
-    @StateObject private var session = TunerRailSessionCaptureModel()
     let app: AppModel
     let onLockTarget: (RatioRef) -> Void
     let onExportScale: (ScaleBuilderPayload) -> Void
@@ -718,7 +758,7 @@ struct TunerContextRailHost: View {
 
     @StateObject private var clock: TunerRailClock
     @SceneStorage("tunerRail.width") private var railWidth: Double = 340
-         @State private var collapsed: Set<TunerRailCardID> = []
+    @SceneStorage("tunerRail.collapsed.raw") private var collapsedRaw: String = "[]"
         @State private var dividerHover = false
         @State private var isDraggingDivider = false
         @State private var dragStartWidth: Double = 340
@@ -757,11 +797,16 @@ struct TunerContextRailHost: View {
                 }
                 .frame(width: railWidth)
                 .onAppear { railWidth = min(maxWidth, max(minWidth, railWidth)) }
+                .onAppear { store.updateSnapshot(clock.snapshot) }
+                .onChange(of: clock.snapshot) { snap in
+                    store.updateSnapshot(snap)
+                }
                 .contextMenu {
                     Toggle(isOn: Binding(get: { store.showRail }, set: store.setShowRail)) {
                         Label("Show Rail", systemImage: "sidebar.trailing")
                     }
                     Button {
+                        app.openSettingsToTunerRail = true
                         onCustomize?()
                         showSettings = true
                     } label: {
@@ -823,7 +868,7 @@ struct TunerContextRailHost: View {
         case .intervalTape:
             TunerRailIntervalTapeCard(
                 snapshot: clock.snapshot,
-                session: session,
+                session: store.session,
                 onLock: onLockTarget,
                 collapsed: binding(for: id)
             )
@@ -846,7 +891,7 @@ struct TunerContextRailHost: View {
                 rootHz: app.effectiveRootHz,
                 primeLimit: globalPrimeLimit,
                 axisShift: globalAxisShift,
-                session: session,
+                session: store.session,
                 onLock: onLockTarget,
                 onExportSingleToScale: { ref in
                     let payload = ScaleBuilderPayload(rootHz: app.effectiveRootHz, primeLimit: globalPrimeLimit, items: [ref])
@@ -858,7 +903,7 @@ struct TunerContextRailHost: View {
         case .sessionCapture:
             TunerRailSessionCaptureCard(
                 snapshot: clock.snapshot,
-                session: session,
+                session: store.session,
                 rootHz: app.effectiveRootHz,
                 primeLimit: globalPrimeLimit,
                 onExportScale: onExportScale,
@@ -870,10 +915,26 @@ struct TunerContextRailHost: View {
     }
 
     private func binding(for id: TunerRailCardID) -> Binding<Bool> {
+        func decodeCollapsed() -> Set<TunerRailCardID> {
+            guard let data = collapsedRaw.data(using: .utf8),
+                  let ids = try? JSONDecoder().decode([String].self, from: data) else { return [] }
+            return Set(ids.compactMap { TunerRailCardID(rawValue: $0) })
+        }
+
+        func encodeCollapsed(_ set: Set<TunerRailCardID>) {
+            let ids = set.map(\.rawValue)
+            if let data = try? JSONEncoder().encode(ids),
+               let json = String(data: data, encoding: .utf8) {
+                collapsedRaw = json
+            }
+        }
+
         Binding(
-            get: { collapsed.contains(id) },
+            get: { decodeCollapsed().contains(id) },
             set: { newValue in
-                if newValue { collapsed.insert(id) } else { collapsed.remove(id) }
+                var set = decodeCollapsed()
+                if newValue { set.insert(id) } else { set.remove(id) }
+                encodeCollapsed(set)
             }
         )
     }
