@@ -3151,6 +3151,21 @@ struct LatticeView: View {
 #if targetEnvironment(macCatalyst)
             .contextMenu { latticeContextMenu() }
             .catalystCursor(currentCursor)
+#elseif os(macOS)
+            .background(
+                MacMouseTrackingView(
+                    onMove: { loc in
+                        lastPointerLocation = loc
+                        logPointer(loc)
+                    },
+                    onScroll: { delta, loc in
+                        lastPointerLocation = loc
+                        logPointer(loc)
+                        applyTrackpadPan(delta: delta)
+                    }
+                )
+                .allowsHitTesting(false)
+            )
 #endif
             .onChange(of: latticeSoundEnabled) { enabled in
                 guard !enabled else { return }
