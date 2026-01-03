@@ -7,7 +7,6 @@
 
 import SwiftUI
 import Combine
-import CoreGraphics
 import UIKit
 
 // MARK: - Shared rail models / helpers
@@ -115,27 +114,6 @@ private func ratioRefFrom(_ ratioText: String) -> RatioRef? {
     return RatioRef(p: pq.p, q: pq.q, octave: 0, monzo: monzo)
 }
 
-private struct TunerRailListeningOverlay: View {
-    let isActive: Bool
-
-    var body: some View {
-        Group {
-            if isActive {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Color.gray.opacity(0.20))
-                    .overlay(alignment: .topTrailing) {
-                        Text("Listening…")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                            .padding(8)
-                    }
-                    .allowsHitTesting(false)
-            }
-        }
-    }
-}
-
-
 struct TunerRailCardShell<Content: View>: View {
     let title: String
     let systemImage: String
@@ -157,18 +135,12 @@ struct TunerRailCardShell<Content: View>: View {
     }
 
     private var header: some View {
-        Button(action: onToggleCollapse) {
-            HStack {
-                Label(title, systemImage: systemImage)
-                    .font(.headline)
-                Spacer()
-                Image(systemName: isCollapsed ? "chevron.down" : "chevron.up")
-                    .imageScale(.small)
-                    .padding(6)
-            }
-            .contentShape(Rectangle())
+        HStack {
+            Label(title, systemImage: systemImage)
+                .font(.headline)
+            Spacer()
+            GlassChip(title: isCollapsed ? "Expand" : "Collapse", active: true, action: onToggleCollapse)
         }
-        .buttonStyle(.plain)
         .padding(.bottom, 2)
     }
 }
@@ -186,7 +158,6 @@ struct TunerRailNowTuningCard: View {
             isCollapsed: collapsed,
             onToggleCollapse: { collapsed.toggle() }
         ) {
-            let listening = snapshot.isListening
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Text(snapshot.ratioText)
@@ -208,8 +179,6 @@ struct TunerRailNowTuningCard: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .opacity(listening ? 0.65 : 1.0)
-            .overlay { TunerRailListeningOverlay(isActive: listening) }
         }
     }
 }
@@ -238,7 +207,6 @@ struct TunerRailIntervalTapeCard: View {
             isCollapsed: collapsed,
             onToggleCollapse: { collapsed.toggle() }
         ) {
-            let listening = snapshot.isListening
             VStack(alignment: .leading, spacing: 6) {
                 if entries.isEmpty {
                     Text("Waiting for stable targets…")
@@ -251,8 +219,6 @@ struct TunerRailIntervalTapeCard: View {
                     }
                 }
             }
-            .opacity(listening ? 0.65 : 1.0)
-            .overlay { TunerRailListeningOverlay(isActive: listening) }
             .onAppear { load() }
             .onChange(of: snapshot.targetKey) { _ in handleSnapshot() }
             .onChange(of: snapshot.confidence) { _ in handleSnapshot() }
@@ -354,434 +320,6 @@ struct TunerRailIntervalTapeCard: View {
     }
 }
 
-struct TunerRailMiniLatticeFocusCard: View {
-    let snapshot: TunerRailSnapshot
-    let lockedTarget: RatioResult?
-    let globalPrimeLimit: Int
-    let globalAxisShift: [Int:Int]
-    let globalRootHz: Double
-    let tunerRootOverride: RatioRef?
-    let onSetOverride: (RatioRef) -> Void
-    let onClearOverride: () -> Void
-    let onLock: (RatioRef) -> Void
-    let onPreview: ((RatioRef?) -> Void)?
-
-    @Binding var collapsed: Bool
-
-    @AppStorage(SettingsKeys.railMiniLatticePrimeLimit) private var primeLimit: Int = 11
-    @AppStorage(SettingsKeys.railMiniLatticeAxisShift) private var axisShiftRaw: String = "{}"
-
-    @State private var pan: CGPoint = .zero
-    @State private var zoom: CGFloat = 1.0
-    @State private var centerRef: RatioRef? = nil
-    @State private var centerKey: String = ""
-
-    private var axisShift: [Int:Int] {
-        get {
-            guard let data = axisShiftRaw.data(using: .utf8),
-                  let dict = try? JSONDecoder().decode([Int:Int].self, from: data) else { return [:] }
-            return dict
-        }
-        nonmutating set {
-            if let data = try? JSONEncoder().encode(newValue),
-               let s = String(data: data, encoding: .utf8) {
-               axisShiftRaw = s
-            }
-        }
-    }
-
-    private var overrideHz: Double? {
-        guard let ref = tunerRootOverride else { return nil }
-        return frequencyHz(rootHz: globalRootHz, ratio: ref, foldToAudible: false)
-    }
-
-    @ViewBuilder
-    private var tunerRootStatus: some View {
-        HStack(spacing: 8) {
-            if let ref = tunerRootOverride, let hz = overrideHz {
-                Text("Tuner Root: \(ratioDisplayString(ref)) · \(String(format: "%.1f Hz", hz)) (Override)")
-                    .foregroundStyle(.secondary)
-            } else {
-                Text(String(format: "Tuner Root: Global (%.1f Hz)", globalRootHz))
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            if tunerRootOverride != nil {
-                Button("Clear Override") { onClearOverride() }
-                    .font(.footnote)
-                    .buttonStyle(.borderless)
-            }
-        }
-        .font(.footnote)
-    }
-
-
-    var body: some View {
-        TunerRailCardShell(
-            title: "Mini Lattice Focus",
-            systemImage: "hexagon",
-            isCollapsed: collapsed,
-            onToggleCollapse: { collapsed.toggle() }
-        ) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 10) {
-                    Text("Prime \(primeLimit)")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Button("Reset View") { resetView() }
-                        .font(.footnote)
-                        .buttonStyle(.borderless)
-                }
-
-                tunerRootStatus
-
-                ZStack {
-                    miniLattice
-                        .frame(height: 220)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-                    // pan + scroll-wheel zoom (Catalyst)
-                    #if targetEnvironment(macCatalyst)
-                    CatalystMouseTrackingView(
-                        onMove: { _ in },
-                        onScroll: { dy, _ in
-                            // dy: positive/negative wheel delta
-                            let next = zoom * (dy < 0 ? 1.08 : 0.92)
-                            zoom = min(4.0, max(0.5, next))
-                        }
-                    )
-                    .allowsHitTesting(true)
-                    #endif
-                }
-            }
-            .contextMenu {
-                Button("Reset View") { resetView() }
-                Button("Sync to Global Settings") {
-                    primeLimit = globalPrimeLimit
-                    axisShift = globalAxisShift
-                }
-                Button("Clear Root Override") { onClearOverride() }
-                    .disabled(tunerRootOverride == nil)
-            }
-            .onAppear { refreshCenter() }
-            .onChange(of: lockedTarget) { _ in refreshCenter() }
-            .onChange(of: snapshot.targetKey) { _ in refreshCenter() }
-        }
-    }
-
-    private var miniLattice: some View {
-        GeometryReader { geo in
-            let center = resolvedCenter
-            let snapshot = center.flatMap { buildMiniSnapshot(center: $0, primeLimit: primeLimit, axisShift: axisShift) }
-            let mapper = snapshot.map { MiniLatticeMapper(snapshot: $0, size: geo.size, pan: pan, zoom: zoom) }
-
-            ZStack {
-                Canvas { ctx, _ in
-                    guard let snapshot, let mapper else { return }
-                    for node in snapshot.nodes {
-                        drawMiniNode(node, mapper: mapper, in: &ctx)
-                    }
-                }
-                .contentShape(Rectangle())
-                .gesture(
-                    DragGesture(minimumDistance: 0)
-                        .onChanged { v in
-                            pan = CGPoint(x: pan.x + v.translation.width * 0.25,
-                                          y: pan.y + v.translation.height * 0.25)
-                        }
-                )
-                .overlay(alignment: .topLeading) {
-                    if let snapshot, let mapper {
-                        ZStack {
-                            ForEach(snapshot.nodes) { node in
-                                let pos = mapper.screenPosition(for: node.worldOffset)
-                                Button {
-                                    onLock(node.ref)
-                                    onPreview?(nil)
-                                } label: {
-                                    Color.clear
-                                }
-                                .frame(width: mapper.hitSize, height: mapper.hitSize)
-                                .position(x: pos.x, y: pos.y)
-                                .buttonStyle(.plain)
-#if targetEnvironment(macCatalyst)
-                                .onHover { hovering in
-                                    onPreview?(hovering ? node.ref : nil)
-                                }
-#endif
-                                .contextMenu {
-                                    Button("Set as Tuner Root") { onSetOverride(node.ref) }
-                                    Button("Copy Ratio") { RailPasteboard.copy(node.label) }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if snapshot == nil {
-                    Text("Waiting for target…")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-    }
-
-    private func resetView() {
-        pan = .zero
-        zoom = 1.0
-        onPreview?(nil)
-    }
-
-    private var resolvedCenter: RatioRef? {
-        if let locked = lockedTarget {
-            return ratioRef(from: locked)
-        }
-        if let centerRef { return centerRef }
-        return ratioRefFrom(snapshot.ratioText)
-    }
-
-    private func ratioRef(from result: RatioResult) -> RatioRef {
-        RatioRef(
-            p: result.num,
-            q: result.den,
-            octave: result.octave,
-            monzo: monzoFromPQ(p: result.num, q: result.den) ?? [:]
-        )
-    }
-
-    private func refreshCenter() {
-        if let lockedTarget {
-            applyCenter(
-                ratioRef(from: lockedTarget),
-                key: "lock:\(lockedTarget.num)/\(lockedTarget.den)@\(lockedTarget.octave)"
-            )
-            return
-        }
-
-        if let live = ratioRefFrom(snapshot.ratioText) {
-            applyCenter(live, key: "live:\(snapshot.targetKey)")
-        }
-    }
-
-    private func applyCenter(_ ref: RatioRef, key: String) {
-        guard centerKey != key else { return }
-        centerKey = key
-        centerRef = ref
-    }
-
-    private struct MiniLatticeNode: Identifiable {
-        let id = UUID()
-        let worldOffset: CGPoint
-        let label: String
-        let ref: RatioRef
-        let isOverlay: Bool
-        let prime: Int?
-    }
-
-    private struct MiniLatticeSnapshot {
-        let nodes: [MiniLatticeNode]
-        let bounds: CGRect
-    }
-
-    private struct MiniLatticeMapper {
-        let snapshot: MiniLatticeSnapshot
-        let size: CGSize
-        let pan: CGPoint
-        let zoom: CGFloat
-
-        var scale: CGFloat {
-            let padding: CGFloat = 24
-            let width = max(snapshot.bounds.width, 1)
-            let height = max(snapshot.bounds.height, 1)
-            let availW = max(1, size.width - padding * 2)
-            let availH = max(1, size.height - padding * 2)
-            let base = min(availW / width, availH / height) * 0.92
-            return base * zoom
-        }
-
-        var center: CGPoint {
-            CGPoint(x: size.width * 0.5 + pan.x, y: size.height * 0.5 + pan.y)
-        }
-
-        var hitSize: CGFloat { max(22, 26 * zoom) }
-
-        func screenPosition(for offset: CGPoint) -> CGPoint {
-            CGPoint(
-                x: center.x + offset.x * scale,
-                y: center.y + offset.y * scale
-            )
-        }
-    }
-
-    private func buildMiniSnapshot(center: RatioRef, primeLimit: Int, axisShift: [Int:Int]) -> MiniLatticeSnapshot? {
-        let layout = LatticeLayout()
-        let monzo = center.monzo.isEmpty ? (monzoFromPQ(p: center.p, q: center.q, primeLimit: primeLimit) ?? [:]) : center.monzo
-        let shift3 = axisShift[3] ?? 0
-        let shift5 = axisShift[5] ?? 0
-
-        let pivot = LatticeCoord(
-            e3: (monzo[3] ?? 0) - shift3,
-            e5: (monzo[5] ?? 0) - shift5
-        )
-        let pivotWorld = layout.position(for: pivot)
-
-        var nodes: [MiniLatticeNode] = []
-        var bounds = CGRect.null
-
-        func appendNode(offset: CGPoint, label: String, ref: RatioRef, isOverlay: Bool, prime: Int?) {
-            nodes.append(.init(worldOffset: offset, label: label, ref: ref, isOverlay: isOverlay, prime: prime))
-            let r: CGRect = .init(x: offset.x, y: offset.y, width: 0, height: 0)
-            bounds = bounds.union(r)
-        }
-
-        for dy in -3...3 {
-            for dx in -2...2 {
-                let coord = LatticeCoord(e3: pivot.e3 + dx, e5: pivot.e5 + dy)
-                guard let pq = planePQ(e3: coord.e3 + shift3, e5: coord.e5 + shift5) else { continue }
-                let (cp, cq) = RatioMath.canonicalPQUnit(pq.0, pq.1)
-                let label = RatioMath.unitLabel(cp, cq)
-                let ref = RatioRef(p: cp, q: cq, octave: 0, monzo: [3: coord.e3 + shift3, 5: coord.e5 + shift5])
-                let world = layout.position(for: coord)
-                let offset = CGPoint(x: world.x - pivotWorld.x, y: world.y - pivotWorld.y)
-                appendNode(offset: offset, label: label, ref: ref, isOverlay: false, prime: nil)
-            }
-        }
-
-        let overlayPrimes = overlayPrimeSet(centerMonzo: monzo, axisShift: axisShift, primeLimit: primeLimit)
-        let baseE3 = pivot.e3 + shift3
-        let baseE5 = pivot.e5 + shift5
-        let centerPrimeOffsets: [Int:Int] = {
-            var out: [Int:Int] = [:]
-            for p in overlayPrimes {
-                let shiftP = axisShift[p] ?? 0
-                out[p] = (monzo[p] ?? 0) - shiftP
-            }
-            return out
-        }()
-
-        for prime in overlayPrimes {
-            let shiftP = axisShift[prime] ?? 0
-            let centerEp = centerPrimeOffsets[prime] ?? 0
-            for ep in (centerEp - 2)...(centerEp + 2) {
-                let eP = ep + shiftP
-                guard let pq = overlayPQ(e3: baseE3, e5: baseE5, prime: prime, eP: eP) else { continue }
-                let (cp, cq) = RatioMath.canonicalPQUnit(pq.0, pq.1)
-                let label = RatioMath.unitLabel(cp, cq)
-                let refMonzo: [Int:Int] = [3: baseE3, 5: baseE5, prime: eP]
-                let ref = RatioRef(p: cp, q: cq, octave: 0, monzo: refMonzo)
-                let world = layout.position(monzo: refMonzo)
-                let offset = CGPoint(x: world.x - pivotWorld.x, y: world.y - pivotWorld.y)
-                appendNode(offset: offset, label: label, ref: ref, isOverlay: true, prime: prime)
-            }
-        }
-
-        guard !nodes.isEmpty else { return nil }
-        return MiniLatticeSnapshot(nodes: nodes, bounds: bounds)
-    }
-
-    private func drawMiniNode(_ node: MiniLatticeNode, mapper: MiniLatticeMapper, in ctx: inout GraphicsContext) {
-        let pos = mapper.screenPosition(for: node.worldOffset)
-        let tenney = max(1, RatioMath.tenneyHeight(p: node.ref.p, q: node.ref.q))
-        let base: CGFloat = 12
-        let lift = CGFloat(18.0 * (1.0 / sqrt(Double(tenney))))
-        let sz = max(8, base + lift)
-        let rect = CGRect(x: pos.x - sz * 0.5, y: pos.y - sz * 0.5, width: sz, height: sz)
-
-        let fill = node.isOverlay ? Color.accentColor : Color.secondary
-        ctx.fill(Path(ellipseIn: rect), with: .color(fill.opacity(0.22)))
-        ctx.stroke(Path(ellipseIn: rect), with: .color(fill.opacity(0.40)), lineWidth: 1)
-
-        let fontSize = 9 * max(0.75, mapper.zoom)
-
-        let text = Text(node.label)
-
-        .font(.system(size: fontSize, weight: .semibold, design: .monospaced))
-
-        let w = max(28, CGFloat(node.label.count) * fontSize * 0.60)
-
-        let h = fontSize * 1.25
-
-        let textRect = CGRect(x: pos.x - w * 0.5, y: (pos.y - sz * 0.75) - h * 0.5, width: w, height: h)
-
-        ctx.draw(text, in: textRect)
-    }
-
-    private func planePQ(e3: Int, e5: Int) -> (Int, Int)? {
-        var num = 1
-        var den = 1
-
-        func mul(_ x: inout Int, _ factor: Int?) -> Bool {
-            guard let f = factor, let r = safeMul(x, f) else { return false }
-            x = r
-            return true
-        }
-
-        if e3 >= 0 { if !mul(&num, safePowInt(3, exp: e3)) { return nil } }
-        else       { if !mul(&den, safePowInt(3, exp: -e3)) { return nil } }
-
-        if e5 >= 0 { if !mul(&num, safePowInt(5, exp: e5)) { return nil } }
-        else       { if !mul(&den, safePowInt(5, exp: -e5)) { return nil } }
-
-        let g = gcd(num, den)
-        return (num / g, den / g)
-    }
-
-    private func overlayPQ(e3: Int, e5: Int, prime: Int, eP: Int) -> (Int, Int)? {
-        var num = 1
-        var den = 1
-
-        func mul(_ x: inout Int, _ factor: Int?) -> Bool {
-            guard let f = factor, let r = safeMul(x, f) else { return false }
-            x = r
-            return true
-        }
-
-        if e3 >= 0 { if !mul(&num, safePowInt(3, exp: e3)) { return nil } }
-        else       { if !mul(&den, safePowInt(3, exp: -e3)) { return nil } }
-
-        if e5 >= 0 { if !mul(&num, safePowInt(5, exp: e5)) { return nil } }
-        else       { if !mul(&den, safePowInt(5, exp: -e5)) { return nil } }
-
-        if eP >= 0 { if !mul(&num, safePowInt(prime, exp: eP)) { return nil } }
-        else       { if !mul(&den, safePowInt(prime, exp: -eP)) { return nil } }
-
-        let g = gcd(num, den)
-        return (num / g, den / g)
-    }
-
-    private func overlayPrimeSet(centerMonzo: [Int:Int], axisShift: [Int:Int], primeLimit: Int) -> Set<Int> {
-        var primes = Set([7, 11].filter { $0 <= primeLimit })
-        for p in centerMonzo.keys where p > 5 && p <= primeLimit { primes.insert(p) }
-        for (p, shift) in axisShift where p > 5 && shift != 0 && p <= primeLimit { primes.insert(p) }
-        return primes
-    }
-
-    private func safeMul(_ a: Int, _ b: Int) -> Int? {
-        let (r, o) = a.multipliedReportingOverflow(by: b)
-        return o ? nil : r
-    }
-
-    private func safePowInt(_ base: Int, exp: Int) -> Int? {
-        guard exp >= 0 else { return nil }
-        if exp == 0 { return 1 }
-        var r = 1
-        for _ in 0..<exp {
-            guard let next = safeMul(r, base) else { return nil }
-            r = next
-        }
-        return r
-    }
-
-    private func gcd(_ a: Int, _ b: Int) -> Int {
-        var x = abs(a), y = abs(b)
-        while y != 0 { let t = x % y; x = y; y = t }
-        return max(1, x)
-    }
-}
-
-
 struct TunerRailNearestTargetsCard: View {
     let snapshot: TunerRailSnapshot
     let rootHz: Double
@@ -804,12 +342,13 @@ struct TunerRailNearestTargetsCard: View {
             isCollapsed: collapsed,
             onToggleCollapse: { collapsed.toggle() }
         ) {
-            let listening = snapshot.isListening
             VStack(alignment: .leading, spacing: 8) {
-                Toggle("Sort by Complexity", isOn: $sortByComplexity)
-                    .toggleStyle(.switch)
-                    .font(.footnote)
-                    .onChange(of: sortByComplexity) { _ in refresh() }
+                GlassChip(title: "Sort by Complexity", active: sortByComplexity) {
+                    withAnimation(.snappy) {
+                        sortByComplexity.toggle()
+                    }
+                    refresh()
+                }
 
                 if candidates.isEmpty {
                     Text("Waiting for pitch…")
@@ -829,8 +368,6 @@ struct TunerRailNearestTargetsCard: View {
                     }
                 }
             }
-            .opacity(listening ? 0.65 : 1.0)
-            .overlay { TunerRailListeningOverlay(isActive: listening) }
             // refresh via the throttled rail clock (10–20 Hz)
             .onChange(of: snapshot.hz) { _ in refresh() }
             .onChange(of: rootHz) { _ in refresh() }
@@ -892,15 +429,12 @@ struct TunerRailSessionCaptureCard: View {
             isCollapsed: collapsed,
             onToggleCollapse: { collapsed.toggle() }
         ) {
-            let hasLivePitch = snapshot.hasLivePitch
-            let listening = snapshot.isListening
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 10) {
-                    Button("Capture") { captureCurrent() }
-                        .disabled(!hasLivePitch)
-                    Button("Export as Scale") { exportAsScale() }
+                    GlassChip(title: "Capture", active: snapshot.hasLivePitch, action: captureCurrent)
+                        .disabled(!snapshot.hasLivePitch)
+                    GlassChip(title: "Export as Scale", active: true, action: exportAsScale)
                 }
-                .buttonStyle(.borderedProminent)
 
                 if session.entries.isEmpty {
                     Text("Captured items will appear here for export.")
@@ -917,12 +451,12 @@ struct TunerRailSessionCaptureCard: View {
                         .contextMenu { rowMenu(e) }
                     }
 
-                    Button("Clear All") { session.clear() }
-                        .font(.footnote)
+                    GlassChip(title: "Clear All", active: !session.entries.isEmpty, color: .red) {
+                        session.clear()
+                    }
+                    .disabled(session.entries.isEmpty)
                 }
             }
-            .opacity(listening ? 0.65 : 1.0)
-            .overlay { TunerRailListeningOverlay(isActive: listening) }
         }
     }
 
@@ -1089,21 +623,6 @@ struct TunerContextRailHost: View {
                 snapshot: clock.snapshot,
                 session: store.session,
                 onLock: onLockTarget,
-                collapsed: binding(for: id)
-            )
-
-        case .miniLatticeFocus:
-            TunerRailMiniLatticeFocusCard(
-                snapshot: clock.snapshot,
-                lockedTarget: tunerStore.lockedTarget,
-                globalPrimeLimit: globalPrimeLimit,
-                globalAxisShift: globalAxisShift,
-                globalRootHz: app.rootHz,
-                tunerRootOverride: app.tunerRootOverride,
-                onSetOverride: { ref in app.setTunerRootOverride(ref) },
-                onClearOverride: { app.clearTunerRootOverride() },
-                onLock: onLockTarget,
-                onPreview: nil,
                 collapsed: binding(for: id)
             )
 
