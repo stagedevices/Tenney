@@ -108,7 +108,16 @@ struct GlassChip: View {
             Color.clear
                 .glassEffect(.regular.tint(color.opacity(active ? 0.35 : 0.18)), in: Capsule())
         } else {
+#if os(macOS) || targetEnvironment(macCatalyst)
+            Color.clear
+                .background(.thinMaterial)
+                .overlay(
+                    Capsule()
+                        .fill(color.opacity(active ? 0.22 : 0.14))
+                )
+#else
             Color.clear.background(.thinMaterial)
+#endif
         }
     }
 }
