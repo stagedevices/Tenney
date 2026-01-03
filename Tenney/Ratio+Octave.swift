@@ -33,11 +33,31 @@ private func canonicalPQUnit(_ p: Int, _ q: Int) -> (Int, Int) {
     return (num / g, den / g)
 }
 
+/// Returns (num, den) reduced, representing (p/q)*2^octave, folded to 0.5 ≤ ratio < 2
+private func canonicalPQAroundUnison(_ p: Int, _ q: Int, octave: Int) -> (Int, Int) {
+    guard p > 0 && q > 0 else { return (p, q) }
+
+    var num = p
+    var den = q
+
+    if octave > 0 {
+        for _ in 0..<octave { num &*= 2 }
+    } else if octave < 0 {
+        for _ in 0..<(-octave) { den &*= 2 }
+    }
+
+    while Double(num) / Double(den) >= 2.0 { den &*= 2 }
+    while Double(num) / Double(den) <  0.5 { num &*= 2 }
+
+    let g = gcd(num, den)
+    return (num / g, den / g)
+}
+
+
 /// Frequency from RatioRef with canonicalized p/q (1 ≤ p/q < 2), no fold unless asked.
 func frequencyHz(rootHz: Double, ratio: RatioRef, foldToAudible: Bool = false,
                  minHz: Double = 20, maxHz: Double = 5000) -> Double {
-    let (cn, cd) = canonicalPQUnit(ratio.p, ratio.q)
-    let base = rootHz * pow(2.0, Double(ratio.octave)) * (Double(cn) / Double(cd))
+    let base = rootHz * pow(2.0, Double(ratio.octave)) * (Double(ratio.p) / Double(ratio.q))
     guard foldToAudible else { return base }
     var x = base
     var lo = minHz, hi = maxHz
@@ -58,7 +78,7 @@ func canStepOctave(rootHz: Double, ratio: RatioRef, direction: OctaveStepDirecti
 
 /// Display helpers
 func ratioDisplayString(_ r: RatioRef) -> String {
-    let (cn, cd) = canonicalPQUnit(r.p, r.q)
+    let (cn, cd) = canonicalPQAroundUnison(r.p, r.q, octave: r.octave)
     return "\(cn)/\(cd)"
 }
 

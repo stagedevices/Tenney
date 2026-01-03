@@ -3800,19 +3800,19 @@ struct LatticeView: View {
         let now = Date()
         if let last = lastPointerLog, now.timeIntervalSince(last) < 0.15 { return }
         lastPointerLog = now
-        print("[LatticePointer] loc=\(String(format: \"%.1f\", point.x)), \(String(format: \"%.1f\", point.y))")
+        print("[LatticePointer] loc=\(String(format: "%.1f", point.x)), \(String(format: "%.1f", point.y))")
 #endif
     }
 
     private func logTrackpadPan(delta: CGSize, before: CGPoint, after: CGPoint) {
 #if DEBUG
-        print("[LatticePan] delta=(\(String(format: \"%.2f\", delta.width)), \(String(format: \"%.2f\", delta.height))) -> translation (\(String(format: \"%.2f\", before.x)), \(String(format: \"%.2f\", before.y))) -> (\(String(format: \"%.2f\", after.x)), \(String(format: \"%.2f\", after.y)))")
+        print("[LatticePan] delta=(\(String(format: "%.2f", delta.width)), \(String(format: "%.2f", delta.height))) -> translation (\(String(format: "%.2f", before.x)), \(String(format: "%.2f", before.y))) -> (\(String(format: "%.2f", after.x)), \(String(format: "%.2f", after.y)))")
 #endif
     }
 
     private func logZoom(factor: CGFloat, anchor: CGPoint, before: LatticeCamera, after: LatticeCamera) {
 #if DEBUG
-        print("[LatticeZoom] factor=\(String(format: \"%.3f\", factor)) anchor=\(String(format: \"%.1f\", anchor.x)), \(String(format: \"%.1f\", anchor.y)) scale \(String(format: \"%.2f\", before.scale)) -> \(String(format: \"%.2f\", after.scale)) translation (\(String(format: \"%.2f\", before.translation.x)), \(String(format: \"%.2f\", before.translation.y))) -> (\(String(format: \"%.2f\", after.translation.x)), \(String(format: \"%.2f\", after.translation.y)))")
+        print("[LatticeZoom] factor=\(String(format: "%.3f", factor)) anchor=\(String(format: "%.1f", anchor.x)), \(String(format: "%.1f", anchor.y)) scale \(String(format: "%.2f", before.scale)) -> \(String(format: "%.2f", after.scale)) translation (\(String(format: "%.2f", before.translation.x)), \(String(format: "%.2f", before.translation.y))) -> (\(String(format: "%.2f", after.translation.x)), \(String(format: "%.2f", after.translation.y)))")
 #endif
     }
 
