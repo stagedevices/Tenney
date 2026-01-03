@@ -77,6 +77,26 @@ private func ratioRefFrom(_ ratioText: String) -> RatioRef? {
     return RatioRef(p: pq.p, q: pq.q, octave: 0)
 }
 
+private struct TunerRailListeningOverlay: View {
+    let isActive: Bool
+
+    var body: some View {
+        Group {
+            if isActive {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color.gray.opacity(0.20))
+                    .overlay(alignment: .topTrailing) {
+                        Text("Listening…")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .padding(8)
+                    }
+                    .allowsHitTesting(false)
+            }
+        }
+    }
+}
+
 
 struct TunerRailCardShell<Content: View>: View {
     let title: String
@@ -128,36 +148,30 @@ struct TunerRailNowTuningCard: View {
             isCollapsed: collapsed,
             onToggleCollapse: { collapsed.toggle() }
         ) {
-            let placeholder = snapshot.isListeningPlaceholder
+            let listening = snapshot.isListening
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
-                    Text(placeholder ? "—" : snapshot.ratioText)
+                    Text(snapshot.ratioText)
                         .font(.title3.weight(.semibold))
                     Spacer()
-                    Text(placeholder ? "— Hz" : String(format: "%.1f Hz", snapshot.hz))
+                    Text(String(format: "%.1f Hz", snapshot.hz))
                         .monospacedDigit()
                 }
                 HStack {
-                    Text(placeholder ? "— ¢" : String(format: "%+.1f ¢", snapshot.cents))
+                    Text(String(format: "%+.1f ¢", snapshot.cents))
                         .monospacedDigit()
                     Spacer()
-                    Text(
-                        placeholder
-                        ? "—"
-                        : String(format: "Conf %.2f", snapshot.confidence)
-                    )
+                    Text(String(format: "Conf %.2f", snapshot.confidence))
                     .font(.footnote)
                 }
-                if placeholder {
-                    Text("Listening…")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                } else if !snapshot.lowerText.isEmpty || !snapshot.higherText.isEmpty {
+                if !snapshot.lowerText.isEmpty || !snapshot.higherText.isEmpty {
                     Text("Lower: \(snapshot.lowerText) · Higher: \(snapshot.higherText)")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
             }
+            .opacity(listening ? 0.65 : 1.0)
+            .overlay { TunerRailListeningOverlay(isActive: listening) }
         }
     }
 }
@@ -186,13 +200,9 @@ struct TunerRailIntervalTapeCard: View {
             isCollapsed: collapsed,
             onToggleCollapse: { collapsed.toggle() }
         ) {
-            let listening = snapshot.isListeningPlaceholder
+            let listening = snapshot.isListening
             VStack(alignment: .leading, spacing: 6) {
-                if listening {
-                    Text("Listening…")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                } else if entries.isEmpty {
+                if entries.isEmpty {
                     Text("Waiting for stable targets…")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
@@ -203,6 +213,8 @@ struct TunerRailIntervalTapeCard: View {
                     }
                 }
             }
+            .opacity(listening ? 0.65 : 1.0)
+            .overlay { TunerRailListeningOverlay(isActive: listening) }
             .onAppear { load() }
             .onChange(of: snapshot.targetKey) { _ in handleSnapshot() }
             .onChange(of: snapshot.confidence) { _ in handleSnapshot() }
@@ -234,7 +246,7 @@ struct TunerRailIntervalTapeCard: View {
     }
 
     private func handleSnapshot() {
-        guard !snapshot.isListeningPlaceholder else {
+        guard !snapshot.isListening else {
             stableStart = nil
             stableKey = ""
             return
@@ -588,14 +600,15 @@ struct TunerRailNearestTargetsCard: View {
             isCollapsed: collapsed,
             onToggleCollapse: { collapsed.toggle() }
         ) {
+            let listening = snapshot.isListening
             VStack(alignment: .leading, spacing: 8) {
                 Toggle("Sort by Complexity", isOn: $sortByComplexity)
                     .toggleStyle(.switch)
                     .font(.footnote)
                     .onChange(of: sortByComplexity) { _ in refresh() }
 
-                if snapshot.isListeningPlaceholder {
-                    Text("Listening…")
+                if candidates.isEmpty {
+                    Text("Waiting for pitch…")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 } else {
@@ -612,11 +625,16 @@ struct TunerRailNearestTargetsCard: View {
                     }
                 }
             }
+            .opacity(listening ? 0.65 : 1.0)
+            .overlay { TunerRailListeningOverlay(isActive: listening) }
             // refresh via the throttled rail clock (10–20 Hz)
             .onChange(of: snapshot.hz) { _ in refresh() }
             .onChange(of: rootHz) { _ in refresh() }
             .onChange(of: primeLimit) { _ in refresh() }
             .onChange(of: axisShift) { _ in refresh() }
+            .onChange(of: snapshot.isListening) { listening in
+                if !listening { refresh() }
+            }
             .onAppear { refresh() }
         }
     }
@@ -636,10 +654,7 @@ struct TunerRailNearestTargetsCard: View {
     }
     
     private func refresh() {
-        guard snapshot.hasLivePitch else {
-            candidates = []
-            return
-        }
+        guard snapshot.hasLivePitch else { return }
         candidates = solver.candidates(
             aroundHz: snapshot.hz,
             rootHz: rootHz,
@@ -674,6 +689,7 @@ struct TunerRailSessionCaptureCard: View {
             onToggleCollapse: { collapsed.toggle() }
         ) {
             let hasLivePitch = snapshot.hasLivePitch
+            let listening = snapshot.isListening
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 10) {
                     Button("Capture") { captureCurrent() }
@@ -681,12 +697,6 @@ struct TunerRailSessionCaptureCard: View {
                     Button("Export as Scale") { exportAsScale() }
                 }
                 .buttonStyle(.borderedProminent)
-
-                if !hasLivePitch {
-                    Text("Listening…")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
 
                 if session.entries.isEmpty {
                     Text("Captured items will appear here for export.")
@@ -707,6 +717,8 @@ struct TunerRailSessionCaptureCard: View {
                         .font(.footnote)
                 }
             }
+            .opacity(listening ? 0.65 : 1.0)
+            .overlay { TunerRailListeningOverlay(isActive: listening) }
         }
     }
 
