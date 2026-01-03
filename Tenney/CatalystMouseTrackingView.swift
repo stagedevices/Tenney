@@ -77,7 +77,7 @@ struct CatalystMouseTrackingView: UIViewRepresentable {
             guard let v = hostView else { return }
             // translation is a good “delta” proxy for scroll wheel / trackpad scroll in Catalyst
             let translation = gr.translation(in: v)
-                        let delta = CGSize(width: translation.x, height: translation.y)
+            let delta = CGSize(width: translation.x, height: translation.y)
             let loc = gr.location(in: v)
             if gr.state == .began || gr.state == .changed {
                 onScroll(delta, loc)
