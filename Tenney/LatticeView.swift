@@ -3001,6 +3001,9 @@ struct LatticeView: View {
                         overlayChips
                     }
                     .padding(8)
+#if os(macOS) || targetEnvironment(macCatalyst)
+                    .padding(.top, 8)
+#endif
                     .allowsHitTesting(true)
                 }
                 
@@ -3442,6 +3445,9 @@ struct LatticeView: View {
             }
             .padding(8)
         }
+#if os(macOS) || targetEnvironment(macCatalyst)
+        .scaleEffect(1.08)
+#endif
     }
 
     
