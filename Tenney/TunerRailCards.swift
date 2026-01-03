@@ -929,7 +929,7 @@ struct TunerContextRailHost: View {
             }
         }
 
-        Binding(
+        return Binding(
             get: { decodeCollapsed().contains(id) },
             set: { newValue in
                 var set = decodeCollapsed()

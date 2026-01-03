@@ -543,7 +543,10 @@ private let libraryStore = ScaleLibraryStore.shared
     }
     private var settingsSheet: some View {
         StudioConsoleView(initialCategory: requestedSettingsCategory)
+        #if targetEnvironment(macCatalyst)
             .environmentObject(tunerRailStore)
+        #endif
+            .environmentObject(app)
             .statusBar(hidden: stageHideStatus && stageActive)
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
