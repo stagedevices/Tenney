@@ -494,7 +494,6 @@ struct TunerRailSessionCaptureCard: View {
 
 // MARK: - Host
 
-#if targetEnvironment(macCatalyst)
 struct TunerContextRailHost: View {
     let app: AppModel
     @ObservedObject var tunerStore: TunerStore
@@ -692,4 +691,3 @@ struct TunerContextRailHost: View {
         }
     }
 }
-#endif

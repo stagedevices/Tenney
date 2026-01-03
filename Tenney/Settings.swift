@@ -362,6 +362,7 @@ struct StudioConsoleView: View {
     }
 
     private func handleTunerRailDeepLinkIfNeeded() {
+        guard supportsTunerContextRailSettings else { return }
         guard app.openSettingsToTunerRail else { return }
         shouldScrollToTunerRail = true
         if activeCategory != .tuner {
@@ -409,6 +410,13 @@ struct StudioConsoleView: View {
     @State private var showTunerRailPalette: Bool = false
     @State private var shouldScrollToTunerRail: Bool = false
     private let tunerRailSectionID = "settings.tunerRail.section"
+    private var supportsTunerContextRailSettings: Bool {
+        #if targetEnvironment(macCatalyst)
+        return true
+        #else
+        return UIDevice.current.userInterfaceIdiom == .pad
+        #endif
+    }
 
     // Tuning
     @AppStorage(SettingsKeys.a4Choice)   private var a4Choice = A4Choice._440.rawValue
@@ -724,104 +732,105 @@ struct StudioConsoleView: View {
 
 
 
-#if targetEnvironment(macCatalyst)
     @ViewBuilder private var tunerRailSettingsSection: some View {
-        glassCard(
-            icon: "sidebar.right",
-            title: "Tuner Context Rail",
-            subtitle: "Mac-only contextual cards"
-        ) {
-            Toggle("Show Rail", isOn: Binding(get: { tunerRailStore.showRail }, set: tunerRailStore.setShowRail))
+        if supportsTunerContextRailSettings {
+            glassCard(
+                icon: "sidebar.right",
+                title: "Tuner Context Rail",
+                subtitle: "Contextual cards for iPad & Mac"
+            ) {
+                Toggle("Show Rail", isOn: Binding(get: { tunerRailStore.showRail }, set: tunerRailStore.setShowRail))
 
-            Picker("Preset", selection: $tunerRailStore.activePresetID) {
-                ForEach(tunerRailStore.presets) { preset in
-                    Text(preset.name).tag(preset.id)
-                }
-            }
-            .onChange(of: tunerRailStore.activePresetID) { id in
-                tunerRailStore.applyPreset(id: id)
-            }
-
-            HStack {
-                Button("New Preset") {
-                    tunerRailStore.newPreset(named: "Preset \(tunerRailStore.presets.count + 1)")
-                }
-                Button("Duplicate") {
-                    tunerRailStore.duplicateActivePreset(as: "Copy \(tunerRailStore.presets.count + 1)")
-                }
-                Button("Rename") {
-                    tunerRailStore.renameActivePreset(to: "Preset \(Int.random(in: 1...999))")
-                }
-                Button("Delete") {
-                    tunerRailStore.deletePreset(id: tunerRailStore.activePresetID)
-                }
-                .disabled(tunerRailStore.presets.count <= 1)
-            }
-            .buttonStyle(.borderedProminent)
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Enabled Cards")
-                    .font(.headline)
-                List {
-                    ForEach(tunerRailStore.enabledCards, id: \.self) { card in
-                        HStack {
-                            Label(card.title, systemImage: card.systemImage)
-                            Spacer()
-                            Button {
-                                removeCard(card)
-                            } label: {
-                                Image(systemName: "minus.circle")
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .onMove { indices, newOffset in
-                        var list = tunerRailStore.enabledCards
-                        list.move(fromOffsets: indices, toOffset: newOffset)
-                        tunerRailStore.updateEnabledCards(list)
+                Picker("Preset", selection: $tunerRailStore.activePresetID) {
+                    ForEach(tunerRailStore.presets) { preset in
+                        Text(preset.name).tag(preset.id)
                     }
                 }
-                .environment(\.editMode, .constant(.active))
-                .frame(height: 220)
-            }
+                .onChange(of: tunerRailStore.activePresetID) { id in
+                    tunerRailStore.applyPreset(id: id)
+                }
 
-            Button {
-                showTunerRailPalette = true
-            } label: {
-                Label("Add Cards…", systemImage: "plus.circle")
-            }
-            .buttonStyle(.bordered)
-            .sheet(isPresented: $showTunerRailPalette) {
-                NavigationStack {
+                HStack {
+                    Button("New Preset") {
+                        tunerRailStore.newPreset(named: "Preset \(tunerRailStore.presets.count + 1)")
+                    }
+                    Button("Duplicate") {
+                        tunerRailStore.duplicateActivePreset(as: "Copy \(tunerRailStore.presets.count + 1)")
+                    }
+                    Button("Rename") {
+                        tunerRailStore.renameActivePreset(to: "Preset \(Int.random(in: 1...999))")
+                    }
+                    Button("Delete") {
+                        tunerRailStore.deletePreset(id: tunerRailStore.activePresetID)
+                    }
+                    .disabled(tunerRailStore.presets.count <= 1)
+                }
+                .buttonStyle(.borderedProminent)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Enabled Cards")
+                        .font(.headline)
                     List {
-                        ForEach(tunerRailStore.availableCards) { card in
-                            Button {
-                                var list = tunerRailStore.enabledCards
-                                list.append(card)
-                                tunerRailStore.updateEnabledCards(list)
-                            } label: {
+                        ForEach(tunerRailStore.enabledCards, id: \.self) { card in
+                            HStack {
                                 Label(card.title, systemImage: card.systemImage)
+                                Spacer()
+                                Button {
+                                    removeCard(card)
+                                } label: {
+                                    Image(systemName: "minus.circle")
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .onMove { indices, newOffset in
+                            var list = tunerRailStore.enabledCards
+                            list.move(fromOffsets: indices, toOffset: newOffset)
+                            tunerRailStore.updateEnabledCards(list)
+                        }
+                    }
+                    .environment(\.editMode, .constant(.active))
+                    .frame(height: 220)
+                }
+
+                Button {
+                    showTunerRailPalette = true
+                } label: {
+                    Label("Add Cards…", systemImage: "plus.circle")
+                }
+                .buttonStyle(.bordered)
+                .sheet(isPresented: $showTunerRailPalette) {
+                    NavigationStack {
+                        List {
+                            ForEach(tunerRailStore.availableCards) { card in
+                                Button {
+                                    var list = tunerRailStore.enabledCards
+                                    list.append(card)
+                                    tunerRailStore.updateEnabledCards(list)
+                                } label: {
+                                    Label(card.title, systemImage: card.systemImage)
+                                }
+                            }
+                        }
+                        .navigationTitle("Add Cards")
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button("Cancel") { showTunerRailPalette = false }
+                            }
+                            ToolbarItem(placement: .confirmationAction) {
+                                Button("Done") { showTunerRailPalette = false }
                             }
                         }
                     }
-                    .navigationTitle("Add Cards")
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Button("Cancel") { showTunerRailPalette = false }
-                        }
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Done") { showTunerRailPalette = false }
-                        }
-                    }
+                    .presentationDetents([.medium, .large])
                 }
-                .presentationDetents([.medium, .large])
-            }
 
-            Text("Presets store enabled cards and order. Collapse state and rail width are per-window.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+                Text("Presets store enabled cards and order. Collapse state and rail width are per-window.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            .id(tunerRailSectionID)
         }
-        .id(tunerRailSectionID)
     }
 
     private func removeCard(_ card: TunerRailCardID) {
@@ -829,7 +838,6 @@ struct StudioConsoleView: View {
         list.removeAll(where: { $0 == card })
         tunerRailStore.updateEnabledCards(list)
     }
-#endif
 
     // MARK: - Chip / Tile primitives (match Theme + Pro Audio visual language)
     
@@ -3219,9 +3227,9 @@ struct StudioConsoleView: View {
         VStack(spacing: 14) {
             tuningSection
             tunerNeedleSection
-#if targetEnvironment(macCatalyst)
-            tunerRailSettingsSection
-#endif
+            if supportsTunerContextRailSettings {
+                tunerRailSettingsSection
+            }
             stageSection
             // (Optional: add any other tuner-only UX controls here later)
         }
