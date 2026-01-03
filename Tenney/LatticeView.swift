@@ -2929,6 +2929,38 @@ struct LatticeView: View {
         ZStack {
             canvasLayer(viewRect: viewRect)
                 .allowsHitTesting(false)
+#if os(macOS) || targetEnvironment(macCatalyst)
+                .overlay(alignment: .topLeading) {
+                    LatticeTrackpadBridge(
+                        onPointer: { loc in
+                            pointerInLattice = loc
+                            logPointer(loc)
+#if targetEnvironment(macCatalyst)
+                            updateContextTarget(at: loc, in: geo.size)
+#endif
+                        },
+                        onScrollPan: { delta in
+                            applyTrackpadPan(delta: delta)
+                        },
+                        onZoom: { factor in
+                            let anchor = zoomAnchor(in: geo)
+                            applyZoom(by: factor, anchor: anchor)
+                        },
+                        onHover: { hovering in
+                            isHoveringLattice = hovering
+                            if !hovering {
+                                pointerInLattice = nil
+#if targetEnvironment(macCatalyst)
+                                contextTarget = nil
+#endif
+                            }
+                        }
+                    )
+                    .frame(width: geo.size.width, height: geo.size.height)
+                    .contentShape(Rectangle())
+                    .zIndex(0)
+                }
+#endif
             
             gestureCatcher(in: geo, viewRect: viewRect)
                 .zIndex(1)
@@ -3117,37 +3149,6 @@ struct LatticeView: View {
                     }
             .onAppear { viewSize = geo.size }
             .onChange(of: geo.size) { viewSize = $0 }
-#if os(macOS) || targetEnvironment(macCatalyst)
-            .overlay(alignment: .topLeading) {
-                LatticeTrackpadBridge(
-                    onPointer: { loc in
-                        pointerInLattice = loc
-                        logPointer(loc)
-#if targetEnvironment(macCatalyst)
-                        updateContextTarget(at: loc, in: geo.size)
-#endif
-                    },
-                    onScrollPan: { delta in
-                        applyTrackpadPan(delta: delta)
-                    },
-                    onZoom: { factor in
-                        let anchor = zoomAnchor(in: geo)
-                        applyZoom(by: factor, anchor: anchor)
-                    },
-                    onHover: { hovering in
-                        isHoveringLattice = hovering
-                        if !hovering {
-                            pointerInLattice = nil
-#if targetEnvironment(macCatalyst)
-                            contextTarget = nil
-#endif
-                        }
-                    }
-                )
-                .frame(width: geo.size.width, height: geo.size.height)
-                .contentShape(Rectangle())
-            }
-#endif
 #if targetEnvironment(macCatalyst)
             .contextMenu { latticeContextMenu() }
             .catalystCursor(currentCursor)
