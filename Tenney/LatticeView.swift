@@ -3002,7 +3002,8 @@ struct LatticeView: View {
                     }
                     .padding(8)
 #if os(macOS) || targetEnvironment(macCatalyst)
-                    .padding(.top, 8)
+                    .padding(.top, 20)
+                    .padding(.leading, 164)
 #endif
                     .allowsHitTesting(true)
                 }
@@ -3446,7 +3447,7 @@ struct LatticeView: View {
             .padding(8)
         }
 #if os(macOS) || targetEnvironment(macCatalyst)
-        .scaleEffect(1.08)
+        .scaleEffect(1.3)
 #endif
     }
 
