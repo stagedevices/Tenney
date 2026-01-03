@@ -1386,6 +1386,7 @@ private struct RootStudioSheet: View {
     @AppStorage(SettingsKeys.a4Choice)   private var a4Choice = "440"
     @AppStorage(SettingsKeys.a4CustomHz) private var a4Custom: Double = 440
     @AppStorage(SettingsKeys.staffA4Hz)  private var a4Staff: Double = 440
+    @Environment(\.dismiss) private var dismiss
 
     @Binding var tab: RootStudioTab
     let ns: Namespace.ID
@@ -1395,7 +1396,8 @@ private struct RootStudioSheet: View {
     @State private var highlight: RootStudioTab? = nil
 
     var body: some View {
-        ScrollViewReader { proxy in
+        ZStack(alignment: .topTrailing) {
+            ScrollViewReader { proxy in
                     ScrollView {
                         VStack(spacing: 14) {
                             // Sticky header: hero chip
@@ -1435,6 +1437,12 @@ private struct RootStudioSheet: View {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { withAnimation(.easeOut(duration: 0.25)) { highlight = nil } }
                     }
                 }
+#if targetEnvironment(macCatalyst)
+            GlassDismissCircleButton { dismiss() }
+                .padding(.top, 20)
+                .padding(.trailing, 20)
+#endif
+        }
         .onAppear {
             input = String(format: "%.1f", model.rootHz)
         }
