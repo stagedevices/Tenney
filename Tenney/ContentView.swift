@@ -133,6 +133,7 @@ private let libraryStore = ScaleLibraryStore.shared
 
     var body: some View {
         let blurActive = app.showOnboardingWizard && (setupWizardDone || frozenBackdrop == nil)
+        let isLocked = tunerStore.lockedTarget != nil
 
         ZStack {
             // ===== Underlying app content =====
@@ -252,6 +253,19 @@ private let libraryStore = ScaleLibraryStore.shared
         .frame(maxWidth: .infinity, maxHeight: .infinity)
 
         .overlay { resolvedTheme.surfaceTint.ignoresSafeArea().allowsHitTesting(false) }
+        .overlay {
+            Group {
+                if !isMacCatalyst, isLocked {
+                    LockBorderOverlay(
+                        accent: resolvedTheme.inTuneHighlightColor(activeLimit: tunerStore.primeLimit),
+                        isStage: stageActive
+                    )
+                    .transition(.opacity)
+                }
+            }
+            .allowsHitTesting(false)
+            .animation(.easeInOut(duration: 0.2), value: isLocked)
+        }
 
         // Still in ContentView.body view modifiers
         .onAppear {
@@ -605,6 +619,63 @@ private let libraryStore = ScaleLibraryStore.shared
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
             .presentationBackground(.ultraThinMaterial)
+    }
+
+    // Decorative lock overlay (iOS only)
+    private struct LockBorderOverlay: View {
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+        let accent: Color
+        let isStage: Bool
+
+        @State private var breathe = false
+
+        private var cycleDuration: Double { reduceMotion ? 9.0 : 3.0 }
+        private var baseOpacity: Double { isStage ? 0.12 : 0.4 }
+        private var amplitude: Double {
+            let a = isStage ? 0.05 : 0.16
+            return reduceMotion ? a * 0.45 : a
+        }
+        private var shadowBase: Double { isStage ? 3.5 : 8 }
+        private var shadowDelta: Double { isStage ? 1.5 : 6 }
+
+        var body: some View {
+            GeometryReader { geo in
+                let insets = geo.safeAreaInsets
+                let rect = CGRect(
+                    x: insets.leading,
+                    y: insets.top,
+                    width: max(0, geo.size.width - insets.leading - insets.trailing),
+                    height: max(0, geo.size.height - insets.top - insets.bottom)
+                )
+
+                let lowOpacity = max(0, baseOpacity - amplitude)
+                let highOpacity = min(1, baseOpacity + amplitude)
+                let currentOpacity = breathe ? highOpacity : lowOpacity
+                let currentShadow = shadowBase + (breathe ? shadowDelta : 0)
+
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .stroke(accent.opacity(currentOpacity), lineWidth: 1.2)
+                    .frame(width: rect.width, height: rect.height)
+                    .position(x: rect.midX, y: rect.midY)
+                    .shadow(color: accent.opacity(currentOpacity * 0.9), radius: currentShadow)
+                    .shadow(color: accent.opacity(currentOpacity * 0.5), radius: currentShadow * 1.4)
+                    .allowsHitTesting(false)
+                    .animation(.easeInOut(duration: cycleDuration).repeatForever(autoreverses: true), value: breathe)
+                    .onAppear { breathe = true }
+                    .onChange(of: reduceMotion) { _ in restart() }
+                    .onChange(of: isStage) { _ in restart() }
+            }
+            .ignoresSafeArea()
+        }
+
+        private func restart() {
+            breathe = false
+            DispatchQueue.main.async {
+                withAnimation(.easeInOut(duration: cycleDuration).repeatForever(autoreverses: true)) {
+                    breathe = true
+                }
+            }
+        }
     }
 
 #if targetEnvironment(macCatalyst)
