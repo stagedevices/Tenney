@@ -244,7 +244,7 @@ struct LatticeView: View {
     private func shouldDrawOverlayLabel(ep: Int) -> Bool {
         guard labelDensity > 0.01 else { return false }
 
-        let zoom = store.camera.scale
+        let zoom = store.camera.appliedScale
         let zoomT = clamp01((zoom - 52) / 80)
         guard zoomT >= 0.15 else { return false }
 
@@ -1512,7 +1512,7 @@ struct LatticeView: View {
     private func shouldDrawPlaneLabel(coord: LatticeCoord) -> Bool {
         guard labelDensity > 0.01 else { return false }
 
-        let zoom = store.camera.scale
+        let zoom = store.camera.appliedScale
         let zoomT = clamp01((zoom - 42) / 70)
         guard zoomT >= 0.15 else { return false }
 
@@ -2551,7 +2551,7 @@ struct LatticeView: View {
         guard gridMode != .off else { return }
 
 
-        let zoom = store.camera.scale
+        let zoom = store.camera.appliedScale
         guard zoom >= gridMinZoom else { return }
 
         let isDark = effectiveIsDark
@@ -2807,7 +2807,7 @@ struct LatticeView: View {
             Canvas(rendersAsynchronously: true) { ctx, _ in
                 let now = CACurrentMediaTime()
                 // Nodes on 3×5 plane (with shift applied)
-                let radius: Int = Int(max(8, min(48, store.camera.scale / 5)))
+                let radius: Int = Int(max(8, min(48, store.camera.appliedScale / 5)))
                 let anyNodes = layout.planeNodes(
                     in: viewRect,
                     camera: store.camera,
@@ -2845,7 +2845,7 @@ struct LatticeView: View {
                 // grid width baseline (0 if grid is off / below threshold)
                 let gridW: CGFloat = {
                     guard gridMode != .off else { return 0 }
-                    guard store.camera.scale >= gridMinZoom else { return 0 }
+                    guard store.camera.appliedScale >= gridMinZoom else { return 0 }
                     return LatticeGridWeight.fromStrength01(gridStrength).strokeWidth
                 }()
 
@@ -2858,7 +2858,7 @@ struct LatticeView: View {
                     pivot: store.pivot,
                     shift: store.axisShift,
                     camera: store.camera,
-                    zoom: store.camera.scale,
+                    zoom: store.camera.appliedScale,
                     gridStrokeWidth: gridW
                 )
 
@@ -2867,7 +2867,7 @@ struct LatticeView: View {
                     let pivotSnapshot = store.pivot
                     let shiftSnapshot = store.axisShift
                     let cameraSnapshot = store.camera
-                    let zoom = store.camera.scale
+                    let zoom = store.camera.appliedScale
                     let keys = store.selectionKeysToDraw()
 
                     // Focus info (plane only)
@@ -3240,7 +3240,7 @@ struct LatticeView: View {
         if shouldDrawPlaneLabel(coord: node.coord),
            let label = planeLabelText(for: node.coord) {
 
-            let zoomT = clamp01((store.camera.scale - 42) / 70)
+            let zoomT = clamp01((store.camera.appliedScale - 42) / 70)
             let a: CGFloat = 0.85 * zoomT * CGFloat(labelDensity)
             if a > 0.02 {
                 let text = Text(label)
@@ -3289,7 +3289,7 @@ struct LatticeView: View {
         let e5 = store.pivot.e5 + (store.axisShift[5] ?? 0)
         let shiftP = store.axisShift[p] ?? 0
 
-        let epSpan = max(6, min(12, Int(store.camera.scale / 8)))
+        let epSpan = max(6, min(12, Int(store.camera.appliedScale / 8)))
 
         // (recommended) skip far-offscreen points
         let pad: CGFloat = 60
@@ -3391,7 +3391,7 @@ struct LatticeView: View {
             if shouldDrawOverlayLabel(ep: ep),
                let label = overlayLabelText(num: num, den: den) {
 
-                let zoomT = clamp01((store.camera.scale - 52) / 80)
+                let zoomT = clamp01((store.camera.appliedScale - 52) / 80)
                 let a: CGFloat = 0.85 * zoomT * CGFloat(labelDensity)
                 let labelA: CGFloat = isAnimating ? (a * local) : a
 
@@ -3948,7 +3948,7 @@ struct LatticeView: View {
     }
 
     // 1) Prefer plane nodes around the pivot (screen distance)
-    let R = max(6, min(24, Int(store.camera.scale / 6)))
+    let R = max(6, min(24, Int(store.camera.appliedScale / 6)))
     var bestPlane: (d: CGFloat, pos: CGPoint, coord: LatticeCoord, p: Int, q: Int)?
 
     for de3 in (-R...R) {
@@ -3986,7 +3986,7 @@ struct LatticeView: View {
 
     let baseE3 = store.pivot.e3 + (store.axisShift[3] ?? 0)
     let baseE5 = store.pivot.e5 + (store.axisShift[5] ?? 0)
-    let epSpan = max(6, min(12, Int(store.camera.scale / 8)))
+    let epSpan = max(6, min(12, Int(store.camera.appliedScale / 8)))
 
     // Use the same prime set used for rendering so hit-testing matches what can appear.
     let overlayPrimes = store.renderPrimes.filter { $0 != 2 && $0 != 3 && $0 != 5 }
