@@ -13,7 +13,7 @@ import UIKit
 
 struct CatalystMouseTrackingView: UIViewRepresentable {
     let onMove: (CGPoint) -> Void
-    let onScroll: (CGFloat, CGPoint) -> Void
+    let onScroll: (CGSize, CGPoint) -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator(onMove: onMove, onScroll: onScroll)
@@ -54,10 +54,10 @@ struct CatalystMouseTrackingView: UIViewRepresentable {
         weak var hostView: UIView?
 
         var onMove: (CGPoint) -> Void
-        var onScroll: (CGFloat, CGPoint) -> Void
+        var onScroll: (CGSize, CGPoint) -> Void
 
         init(onMove: @escaping (CGPoint) -> Void,
-             onScroll: @escaping (CGFloat, CGPoint) -> Void) {
+             onScroll: @escaping (CGSize, CGPoint) -> Void) {
             self.onMove = onMove
             self.onScroll = onScroll
         }
@@ -75,11 +75,12 @@ struct CatalystMouseTrackingView: UIViewRepresentable {
 
         @objc func handleScrollPan(_ gr: UIPanGestureRecognizer) {
             guard let v = hostView else { return }
-            // translation.y is a good “delta” proxy for scroll wheel / trackpad scroll in Catalyst
-            let dy = gr.translation(in: v).y
+            // translation is a good “delta” proxy for scroll wheel / trackpad scroll in Catalyst
+            let translation = gr.translation(in: v)
+            let delta = CGSize(width: translation.x, height: translation.y)
             let loc = gr.location(in: v)
             if gr.state == .began || gr.state == .changed {
-                onScroll(dy, loc)
+                onScroll(delta, loc)
                 gr.setTranslation(.zero, in: v) // turn it into per-tick delta
             }
         }
@@ -87,6 +88,78 @@ struct CatalystMouseTrackingView: UIViewRepresentable {
         func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
                                shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
             true
+        }
+    }
+}
+
+#elseif os(macOS)
+
+import SwiftUI
+import AppKit
+
+struct MacMouseTrackingView: NSViewRepresentable {
+    let onMove: (CGPoint) -> Void
+    let onScroll: (CGSize, CGPoint) -> Void
+
+    func makeNSView(context: Context) -> TrackingView {
+        let view = TrackingView()
+        view.onMove = onMove
+        view.onScroll = onScroll
+        view.configureTrackingArea()
+        return view
+    }
+
+    func updateNSView(_ nsView: TrackingView, context: Context) {
+        nsView.onMove = onMove
+        nsView.onScroll = onScroll
+        nsView.configureTrackingArea()
+    }
+
+    final class TrackingView: NSView {
+        var onMove: ((CGPoint) -> Void)?
+        var onScroll: ((CGSize, CGPoint) -> Void)?
+        private var trackingArea: NSTrackingArea?
+
+        override var acceptsFirstResponder: Bool { true }
+
+        func configureTrackingArea() {
+            if let area = trackingArea {
+                removeTrackingArea(area)
+            }
+            let opts: NSTrackingArea.Options = [
+                .mouseMoved,
+                .activeInKeyWindow,
+                .inVisibleRect,
+                .mouseEnteredAndExited
+            ]
+            trackingArea = NSTrackingArea(rect: bounds, options: opts, owner: self, userInfo: nil)
+            if let area = trackingArea {
+                addTrackingArea(area)
+            }
+        }
+
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            configureTrackingArea()
+        }
+
+        override func mouseEntered(with event: NSEvent) {
+            handleMouseMove(event)
+        }
+
+        override func mouseMoved(with event: NSEvent) {
+            handleMouseMove(event)
+        }
+
+        override func scrollWheel(with event: NSEvent) {
+            let delta = CGSize(width: event.scrollingDeltaX, height: event.scrollingDeltaY)
+            let loc = convert(event.locationInWindow, from: nil)
+            onScroll?(delta, loc)
+        }
+
+        private func handleMouseMove(_ event: NSEvent) {
+            let loc = convert(event.locationInWindow, from: nil)
+            onMove?(loc)
         }
     }
 }
