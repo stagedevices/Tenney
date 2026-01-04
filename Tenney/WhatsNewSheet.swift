@@ -88,7 +88,7 @@ struct WhatsNewSheet: View {
 
     // URLs built from version
     private var releaseNotesURL: URL? {
-        URL(string: "https://www.github.com/stagedevices/tenney/")
+        URL(string: "https://www.github.com/stagedevices/tenney/changelog.md")
     }
     private var supportURL: URL? {
         URL(string: "https://www.stagedevices.com/support")
