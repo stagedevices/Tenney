@@ -3074,10 +3074,24 @@ struct StudioConsoleView: View {
         debugBundleExporting = true
         DiagnosticsCenter.shared.event(category: "diagnostics", level: .info, message: "Copy debug bundle")
         SentryService.shared.breadcrumb(category: "diagnostics", message: "Copy debug bundle")
-        Task { @MainActor in
+        Task {
             let summary = await DiagnosticsCenter.shared.exportClipboardSummary()
-            DebugBundleSharing.copyToClipboard(text: summary)
-            debugBundleExporting = false
+            await MainActor.run {
+                DebugBundleSharing.copyToClipboard(text: summary)
+            }
+
+            if crashReportingEnabled {
+                do {
+                    let zip = try await DiagnosticsCenter.shared.exportDebugBundle()
+                    await SentryService.shared.sendDebugBundleToSentry(zipURL: zip, summaryJSON: summary)
+                } catch {
+                    DiagnosticsCenter.shared.event(category: "diagnostics", level: .error, message: "Debug bundle export failed: \(error)")
+                }
+            }
+
+            await MainActor.run {
+                debugBundleExporting = false
+            }
         }
     }
 
@@ -3086,11 +3100,24 @@ struct StudioConsoleView: View {
         debugBundleExporting = true
         DiagnosticsCenter.shared.event(category: "diagnostics", level: .info, message: "Share debug bundle")
         SentryService.shared.breadcrumb(category: "diagnostics", message: "Share debug bundle")
-        Task { @MainActor in
-            if let url = try? await DiagnosticsCenter.shared.exportDebugBundle() {
-                DebugBundleSharing.shareFile(url: url)
+        Task {
+            do {
+                let url = try await DiagnosticsCenter.shared.exportDebugBundle()
+                let summary = await DiagnosticsCenter.shared.exportClipboardSummary()
+                await MainActor.run {
+                    DebugBundleSharing.shareFile(url: url)
+                }
+
+                if crashReportingEnabled {
+                    await SentryService.shared.sendDebugBundleToSentry(zipURL: url, summaryJSON: summary)
+                }
+            } catch {
+                DiagnosticsCenter.shared.event(category: "diagnostics", level: .error, message: "Debug bundle export failed: \(error)")
             }
-            debugBundleExporting = false
+
+            await MainActor.run {
+                debugBundleExporting = false
+            }
         }
     }
     private var showQuickThemeHomeTile: Bool {

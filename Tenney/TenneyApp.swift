@@ -6,7 +6,6 @@
 //
 
 import SwiftUI
-import Sentry
 
 import AVFAudio
 #if canImport(UIKit)
@@ -69,9 +68,7 @@ struct TenneyApp: App {
         } else {
             UserDefaults.standard.set(0, forKey: SettingsKeys.lastSessionCrashTimestamp)
         }
-        if UserDefaults.standard.bool(forKey: SettingsKeys.crashReportingEnabled) {
-            SentryService.shared.setEnabled(true)
-        }
+        if crashReportingEnabled { SentryService.shared.setEnabled(true) }
 #if canImport(UIKit)
         NotificationCenter.default.addObserver(
             forName: UIApplication.willTerminateNotification,

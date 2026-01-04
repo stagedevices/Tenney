@@ -18,11 +18,13 @@ final class SentryService {
 
     func setEnabled(_ on: Bool) {
         guard on else {
-            enabled = false
             SentrySDK.flush(timeout: 2.0)
             SentrySDK.close()
+            enabled = false
             return
         }
+
+        guard !enabled else { return }
 
         guard let dsn = Bundle.main.object(forInfoDictionaryKey: "SentryDSN") as? String else {
             return
@@ -38,13 +40,13 @@ final class SentryService {
         // Basic sanity so we don’t “start” with garbage in production.
         guard trimmed.hasPrefix("http"), trimmed.contains("@") else { return }
 
-
-        guard !enabled else { return }
-
         SentrySDK.start { options in
             options.dsn = trimmed
             options.sendDefaultPii = false
             options.tracesSampleRate = 0
+            options.enableAppHangTracking = false
+            options.enableNetworkTracking = false
+            options.enableSwizzling = false
 
             #if DEBUG
             options.environment = "debug"
@@ -80,5 +82,44 @@ final class SentryService {
             event.extra = extras
         }
         SentrySDK.capture(event: event)
+    }
+
+    func sendDebugBundleToSentry(zipURL: URL, summaryJSON: String) async {
+        guard enabled else { return }
+
+        let hadPreviousCrash = UserDefaults.standard.double(forKey: SettingsKeys.lastSessionCrashTimestamp) > 0
+
+        await Task.detached(priority: .utility) {
+            let event = Event()
+            event.level = .info
+            event.message = SentryMessage(formatted: "User shared debug bundle")
+            event.extra = [
+                "source": "settings",
+                "hadPreviousCrashMarker": hadPreviousCrash
+            ]
+
+            SentrySDK.configureScope { scope in
+                scope.addAttachment(
+                    Attachment(
+                        path: zipURL.path,
+                        filename: zipURL.lastPathComponent,
+                        contentType: "application/zip"
+                    )
+                )
+                scope.addAttachment(
+                    Attachment(
+                        data: Data(summaryJSON.utf8),
+                        filename: "clipboard-summary.json",
+                        contentType: "application/json"
+                    )
+                )
+            }
+
+            SentrySDK.capture(event: event)
+            SentrySDK.flush(timeout: 2.0)
+            SentrySDK.configureScope { scope in
+                scope.clearAttachments()
+            }
+        }.value
     }
 }
