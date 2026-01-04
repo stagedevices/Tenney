@@ -48,6 +48,8 @@ final class AppModel: ObservableObject {
         latticeAuditionOn = latticeSoundSetting
         let done = UserDefaults.standard.bool(forKey: SettingsKeys.setupWizardDone)
             self.showOnboardingWizard = !done
+        DiagnosticsCenter.shared.event(category: "app", level: .info, message: "AppModel init")
+        SentryService.shared.breadcrumb(category: "app", message: "AppModel init")
     }
     
     deinit {
@@ -186,6 +188,8 @@ final class AppModel: ObservableObject {
 #if DEBUG
         PitchAccuracyHarness.run()
 #endif
+        DiagnosticsCenter.shared.event(category: "app", level: .info, message: "configureAndStart")
+        SentryService.shared.breadcrumb(category: "app", message: "configureAndStart")
         
         // seed UI state immediately
         switch MicrophonePermission.status() {
@@ -206,6 +210,8 @@ final class AppModel: ObservableObject {
         fft = nil; phaseRefiner = nil; pll = nil; smoother = nil
         pipelineStart = Date()
         analysisBuffer.removeAll(); lastHzEstimate = nil
+        DiagnosticsCenter.shared.event(category: "audio", level: .info, message: "restartPipeline")
+        SentryService.shared.breadcrumb(category: "audio", message: "restartPipeline")
         
         // Only start if we are active and allowed to run.
         guard sceneIsActive, desiredMicActive else { return }
