@@ -167,6 +167,14 @@ struct WhatsNewSheet: View {
                     .padding(16)
                 }
             }
+        .overlay(alignment: .topTrailing) {
+                #if targetEnvironment(macCatalyst)
+                GlassDismissCircleButton {
+                    primaryAction()
+                }
+                .padding(12)
+                #endif
+            }
     }
     
     @available(iOS 26.0, *)

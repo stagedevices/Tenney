@@ -2255,6 +2255,7 @@ struct LatticeView: View {
 
             .opacity(disabled ? 0.45 : 1.0)
             .disabled(disabled)
+            .allowsHitTesting(!disabled)
         }
     }
     
