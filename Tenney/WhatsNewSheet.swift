@@ -88,7 +88,7 @@ struct WhatsNewSheet: View {
 
     // URLs built from version
     private var releaseNotesURL: URL? {
-        URL(string: "https://www.github.com/stagedevices/tenney/changelog.md")
+        URL(string: "https://cdn.jsdelivr.net/gh/stagedevices/Tenney/changelog.md")
     }
     private var supportURL: URL? {
         URL(string: "https://www.stagedevices.com/support")
@@ -421,7 +421,7 @@ struct WhatsNewSheet: View {
                     requestRating()
                     onRateApp?()
                 } label: {
-                    Label("Rate Tenney", systemImage: "star.bubble")
+                    Label("Rate", systemImage: "star.bubble")
                         .font(.subheadline.weight(.semibold))
                 }
                 .buttonStyle(.bordered)
