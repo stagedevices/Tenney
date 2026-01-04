@@ -752,6 +752,7 @@ extension Notification.Name {
 
          case .chronoDial:
              ChronoDial(
+                heldByConfidence: held,
                  cents: centsShown,
                  confidence: liveConf,
                  inTuneWindow: 5,
@@ -914,6 +915,8 @@ extension Notification.Name {
                     liveNearest: liveNearest
                 )
                 .frame(maxWidth: .infinity)
+                                .frame(minHeight: (store.viewStyle == .Gauge ? 320 : 260))
+                                .layoutPriority(1)
                 // add back in when ready to test phasescope
                           //      .frame(
                            //         minHeight: 260,

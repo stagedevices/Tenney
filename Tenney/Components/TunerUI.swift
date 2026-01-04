@@ -453,8 +453,8 @@ struct Gauge: View {
             let size = geo.size
             let w = size.width
             let h = size.height
-            let pivot = CGPoint(x: w * 0.5, y: h * 0.66)
-            let rOuter = min(w, h) * 0.46
+            let pivot = CGPoint(x: w * 0.5, y: h * 0.72)
+            let rOuter = min(w, h) * 0.54
             let rTickOuter = rOuter * 0.98
             let rTickInnerMajor = rOuter * 0.90
             let rTickInnerMinor = rOuter * 0.935
@@ -617,7 +617,7 @@ struct Gauge: View {
                 }
             }
         }
-        .frame(minHeight: 260)
+        .frame(minHeight: 340)
         .accessibilityLabel(Text(String(format: "%+.1f cents", cents.isFinite ? cents : 0)))
     }
 
