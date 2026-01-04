@@ -716,6 +716,9 @@ extension Notification.Name {
     private var liveCents: Double { model.display.cents }
     private var liveConf: Double { model.display.confidence }
     private var liveNearest: RatioResult? { parseRatio(model.display.ratioText) }
+    private var ratioDisplayText: String {
+        store.lockedTarget.map { "\($0.num)/\($0.den)" } ?? model.display.ratioText
+    }
 
     @StateObject private var hold = NeedleHoldState()
     @State private var currentNearest: RatioResult? = nil
@@ -742,6 +745,7 @@ extension Notification.Name {
          currentNearest: RatioResult?,
          liveNearest: RatioResult?
      ) -> some View {
+         let ratioText = ratioDisplayText
          switch store.viewStyle {
          case .Gauge:
              Gauge(
@@ -764,6 +768,16 @@ extension Notification.Name {
                  inTuneWindow: 5,
                  stageMode: store.stageMode,
                  accent: stageAccent
+             )
+
+         case .posterFraction:
+             PosterFractionDial(
+                 ratioText: ratioText,
+                 centsShown: centsShown,
+                 liveConf: liveConf,
+                 inTuneWindow: 5,
+                 threshold: 0.35,
+                 stageAccent: stageAccent
              )
              // add back in when ready to test phasescope
      //    case .phaseScope:
@@ -939,7 +953,7 @@ extension Notification.Name {
                 .overlay(alignment: .topTrailing) {
                     // Lock indicator chip (top-right of the dial area)
                     if let t = store.lockedTarget {
-                        BadgeCapsule(text: "Current \(model.display.ratioText)", style: AnyShapeStyle(Color.secondary.opacity(0.15)))
+                        BadgeCapsule(text: "Current \(ratioDisplayText)", style: AnyShapeStyle(Color.secondary.opacity(0.15)))
                             .padding(6)
                             .transition(.opacity.combined(with: .move(edge: .top)))
                     }
@@ -949,10 +963,12 @@ extension Notification.Name {
                 VStack(spacing: 8) {
                     // 12 o’clock: Ratio + prime badges
                     HStack(spacing: 10) {
-                        Text(store.lockedTarget.map { "\($0.num)/\($0.den)" } ?? model.display.ratioText)
-                            .font(.system(size: 34, weight: .semibold, design: .monospaced))
+                        let label = ratioDisplayText
+                        if store.viewStyle != .posterFraction {
+                            Text(label)
+                                .font(.system(size: 34, weight: .semibold, design: .monospaced))
+                        }
                         // tiny prime badge guesses from label (fast path; you already have NotationFormatter if needed)
-                        let label = store.lockedTarget.map { "\($0.num)/\($0.den)" } ?? model.display.ratioText
                         let primes = label.split(separator: "/").flatMap { Int($0) }.flatMap { factors($0) }.filter { $0 > 2 }
                         HStack(spacing: 6) {
                                                     ForEach(Array(Set(primes)).sorted(), id: \.self) { p in
@@ -988,7 +1004,7 @@ extension Notification.Name {
                             NextChip(title: "Lower",  text: model.display.lowerText)
                                 .onTapGesture { if let r = parseRatio(model.display.lowerText) { store.lockedTarget = r } }
                             Spacer(minLength: 12)
-                            BadgeCapsule(text: "Current \(model.display.ratioText)", style: AnyShapeStyle(Color.secondary.opacity(0.15)))
+                            BadgeCapsule(text: "Current \(ratioDisplayText)", style: AnyShapeStyle(Color.secondary.opacity(0.15)))
                             Spacer(minLength: 12)
                             NextChip(title: "Higher", text: model.display.higherText)
                                 .onTapGesture { if let r = parseRatio(model.display.higherText) { store.lockedTarget = r } }
@@ -1127,7 +1143,7 @@ extension Notification.Name {
                     .overlay(alignment: .topTrailing) {
                         if store.lockedTarget != nil {
                             BadgeCapsule(
-                                text: "Current \(model.display.ratioText)",
+                                text: "Current \(ratioDisplayText)",
                                 style: AnyShapeStyle(Color.secondary.opacity(0.15))
                             )
                             .padding(6)
@@ -1188,11 +1204,13 @@ extension Notification.Name {
                             .offset(y: 12)
                     }
 
-                    Text(model.display.ratioText)
-                        .font(.system(size: 58, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.55)
+                    if store.viewStyle != .posterFraction {
+                        Text(ratioDisplayText)
+                            .font(.system(size: 58, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.55)
+                    }
 
                     HStack(spacing: 10) {
                         StatTile(label: centsLabel,
