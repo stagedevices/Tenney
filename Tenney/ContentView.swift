@@ -752,6 +752,7 @@ extension Notification.Name {
 
          case .chronoDial:
              ChronoDial(
+                 heldByConfidence: held,
                  cents: centsShown,
                  confidence: liveConf,
                  inTuneWindow: 5,
