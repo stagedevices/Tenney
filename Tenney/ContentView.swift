@@ -408,12 +408,11 @@ private let libraryStore = ScaleLibraryStore.shared
 
         let isPhoneLandscapeCompact = (!isMacCatalyst && UIDevice.current.userInterfaceIdiom == .phone && vSize == .compact)
         
-                if isLandscape && isPhoneLandscapeCompact {
-                    // iPhone landscape: single card only (no external rail)
-                    tunerCardView
-                        .frame(maxHeight: geo.size.height - 32)
-                        .padding(16)
-                } else if isLandscape {
+        if isLandscape && isPhoneLandscapeCompact {
+            tunerCardView
+                .frame(height: geo.size.height - 32)     // ← was maxHeight
+                .padding(16)
+        } else if isLandscape {
             let spacing: CGFloat = isMacCatalyst ? 0 : 16
 
             let stack =
@@ -458,7 +457,7 @@ private let libraryStore = ScaleLibraryStore.shared
             .matchedGeometryEffect(id: "tunerHero", in: stageNS)
             .opacity(stageActive ? 0 : 1)
             .allowsHitTesting(!stageActive)   //  critical: don't let the invisible source eat taps
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     @ViewBuilder private func railView(in geo: GeometryProxy, isLandscape: Bool) -> some View {
@@ -836,6 +835,7 @@ extension Notification.Name {
              GlassCard(corner: 20) {
                  if isPhoneLandscapeCompact {
                      landscapeBody
+                         .frame(maxWidth: .infinity, maxHeight: .infinity)   // ← add
                  } else {
                      portraitBody
                  }
@@ -959,7 +959,13 @@ extension Notification.Name {
                         if store.mode == .live, store.lockedTarget == nil {
                             StatTile(label: "vs JI", value: String(format: "%+.1f¢", model.display.cents))
                         } else if let lock = store.lockedTarget {
-                            StatTile(label: "vs \(lock.num)/\(lock.den)", value: String(format: "%+.1f¢", centsShown))
+                            let vsValue: String = {
+                                guard rawCents.isFinite else { return "—" }
+                                if rawCents < -200 { return "LOW" }
+                                if rawCents >  200 { return "HIGH" }
+                                return String(format: "%+.1f¢", centsShown)
+                            }()
+                            StatTile(label: "vs \(lock.num)/\(lock.den)", value: vsValue)
 
                         } // .strict hides the extra JI label by design
                         Spacer()
@@ -1037,15 +1043,17 @@ extension Notification.Name {
         GeometryReader { geo in
             let w = geo.size.width
             let h = geo.size.height
-            let padH: CGFloat = 14
-            let padV: CGFloat = 12
+            let padH: CGFloat = 10
+            let padV: CGFloat = 10
+            let spacing: CGFloat = 12
             let innerW = max(0, w - padH*2)
             let innerH = max(0, h - padV*2)
 
-            let spacing: CGFloat = 14
-            let rightW: CGFloat = max(190, min(260, innerW * 0.36))
+            let rightW: CGFloat = max(190, min(300, innerW * 0.36))
             let dialAvailW = max(0, innerW - rightW - spacing)
-            let dialSize = max(0, min(innerH, dialAvailW))
+            let chipRowH: CGFloat = 38
+            let dialMaxH = max(0, innerH - chipRowH - 10)
+            let dialSize = max(0, min(dialMaxH, dialAvailW))
 
             // Match portrait semantics (lock-aware cents + needle hold).
             let rawCents: Double = {
@@ -1066,60 +1074,119 @@ extension Notification.Name {
             let showFar = abs(rawCents) > 120
             let stageAccent: Color = theme.inTuneHighlightColor(activeLimit: store.primeLimit)
 
-            HStack(alignment: .center, spacing: spacing) {
-                tunerDial(
-                    centsShown: centsShown,
-                    liveConf: liveConf,
-                    stageAccent: stageAccent,
-                    showFar: showFar,
-                    held: held,
-                    currentNearest: currentNearest,
-                    liveNearest: liveNearest
-                )
-                .frame(width: dialSize, height: dialSize)
-                .contentShape(Rectangle())
-                .onLongPressGesture(minimumDuration: 0.35) {
-                    UIImpactFeedbackGenerator(style: .soft).impactOccurred()
-                    store.toggleLock(currentNearest: (currentNearest ?? liveNearest))
+            let vsValue: String = {
+                guard store.lockedTarget != nil, rawCents.isFinite else {
+                    return String(format: "%+.1f", centsShown)
                 }
-                .simultaneousGesture(
-                    DragGesture(minimumDistance: 18, coordinateSpace: .local)
-                        .onEnded { v in
-                            let dx = v.translation.width
-                            let dy = v.translation.height
-                            guard dy < -32, abs(dx) < 80 else { return }
-                            UIImpactFeedbackGenerator(style: .soft).impactOccurred()
-                            stepTargetOnSwipeUp()
-                        }
-                )
-                .overlay(alignment: .topTrailing) {
-                    if store.lockedTarget != nil {
-                        BadgeCapsule(text: "Current \(model.display.ratioText)", style: AnyShapeStyle(Color.secondary.opacity(0.15)))
+                if rawCents < -200 { return "LOW" }
+                if rawCents >  200 { return "HIGH" }
+                return String(format: "%+.1f", centsShown)
+            }()
+            
+            let centsLabel: String = {
+                if let lock = store.lockedTarget { return "vs \(lock.num)/\(lock.den)" }
+                return (model.strictness == .strict ? "ET" : "JI")
+            }()
+
+            HStack(alignment: .top, spacing: spacing) {
+                VStack(alignment: .leading, spacing: 10) {
+                    tunerDial(
+                        centsShown: centsShown,
+                        liveConf: liveConf,
+                        stageAccent: stageAccent,
+                        showFar: showFar,
+                        held: held,
+                        currentNearest: currentNearest,
+                        liveNearest: liveNearest
+                    )
+                    .frame(width: dialSize, height: dialSize)
+                    .contentShape(Rectangle())
+                    .onLongPressGesture(minimumDuration: 0.35) {
+                        UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                        store.toggleLock(currentNearest: (currentNearest ?? liveNearest))
+                    }
+                    .simultaneousGesture(
+                        DragGesture(minimumDistance: 18, coordinateSpace: .local)
+                            .onEnded { v in
+                                let dx = v.translation.width
+                                let dy = v.translation.height
+                                guard dy < -32, abs(dx) < 80 else { return }
+                                UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                                stepTargetOnSwipeUp()
+                            }
+                    )
+                    .overlay(alignment: .topTrailing) {
+                        if store.lockedTarget != nil {
+                            BadgeCapsule(
+                                text: "Current \(model.display.ratioText)",
+                                style: AnyShapeStyle(Color.secondary.opacity(0.15))
+                            )
                             .padding(6)
                             .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
                     }
+                    .onChange(of: model.display.ratioText) { txt in
+                        currentNearest = parseRatio(txt)
+                    }
+
+                    // Prime limit chips live under the dial in landscape
+                    ViewThatFits(in: .horizontal) {
+
+                        // fallback if super tight
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Prime limit")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            HStack(spacing: 8) {
+                                ForEach([3,5,7,11,13], id: \.self) { p in
+                                    let selected = (store.primeLimit == p)
+                                    Button {
+                                        withAnimation(.snappy) { store.primeLimit = p }
+                                    } label: {
+                                        Text("\(p)")
+                                            .font(.footnote.weight(selected ? .semibold : .regular))
+                                            .foregroundStyle(selected ? (theme.isDark ? .white : .black) : .secondary)
+                                            .padding(.horizontal, 8)
+                                            .padding(.vertical, 5)
+                                            .background(selected ? AnyShapeStyle(.thinMaterial) : AnyShapeStyle(.ultraThinMaterial), in: Capsule())
+                                            .overlay(
+                                                Capsule().stroke(
+                                                    selected ? AnyShapeStyle(theme.primeTint(p)) : AnyShapeStyle(Color.secondary.opacity(0.12)),
+                                                    lineWidth: 1
+                                                )
+                                            )
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                                Spacer(minLength: 0)
+                            }
+                        }
+                    }
+                    .frame(width: dialSize, alignment: .leading)
+                    .onChange(of: store.primeLimit) { model.tunerPrimeLimit = $0 }
+                    .onAppear { store.primeLimit = model.tunerPrimeLimit }
                 }
-                .onChange(of: model.display.ratioText) { txt in
-                    currentNearest = parseRatio(txt) // for long-press locking
-                }
-                .frame(maxHeight: .infinity, alignment: .center)
+                .frame(width: dialSize, alignment: .leading)
+                .frame(maxHeight: .infinity, alignment: .top)
+                
+                Spacer(minLength: 0)
+
 
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
                         Spacer()
                         stageButton
-                            .frame(minWidth: 92, alignment: .trailing) // a tad wider in landscape only
                     }
 
                     Text(model.display.ratioText)
-                        .font(.system(size: 34, weight: .semibold, design: .rounded))
+                        .font(.system(size: 58, weight: .semibold, design: .rounded))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.3)
+                        .minimumScaleFactor(0.55)
 
                     HStack(spacing: 10) {
-                        StatTile(label: model.strictness == .strict ? "ET" : "JI",
-                                 value: String(format: "%+.1f", centsShown))
+                        StatTile(label: centsLabel,
+                                 value: (store.lockedTarget != nil ? vsValue : String(format: "%+.1f", centsShown)))
                         StatTile(label: "Hz", value: String(format: "%.1f", liveHz))
                     }
 
@@ -1143,53 +1210,16 @@ extension Notification.Name {
                             }
                     }
 
-                    HStack(spacing: 8) {
-                        Text("Prime limit")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        ForEach([3,5,7,11,13], id: \.self) { p in
-                            let selected = (store.primeLimit == p)
-                            Button {
-                                withAnimation(.snappy) { store.primeLimit = p }
-                            } label: {
-                                Text("\(p)")
-                                    .font(.footnote.weight(selected ? .semibold : .regular))
-                                    .foregroundStyle(
-                                        selected
-                                        ? (theme.isDark ? Color.white : Color.black)
-                                        : Color.secondary
-                                    )
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 5)
-                                    .background(
-                                        selected
-                                        ? AnyShapeStyle(.thinMaterial)
-                                        : AnyShapeStyle(.ultraThinMaterial),
-                                        in: Capsule()
-                                    )
-                                    .overlay(
-                                        Capsule().stroke(
-                                            selected
-                                            ? AnyShapeStyle(theme.primeTint(p))
-                                            : AnyShapeStyle(Color.secondary.opacity(0.12)),
-                                            lineWidth: 1
-                                        )
-                                    )
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        Spacer(minLength: 0)
-                    }
-                    .padding(.top, 2)
-                    .onChange(of: store.primeLimit) { model.tunerPrimeLimit = $0 }
-                    .onAppear { store.primeLimit = model.tunerPrimeLimit }
-
                     Spacer(minLength: 0)
+                    
                 }
                 .frame(width: rightW, alignment: .topLeading)
+                
             }
+            
             .padding(.horizontal, padH)
             .padding(.vertical, padV)
+            
         }
     }
 

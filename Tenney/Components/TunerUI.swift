@@ -185,13 +185,42 @@ struct TunerModeStrip: View {
     }
 }
 
+// MARK: - HUD needle helper (wedge w/ micro-flat tip)
+fileprivate func hudNeedleWedgePath(pivot: CGPoint, tip: CGPoint, baseWidth: CGFloat, tipWidth: CGFloat) -> Path {
+    let dx = tip.x - pivot.x
+    let dy = tip.y - pivot.y
+    let len = max(0.0001, hypot(dx, dy))
+
+    // Unit direction + normal
+    let ux = dx / len
+    let uy = dy / len
+    let nx = -uy
+    let ny =  ux
+
+    let b = baseWidth * 0.5
+    let t = tipWidth  * 0.5
+
+    let p0 = CGPoint(x: pivot.x + nx * b, y: pivot.y + ny * b)
+    let p1 = CGPoint(x: tip.x   + nx * t, y: tip.y   + ny * t)   // micro-flat edge 1
+    let p2 = CGPoint(x: tip.x   - nx * t, y: tip.y   - ny * t)   // micro-flat edge 2
+    let p3 = CGPoint(x: pivot.x - nx * b, y: pivot.y - ny * b)
+
+    var p = Path()
+    p.move(to: p0)
+    p.addLine(to: p1)
+    p.addLine(to: p2)
+    p.addLine(to: p3)
+    p.closeSubpath()
+    return p
+}
+
 
 // MARK: - Chrono Dial # TUNER NO. 1
 // Uses cents error + confidence to drive motion/saturation.
 // Keep the card strictly rectangular; glass applied at the card, not here.
 struct ChronoDial: View {
     @Environment(\.tenneyTheme) private var theme
-
+    let heldByConfidence: Bool
     let cents: Double  // signed cents (vs nearest, or vs locked target if provided)
     let confidence: Double  // 0–1
     let inTuneWindow: Double // e.g. 5¢
@@ -272,14 +301,29 @@ struct ChronoDial: View {
                 }
                 .stroke(Color.secondary.opacity(0.35), lineWidth: 1)
 
-                // Needle
-                Path { p in
-                    let tip = CGPoint(x: center.x + radius * CGFloat(sin(angle.radians)),
-                                      y: center.y + radius * CGFloat(1 - cos(angle.radians)))
-                    p.move(to: center); p.addLine(to: tip)
-                }
-                .stroke(theme.tunerNeedle, style: StrokeStyle(lineWidth: stageMode ? 4 : 3, lineCap: .round))
+                // Needle (HUD wedge w/ micro-flat tip)
+                let tip = CGPoint(
+                    x: center.x + radius * CGFloat(sin(angle.radians)),
+                    y: center.y + radius * CGFloat(1 - cos(angle.radians))
+                )
+                hudNeedleWedgePath(
+                    pivot: center,
+                    tip: tip,
+                    baseWidth: stageMode ? 5.0 : 4.2,
+                    tipWidth: 0.9   // micro-flat
+                )
+                .fill(theme.tunerNeedle.opacity(heldByConfidence ? 0.78 : 0.98)) // (keep “opacity-only” de-emphasis)
+                .overlay(
+                    hudNeedleWedgePath(
+                        pivot: center,
+                        tip: tip,
+                        baseWidth: stageMode ? 5.0 : 4.2,
+                        tipWidth: 0.9
+                    )
+                    .stroke(Color.primary.opacity(0.10), lineWidth: 0.75) // crisp edge on glass
+                )
                 .animation(.spring(response: 0.22, dampingFraction: 0.82), value: clamped)
+
             }
         }
         .frame(minHeight: 260)
@@ -390,6 +434,20 @@ struct Gauge: View {
     private let dialSweepDeg: CGFloat = 140
     private let needleSweepDeg: CGFloat = 120 // ±60
 
+    // Log-ish mapping: expands near 0 so the “precision zone” reads like a real HUD.
+    private func thetaForCents(_ c: Double) -> CGFloat {
+        let clamped = max(-50, min(50, c))
+        let t = CGFloat(clamped / 50.0) // -1...1
+
+        // sign(t) * log1p(k*|t|) normalized to 1 at |t|=1
+        let k: CGFloat = 12.0
+        let s: CGFloat = (t < 0 ? -1.0 : 1.0)
+        let a = log(1 + k * abs(t)) / log(1 + k)
+        let mapped = s * a
+
+        return (-CGFloat.pi/2) + (mapped * (dialSweepDeg/2) * .pi/180)
+    }
+
     var body: some View {
         GeometryReader { geo in
             let size = geo.size
@@ -419,59 +477,104 @@ struct Gauge: View {
 
                 // ticks (crisp, instrument-grade)
                 Canvas { ctx, _ in
-                    let major = [ -50, -25, -10, -5, 0, 5, 10, 25, 50 ]
-                    let minor = stageMode ? [] : [ -4, -3, -2, -1, 1, 2, 3, 4 ] // “±1 only inside in-tune region”: we draw inside ±5
+                    // Major: every 10¢ (+ endpoints). Mid: every 5¢. Micro: 1¢ only inside ±5¢ (non-stage).
+                    let majorLabeled: [Double] = stride(from: -50.0, through: 50.0, by: 10.0).map { $0 }
+                    let midTicks: [Double] = stride(from: -45.0, through: 45.0, by: 10.0).flatMap { [$0, $0 + 5.0] }
+                    let microTicks: [Double] = stageMode ? [] : [ -4, -3, -2, -1, 1, 2, 3, 4 ]
+
                     func theta(_ c: Double) -> CGFloat {
-                        // map [-50..50] -> [-70..70] degrees around “up”
+                        // Same log-ish mapping as labels.
                         let clamped = max(-50, min(50, c))
-                        let t = CGFloat(clamped / 50.0)
-                        return (-CGFloat.pi/2) + (t * (dialSweepDeg/2) * .pi/180)
+                        let t = CGFloat(clamped / 50.0) // -1...1
+                        let k: CGFloat = 12.0
+                        let s: CGFloat = (t < 0 ? -1.0 : 1.0)
+                        let a = log(1 + k * abs(t)) / log(1 + k) // 0...1
+                        let mapped = s * a
+                        return (-CGFloat.pi/2) + (mapped * (dialSweepDeg/2) * .pi/180)
                     }
                     
                     let majorTickOpacity = theme.tunerTickOpacity * (heldByConfidence ? 0.70 : 1.0)
                     let minorTickOpacity = theme.tunerTickOpacity * (heldByConfidence ? 0.70 : 1.0) * 0.45
 
-                    // major ticks
-                    for c in major {
-                        let th = theta(Double(c))
+                    // major ticks (10¢) — instrument-grade; emphasize 0 and ±5
+                    for c in majorLabeled {
+                        let th = theta(c)
                         let isZero = (c == 0)
                         let isEnd  = (abs(c) == 50)
-                        let isFive = (abs(c) == 5)
-                        let isTen  = (abs(c) == 10)
 
                         let inner = isEnd ? rOuter * 0.885
-                                  : isZero ? rOuter * 0.875
-                                  : (isFive || isTen) ? rOuter * 0.905
+                                  : isZero ? rOuter * 0.865
                                   : rTickInnerMajor
 
-                        let p0 = CGPoint(x: pivot.x + inner * cos(th),     y: pivot.y + inner * sin(th))
-                        let p1 = CGPoint(x: pivot.x + rTickOuter * cos(th),y: pivot.y + rTickOuter * sin(th))
+                        let p0 = CGPoint(x: pivot.x + inner * cos(th),      y: pivot.y + inner * sin(th))
+                        let p1 = CGPoint(x: pivot.x + rTickOuter * cos(th), y: pivot.y + rTickOuter * sin(th))
 
                         var path = Path()
                         path.move(to: p0); path.addLine(to: p1)
 
-                        let lw: CGFloat = isZero ? 2.3 : (isEnd ? 2.2 : 2.0)
+                        let lw: CGFloat = isZero ? 2.8 : (isEnd ? 2.2 : 2.0)
                         ctx.stroke(path, with: .color(theme.tunerTicks.opacity(majorTickOpacity)),
                                    style: StrokeStyle(lineWidth: lw, lineCap: .butt))
                     }
 
-                    // minor ticks inside ±5¢ (acute, subtle)
-                    for c in minor {
-                        let th = theta(Double(c))
-                        let p0 = CGPoint(x: pivot.x + rTickInnerMinor * cos(th), y: pivot.y + rTickInnerMinor * sin(th))
-                        let p1 = CGPoint(x: pivot.x + (rTickOuter * 0.995) * cos(th), y: pivot.y + (rTickOuter * 0.995) * sin(th))
+                    // mid ticks (5¢) — subtle but countable
+                    for c in midTicks {
+                        // skip anything that overlaps major labeled ticks
+                        if Int(c).isMultiple(of: 10) { continue }
+
+                        let th = theta(c)
+                        let isFive = (abs(c) == 5) // in-tune window marker: tick emphasis only
+
+                        let inner = isFive ? rOuter * 0.905 : rTickInnerMinor
+                        let outer = isFive ? rTickOuter      : (rTickOuter * 0.995)
+
+                        let p0 = CGPoint(x: pivot.x + inner * cos(th), y: pivot.y + inner * sin(th))
+                        let p1 = CGPoint(x: pivot.x + outer * cos(th), y: pivot.y + outer * sin(th))
+
+                        var path = Path()
+                        path.move(to: p0); path.addLine(to: p1)
+
+                        let op = majorTickOpacity * (isFive ? 1.05 : 0.55)
+                        let lw: CGFloat = isFive ? 1.9 : 1.4
+                        ctx.stroke(path, with: .color(theme.tunerTicks.opacity(op)),
+                                   style: StrokeStyle(lineWidth: lw, lineCap: .butt))
+                    }
+
+                    // micro ticks (1¢) inside ±5¢ (non-stage only)
+                    for c in microTicks {
+                        let th = theta(c)
+                        let p0 = CGPoint(x: pivot.x + (rTickInnerMinor * 1.005) * cos(th), y: pivot.y + (rTickInnerMinor * 1.005) * sin(th))
+                        let p1 = CGPoint(x: pivot.x + (rTickOuter * 0.995) * cos(th),      y: pivot.y + (rTickOuter * 0.995) * sin(th))
                         var path = Path()
                         path.move(to: p0); path.addLine(to: p1)
                         ctx.stroke(path, with: .color(theme.tunerTicks.opacity(stageMode ? 0 : minorTickOpacity)),
-                                   style: StrokeStyle(lineWidth: 1.2, lineCap: .butt))
+                                   style: StrokeStyle(lineWidth: 1.1, lineCap: .butt))
                     }
+
+
+                    
                 }
                 .opacity(heldByConfidence ? 0.70 : 1.0)
 
-                // minimal labels: -50, 0, +50
-                label(text: "−50", atCents: -50, pivot: pivot, r: rOuter * 0.80).opacity(stageMode ? 0.85 : 1.0)
-                label(text: "0",   atCents:   0, pivot: pivot, r: rOuter * 0.78).opacity(0.95)
-                label(text: "+50", atCents:  50, pivot: pivot, r: rOuter * 0.80).opacity(stageMode ? 0.85 : 1.0)
+                // Labels: 10¢ marks (precise). In stage mode, drop most labels (keep anchors).
+                Group {
+                    if stageMode {
+                        label(text: "0",   atCents:   0, pivot: pivot, r: rOuter * 0.78).opacity(0.95)
+                        label(text: "−50", atCents: -50, pivot: pivot, r: rOuter * 0.80).opacity(0.85)
+                        label(text: "+50", atCents:  50, pivot: pivot, r: rOuter * 0.80).opacity(0.85)
+                    } else {
+                        ForEach([-50,-40,-30,-20,-10,0,10,20,30,40,50], id: \.self) { v in
+                            label(
+                                text: v == 0 ? "0" : (v < 0 ? "−\(abs(v))" : "+\(v)"),
+                                atCents: Double(v),
+                                pivot: pivot,
+                                r: v == 0 ? (rOuter * 0.78) : (rOuter * 0.80)
+                            )
+                            .opacity(v == 0 ? 0.95 : 1.0)
+                        }
+                    }
+                }
+
 
                 // far hint
                 if showFarHint {
@@ -519,18 +622,12 @@ struct Gauge: View {
     }
 
     private func label(text: String, atCents c: Double, pivot: CGPoint, r: CGFloat) -> some View {
-        let th = thetaForLabel(c)
+        let th = thetaForCents(c)
         let pt = CGPoint(x: pivot.x + r * cos(th), y: pivot.y + r * sin(th))
         return Text(text)
             .font(.caption2.weight(.semibold))
             .foregroundStyle(.secondary)
             .position(pt)
-    }
-
-    private func thetaForLabel(_ c: Double) -> CGFloat {
-        let clamped = max(-50, min(50, c))
-        let t = CGFloat(clamped / 50.0)
-        return (-CGFloat.pi/2) + (t * (dialSweepDeg/2) * .pi/180)
     }
 }
 
@@ -550,13 +647,24 @@ private struct GaugeNeedle: View {
         let tip = CGPoint(x: pivot.x + rNeedle * cos(th), y: pivot.y + rNeedle * sin(th))
 
         return ZStack {
-            // needle shaft
-            Path { p in
-                p.move(to: pivot)
-                p.addLine(to: tip)
-            }
-            .stroke(theme.tunerNeedle.opacity(heldByConfidence ? 0.78 : 0.98),
-            style: StrokeStyle(lineWidth: 3.0, lineCap: .round))
+            // needle shaft (HUD wedge w/ micro-flat tip)
+            hudNeedleWedgePath(
+                pivot: pivot,
+                tip: tip,
+                baseWidth: 4.2,
+                tipWidth: 0.9   // micro-flat
+            )
+            .fill(theme.tunerNeedle.opacity(heldByConfidence ? 0.78 : 0.98))
+            .overlay(
+                hudNeedleWedgePath(
+                    pivot: pivot,
+                    tip: tip,
+                    baseWidth: 4.2,
+                    tipWidth: 0.9
+                )
+                .stroke(Color.primary.opacity(0.10), lineWidth: 0.75)
+            )
+
 
             // tiny tail (subtle)
             Path { p in
