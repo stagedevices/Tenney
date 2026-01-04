@@ -46,6 +46,7 @@ enum TunerUIMode: String, CaseIterable, Identifiable {
 enum TunerViewStyle: String, CaseIterable, Identifiable {
     case Gauge
     case chronoDial
+    case posterFraction
     // add back in when ready to test phasescope
 
   //  case phaseScope   //  NEW
@@ -55,6 +56,7 @@ enum TunerViewStyle: String, CaseIterable, Identifiable {
         switch self {
         case .Gauge:  return "Gauge"
         case .chronoDial:return "Chrono"
+        case .posterFraction: return "Poster"
             // add back in when ready to test phasescope
 
     //    case .phaseScope: return "Scope"   // ✅ NEW
@@ -65,6 +67,7 @@ enum TunerViewStyle: String, CaseIterable, Identifiable {
         switch self {
         case .Gauge:  return "gauge"
         case .chronoDial:return "circle.dotted"
+        case .posterFraction: return "rectangle.portrait"
             // add back in when ready to test phasescope
 
   //      case .phaseScope: return "scope"
@@ -329,6 +332,88 @@ struct ChronoDial: View {
         .frame(minHeight: 260)
         .drawingGroup()
         .accessibilityLabel(Text(String(format: "%+.1f cents", cents.isFinite ? cents : 0)))
+    }
+}
+
+struct PosterFractionDial: View {
+    let ratioText: String
+    let centsShown: Double
+    let liveConf: Double
+    let inTuneWindow: Double
+    let threshold: Double
+    let stageAccent: Color
+
+    @State private var heldRatioText: String?
+    @State private var gatePulse: CGFloat = 0
+    @State private var wasInTuneGate: Bool = false
+
+    private func parse(_ s: String) -> (Int, Int)? {
+        let parts = s.split(separator: "/")
+        guard parts.count == 2, let n = Int(parts[0]), let d = Int(parts[1]) else { return nil }
+        return (n, d)
+    }
+
+    var body: some View {
+        let hasValid = parse(ratioText) != nil && !ratioText.isEmpty
+        let isHeldRatio = !hasValid
+        let display = hasValid ? ratioText : (heldRatioText ?? ratioText)
+        let parts = display.split(separator: "/")
+        let num = parts.first.map(String.init) ?? display
+        let den = parts.count > 1 ? String(parts[1]) : ""
+
+        let tRaw = max(0, min(1, (1 - abs(centsShown)/inTuneWindow) * liveConf))
+        let isInTuneGate = abs(centsShown) <= inTuneWindow && liveConf >= threshold
+        let t: Double = isHeldRatio ? 0 : (isInTuneGate ? tRaw : (tRaw * 0.15))
+
+        GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
+            let minSide = min(w, h)
+            let fontSize = minSide * 0.42
+            let dividerW = minSide * 0.85
+            let dividerH = CGFloat(max(1, 1 + 2 * t + 1.5 * Double(gatePulse)))
+            let scale = 0.985 + 0.015 * CGFloat(t) + 0.010 * gatePulse
+            let dividerOpacity = 0.18 + 0.60 * t
+            let baseColor: Color = (!isHeldRatio && isInTuneGate) ? stageAccent : .primary
+            let shadow: CGFloat = (isInTuneGate && t > 0.02) ? CGFloat(12 * (t + Double(gatePulse) * 0.4)) : 0
+            let textOpacity = isHeldRatio ? 0.85 : 1.0
+
+            VStack(spacing: minSide * 0.05) {
+                Text(num)
+                    .font(.system(size: fontSize, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .minimumScaleFactor(0.5)
+                Rectangle()
+                    .fill(baseColor.opacity(dividerOpacity))
+                    .frame(width: dividerW, height: dividerH)
+                    .shadow(color: stageAccent.opacity((isHeldRatio ? 0 : Double(t)) * 0.55 + Double(gatePulse) * 0.35),
+                            radius: shadow, y: 0)
+                Text(den)
+                    .font(.system(size: fontSize, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .minimumScaleFactor(0.5)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .foregroundStyle(baseColor.opacity(textOpacity))
+            .opacity(textOpacity)
+            .scaleEffect(scale)
+        }
+        .onAppear {
+            if hasValid { heldRatioText = ratioText }
+            wasInTuneGate = isInTuneGate
+        }
+        .onChange(of: ratioText) { txt in
+            if parse(txt) != nil && !txt.isEmpty {
+                heldRatioText = txt
+            }
+        }
+        .onChange(of: isInTuneGate) { newValue in
+            if newValue && !wasInTuneGate {
+                withAnimation(.spring(response: 0.18, dampingFraction: 0.6)) { gatePulse = 1 }
+                withAnimation(.spring(response: 0.45, dampingFraction: 0.8)) { gatePulse = 0 }
+            }
+            wasInTuneGate = newValue
+        }
     }
 }
 
