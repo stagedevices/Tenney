@@ -56,7 +56,7 @@ enum TunerViewStyle: String, CaseIterable, Identifiable {
         switch self {
         case .Gauge:  return "Gauge"
         case .chronoDial:return "Chrono"
-        case .posterFraction: return "Poster"
+        case .posterFraction: return "Numeric"
             // add back in when ready to test phasescope
 
     //    case .phaseScope: return "Scope"   // ✅ NEW
@@ -67,7 +67,7 @@ enum TunerViewStyle: String, CaseIterable, Identifiable {
         switch self {
         case .Gauge:  return "gauge"
         case .chronoDial:return "circle.dotted"
-        case .posterFraction: return "rectangle.portrait"
+        case .posterFraction: return "numbers"
             // add back in when ready to test phasescope
 
   //      case .phaseScope: return "scope"
@@ -370,6 +370,8 @@ struct PosterFractionDial: View {
             let h = geo.size.height
             let minSide = min(w, h)
             let fontSize = minSide * 0.42
+            let lineH = fontSize * 1.02
+
             let dividerW = minSide * 0.85
             let dividerH = CGFloat(max(1, 1 + 2 * t + 1.5 * Double(gatePulse)))
             let scale = 0.985 + 0.015 * CGFloat(t) + 0.010 * gatePulse
@@ -380,18 +382,23 @@ struct PosterFractionDial: View {
 
             VStack(spacing: minSide * 0.05) {
                 Text(num)
-                    .font(.system(size: fontSize, weight: .semibold, design: .rounded))
+                    .font(.system(size: fontSize, weight: .semibold, design: .monospaced))
                     .monospacedDigit()
+                    .lineLimit(1)
                     .minimumScaleFactor(0.5)
+                    .frame(height: lineH, alignment: .center)
                 Rectangle()
                     .fill(baseColor.opacity(dividerOpacity))
                     .frame(width: dividerW, height: dividerH)
                     .shadow(color: stageAccent.opacity((isHeldRatio ? 0 : Double(t)) * 0.55 + Double(gatePulse) * 0.35),
                             radius: shadow, y: 0)
-                Text(den)
-                    .font(.system(size: fontSize, weight: .semibold, design: .rounded))
+                Text(den.isEmpty ? " " : den)
+                    .font(.system(size: fontSize, weight: .semibold, design: .monospaced))
                     .monospacedDigit()
+                    .lineLimit(1)
                     .minimumScaleFactor(0.5)
+                    .frame(height: lineH, alignment: .center)
+
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .foregroundStyle(baseColor.opacity(textOpacity))
