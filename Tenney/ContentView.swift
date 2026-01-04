@@ -251,7 +251,7 @@ private let libraryStore = ScaleLibraryStore.shared
         .environment(\.tenneyTheme, resolvedTheme)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-        .overlay { resolvedTheme.surfaceTint.ignoresSafeArea().allowsHitTesting(false) }
+        .background(resolvedTheme.surfaceTint.ignoresSafeArea())
 
         // Still in ContentView.body view modifiers
         .onAppear {
@@ -410,9 +410,9 @@ private let libraryStore = ScaleLibraryStore.shared
         
         if isLandscape && isPhoneLandscapeCompact {
             tunerCardView
-                .frame(height: geo.size.height - 32)     // ← was maxHeight
-                .padding(16)
-        } else if isLandscape {
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .ignoresSafeArea(.container, edges: [.horizontal]) // stops “side gutters” in landscape
+        }  else if isLandscape {
             let spacing: CGFloat = isMacCatalyst ? 0 : 16
 
             let stack =
@@ -537,11 +537,17 @@ private let libraryStore = ScaleLibraryStore.shared
                     .ignoresSafeArea()
                     .allowsHitTesting(false)
                     .animation(.easeInOut(duration: 0.18), value: stageActive)
+                let isLandscape = proxy.size.width > proxy.size.height
 
+                let isPhoneLandscapeCompact = (!isMacCatalyst && UIDevice.current.userInterfaceIdiom == .phone && vSize == .compact)
+
+                let stageMaxW: CGFloat = isPhoneLandscapeCompact ? (proxy.size.width - 24) : min((isLandscape ? 760 : 560), proxy.size.width - 32)
+
+                let stagePad: CGFloat = isPhoneLandscapeCompact ? 12 : 16
                 TunerCard(store: tunerStore, stageActive: $stageActive)
                     .matchedGeometryEffect(id: "tunerHeroStage", in: stageNS)
-                    .frame(maxWidth: min(520, proxy.size.width - 32))
-                    .padding(16)
+                    .frame(maxWidth: stageMaxW)
+                    .padding(stagePad)
                     .opacity(stageActive ? 1 : 0)
                     .animation(.snappy, value: stageActive)
             }
@@ -1046,17 +1052,16 @@ extension Notification.Name {
         GeometryReader { geo in
             let w = geo.size.width
             let h = geo.size.height
-            let padH: CGFloat = 10
-            let padV: CGFloat = 10
+            let padH: CGFloat = 0
+            let padV: CGFloat = 0
             let spacing: CGFloat = 12
             let innerW = max(0, w - padH*2)
             let innerH = max(0, h - padV*2)
 
-            let rightW: CGFloat = max(190, min(300, innerW * 0.36))
-            let dialAvailW = max(0, innerW - rightW - spacing)
-            let chipRowH: CGFloat = 38
-            let dialMaxH = max(0, innerH - chipRowH - 10)
-            let dialSize = max(0, min(dialMaxH, dialAvailW))
+            let minDial: CGFloat = 290
+                        let rightW: CGFloat = max(180, min(300, innerW - minDial - spacing))
+                        let dialAvailW = max(0, innerW - rightW - spacing)
+                        let dialSize = max(0, min(innerH, dialAvailW))
 
             // Match portrait semantics (lock-aware cents + needle hold).
             let rawCents: Double = {
@@ -1093,17 +1098,18 @@ extension Notification.Name {
 
             HStack(alignment: .top, spacing: spacing) {
                 VStack(alignment: .leading, spacing: 10) {
-                    tunerDial(
-                        centsShown: centsShown,
-                        liveConf: liveConf,
-                        stageAccent: stageAccent,
-                        showFar: showFar,
-                        held: held,
-                        currentNearest: currentNearest,
-                        liveNearest: liveNearest
-                    )
-                    .frame(width: dialSize, height: dialSize)
-                    .contentShape(Rectangle())
+                                    ZStack(alignment: .bottomLeading) {
+                                        tunerDial(
+                                            centsShown: centsShown,
+                                            liveConf: liveConf,
+                                            stageAccent: stageAccent,
+                                            showFar: showFar,
+                                            held: held,
+                                            currentNearest: currentNearest,
+                                            liveNearest: liveNearest
+                                        )
+                                        .frame(width: dialSize, height: dialSize)
+                                        .contentShape(Rectangle())
                     .onLongPressGesture(minimumDuration: 0.35) {
                         UIImpactFeedbackGenerator(style: .soft).impactOccurred()
                         store.toggleLock(currentNearest: (currentNearest ?? liveNearest))
@@ -1132,16 +1138,12 @@ extension Notification.Name {
                         currentNearest = parseRatio(txt)
                     }
 
-                    // Prime limit chips live under the dial in landscape
-                    ViewThatFits(in: .horizontal) {
-
-                        // fallback if super tight
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Prime limit")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+// Prime limit chips (still “under” the dial visually),
+                        // but they no longer constrain the dial’s size.
+                        ViewThatFits(in: .horizontal) {
                             HStack(spacing: 8) {
-                                ForEach([3,5,7,11,13], id: \.self) { p in
+                                Text("Limit").font(.caption).foregroundStyle(.secondary)
+                                ForEach([3,5,7,11,13], id:\.self) { p in
                                     let selected = (store.primeLimit == p)
                                     Button {
                                         withAnimation(.snappy) { store.primeLimit = p }
@@ -1163,14 +1165,17 @@ extension Notification.Name {
                                 }
                                 Spacer(minLength: 0)
                             }
+                            .padding(8)
+                            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                         }
+                        .padding(8)
+                        .onChange(of: store.primeLimit) { model.tunerPrimeLimit = $0 }
+                        .onAppear { store.primeLimit = model.tunerPrimeLimit }
                     }
-                    .frame(width: dialSize, alignment: .leading)
-                    .onChange(of: store.primeLimit) { model.tunerPrimeLimit = $0 }
-                    .onAppear { store.primeLimit = model.tunerPrimeLimit }
                 }
                 .frame(width: dialSize, alignment: .leading)
                 .frame(maxHeight: .infinity, alignment: .top)
+                .offset(x: 36)
                 
                 Spacer(minLength: 0)
 
@@ -1179,10 +1184,12 @@ extension Notification.Name {
                     HStack {
                         Spacer()
                         stageButton
+                            .offset(x: -24)
+                            .offset(y: 12)
                     }
 
                     Text(model.display.ratioText)
-                        .font(.system(size: 58, weight: .semibold, design: .rounded))
+                        .font(.system(size: 58, weight: .semibold, design: .monospaced))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.55)
