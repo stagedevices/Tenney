@@ -6,6 +6,8 @@
 //
 
 import SwiftUI
+import Sentry
+
 import AVFAudio
 #if canImport(UIKit)
 import UIKit
@@ -21,6 +23,7 @@ enum ThemeStyleChoice: String, CaseIterable, Identifiable {
 
 @main
 struct TenneyApp: App {
+   
     @Environment(\.scenePhase) private var scenePhase
 
     @AppStorage(SettingsKeys.crashReportingEnabled)

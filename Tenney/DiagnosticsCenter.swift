@@ -76,14 +76,14 @@ final class DiagnosticsCenter {
     }
 
     func exportClipboardSummary() async -> String {
-        let snapshot = currentSnapshot()
+        let snapshot = self.currentSnapshot()
         var payload: [String: Any] = [
             "app": [
                 "version": AboutAppInfo.version,
                 "build": AboutAppInfo.build,
-                "platform": currentPlatform()
+                "platform": self.currentPlatform()
             ],
-            "recentEvents": snapshot.events.suffix(12).map(eventDict(_:))
+            "recentEvents": snapshot.events.suffix(12).map { self.eventDict($0) }
         ]
 
         let crashTs = UserDefaults.standard.double(forKey: SettingsKeys.lastSessionCrashTimestamp)
@@ -100,12 +100,30 @@ final class DiagnosticsCenter {
         return String(data: data, encoding: .utf8) ?? "{}"
     }
 
+
     func exportDebugBundle() async throws -> URL {
         let snapshot = currentSnapshot()
-        return try await Task.detached(priority: .utility) {
-            let fm = FileManager.default
 
-            let bundleName = "Tenney-DebugBundle-\(AboutAppInfo.version)-\(Int(Date().timeIntervalSince1970)).zip"
+        let platform = currentPlatform()
+        let version = AboutAppInfo.version
+        let build = AboutAppInfo.build
+
+        return try await Task.detached(priority: .utility) { [snapshot, platform, version, build] in
+            let fm = FileManager.default
+            let iso = ISO8601DateFormatter()
+            func isoTimestamp(_ d: Date) -> String { iso.string(from: d) }
+            func eventDict(_ e: DiagnosticEvent) -> [String: Any] {
+                var dict: [String: Any] = [
+                    "timestamp": isoTimestamp(e.timestamp),
+                    "category": e.category,
+                    "level": e.level.rawValue,
+                    "message": e.message
+                ]
+                if let meta = e.meta { dict["meta"] = meta }
+                return dict
+            }
+
+            let bundleName = "Tenney-DebugBundle-\(version)-\(Int(Date().timeIntervalSince1970)).zip"
             let folder = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
             try fm.createDirectory(at: folder, withIntermediateDirectories: true)
 
@@ -115,11 +133,11 @@ final class DiagnosticsCenter {
 
             let diagPayload: [String: Any] = [
                 "app": [
-                    "version": AboutAppInfo.version,
-                    "build": AboutAppInfo.build,
-                    "platform": currentPlatform()
+                    "version": version,
+                    "build": build,
+                    "platform": platform
                 ],
-                "events": snapshot.events.map(eventDict(_:)),
+                "events": snapshot.events.map { eventDict($0) },
                 "tuner": snapshot.tunerSnapshots.map { snap in
                     [
                         "timestamp": isoTimestamp(snap.timestamp),
@@ -140,7 +158,9 @@ final class DiagnosticsCenter {
             let logText = snapshot.events
                 .map { "[\(isoTimestamp($0.timestamp))] [\($0.category)] [\($0.level.rawValue)] \($0.message)" }
                 .joined(separator: "\n")
-            try logText.data(using: .utf8)?.write(to: logsURL, options: [.atomic])
+            if let logData = logText.data(using: .utf8) {
+                try logData.write(to: logsURL, options: [.atomic])
+            }
 
             let crashTs = UserDefaults.standard.double(forKey: SettingsKeys.lastSessionCrashTimestamp)
             if crashTs > 0 {
@@ -161,6 +181,8 @@ final class DiagnosticsCenter {
             return zipURL
         }.value
     }
+
+
 
     func recentLogLines(limit: Int = 80) -> [String] {
         currentSnapshot().events.suffix(limit).map {

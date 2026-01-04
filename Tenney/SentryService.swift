@@ -19,31 +19,40 @@ final class SentryService {
     func setEnabled(_ on: Bool) {
         guard on else {
             enabled = false
+            SentrySDK.flush(timeout: 2.0)
             SentrySDK.close()
             return
         }
 
-        guard let dsn = Bundle.main.object(forInfoDictionaryKey: "SentryDSN") as? String,
-              !dsn.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        guard let dsn = Bundle.main.object(forInfoDictionaryKey: "SentryDSN") as? String else {
             return
         }
+
+        let trimmed = dsn.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        // If Info.plist substitution didn’t occur, you’ll get a literal "$(SENTRY_DSN)".
+        // Don’t start Sentry in that case.
+        guard !trimmed.contains("$(") else { return }
+
+        // Basic sanity so we don’t “start” with garbage in production.
+        guard trimmed.hasPrefix("http"), trimmed.contains("@") else { return }
+
 
         guard !enabled else { return }
 
         SentrySDK.start { options in
-            options.dsn = dsn
+            options.dsn = trimmed
             options.sendDefaultPii = false
             options.tracesSampleRate = 0
-            options.enableAppHangTracking = false
-            options.enableFileIOTracking = false
-            options.enableNetworkTracking = false
-            options.enableSwizzling = false
+
             #if DEBUG
             options.environment = "debug"
             #else
             options.environment = "release"
             #endif
         }
+
 
         enabled = true
     }
@@ -59,7 +68,8 @@ final class SentryService {
 
     func captureNonFatal(_ error: Error, context: [String: Any]? = nil) {
         guard enabled else { return }
-        let event = SentryEvent(level: .error)
+        let event = Event()
+        event.level = .error
         event.message = SentryMessage(formatted: String(describing: error))
         var extras = context ?? [:]
         let logs = DiagnosticsCenter.shared.recentLogLines(limit: 80).joined(separator: "\n")
