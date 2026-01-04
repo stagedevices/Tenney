@@ -23,6 +23,11 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXBuildFile section */
+		96F800012F0A000100000001 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = 96F800032F0A000100000003 /* Sentry */; };
+		96F800022F0A000100000002 /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = 96F800042F0A000100000004 /* ZIPFoundation */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		9646052B2E8DA40D003B5415 /* Tenney.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Tenney.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		964605382E8DA40E003B5415 /* TenneyTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TenneyTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -79,6 +84,8 @@
 		964605282E8DA40D003B5415 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
+				96F800012F0A000100000001 /* Sentry in Frameworks */,
+				96F800022F0A000100000002 /* ZIPFoundation in Frameworks */,
 			);
 		};
 		964605352E8DA40E003B5415 /* Frameworks */ = {
@@ -135,6 +142,10 @@
 				964605612E8E0782003B5415 /* Core */,
 				964605682E8E07B6003B5415 /* LatticeKit */,
 				9646056B2E8E07CB003B5415 /* Interop */,
+			);
+			packageProductDependencies = (
+				96F800032F0A000100000003 /* Sentry */,
+				96F800042F0A000100000004 /* ZIPFoundation */,
 			);
 			name = Tenney;
 			productName = Tenney;
@@ -219,6 +230,10 @@
 			productRefGroup = 9646052C2E8DA40D003B5415 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
+			packageReferences = (
+				96F800052F0A000100000005 /* XCRemoteSwiftPackageReference "sentry-cocoa" */,
+				96F800062F0A000100000006 /* XCRemoteSwiftPackageReference "ZIPFoundation" */,
+			);
 			targets = (
 				9646052A2E8DA40D003B5415 /* Tenney */,
 				964605372E8DA40E003B5415 /* TenneyTests */,
@@ -275,6 +290,38 @@
 			targetProxy = 964605432E8DA40E003B5415 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		96F800052F0A000100000005 /* XCRemoteSwiftPackageReference "sentry-cocoa" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/getsentry/sentry-cocoa";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 8.34.0;
+			};
+		};
+		96F800062F0A000100000006 /* XCRemoteSwiftPackageReference "ZIPFoundation" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/weichsel/ZIPFoundation";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.9.19;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		96F800032F0A000100000003 /* Sentry */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 96F800052F0A000100000005 /* XCRemoteSwiftPackageReference "sentry-cocoa" */;
+			productName = Sentry;
+		};
+		96F800042F0A000100000004 /* ZIPFoundation */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 96F800062F0A000100000006 /* XCRemoteSwiftPackageReference "ZIPFoundation" */;
+			productName = ZIPFoundation;
+		};
+/* End XCSwiftPackageProductDependency section */
 
 /* Begin XCBuildConfiguration section */
 		9646054A2E8DA40E003B5415 /* Debug configuration for PBXProject "Tenney" */ = {

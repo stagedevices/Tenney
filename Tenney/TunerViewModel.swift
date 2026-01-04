@@ -50,12 +50,21 @@ final class TunerViewModel: ObservableObject {
     @Published var lockedTarget: RatioResult? = nil {
         didSet {
             LearnEventBus.shared.send(.tunerLockToggled(lockedTarget != nil))
+            let msg = lockedTarget == nil ? "unlock target" : "lock target"
+            DiagnosticsCenter.shared.event(
+                category: "tuner",
+                level: .info,
+                message: msg,
+                meta: lockedTarget.flatMap { ["target": tunerDisplayRatioString($0)] }
+            )
+            SentryService.shared.breadcrumb(category: "tuner", message: msg)
         }
     }
 
 
     private let tracker: PitchTracker
     private let resolver = RatioResolver()
+    private var lastSnapshot = Date.distantPast
     
     private func confidenceFromRMS(_ rms: Float) -> Double {
         // RMS is linear 0..1-ish; tune these bounds for your input chain.
@@ -86,6 +95,8 @@ final class TunerViewModel: ObservableObject {
 
         // 1) Always start the analysis loop (even with no mic)
         tracker.startDetection()
+        DiagnosticsCenter.shared.event(category: "tuner", level: .info, message: "start detection")
+        SentryService.shared.breadcrumb(category: "tuner", message: "start detection")
 
         // 2) Ask for mic; if granted, enable capture (analysis is already running)
         MicrophonePermission.ensure { [weak self] (granted: Bool) in
@@ -128,6 +139,19 @@ final class TunerViewModel: ObservableObject {
         centsText = String(format: "%+0.1f cents", best.cents)
         hzText = String(format: "%0.2f Hz", hz)
         altRatios = alts.map { tunerDisplayRatioString($0) }
+
+        let now = Date()
+        if now.timeIntervalSince(lastSnapshot) > 0.35 {
+            lastSnapshot = now
+            DiagnosticsCenter.shared.recordTunerSnapshot(
+                cents: best.cents,
+                confidence: confidenceValue,
+                mode: strictness.rawValue,
+                viewStyle: UserDefaults.standard.string(forKey: SettingsKeys.tunerViewStyle) ?? "unknown",
+                locked: lockedTarget != nil,
+                target: tunerDisplayRatioString(best.target)
+            )
+        }
     }
 
 }

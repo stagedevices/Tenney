@@ -9,6 +9,11 @@ import SwiftUI
 
 
 enum SettingsKeys {
+
+    // Diagnostics & crash reporting
+    static let crashReportingEnabled = "tenney.crashReportingEnabled"
+    static let lastSessionCrashTimestamp = "tenney.lastSessionCrashTimestamp"
+    static let lastCrashBannerDismissedAt = "tenney.lastCrashBannerDismissedAt"
     
     // NEW (single-value, v0.3+)
         static let latticeHexGridStrength     = "lattice.hexGrid.strength"

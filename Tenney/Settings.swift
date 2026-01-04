@@ -349,7 +349,15 @@ struct StudioConsoleView: View {
     @AppStorage(SettingsKeys.whatsNewLastSeenMajorMinor)
     private var whatsNewLastSeenMajorMinor: String = ""
 
+    @AppStorage(SettingsKeys.crashReportingEnabled)
+    private var crashReportingEnabled: Bool = false
+    @AppStorage(SettingsKeys.lastSessionCrashTimestamp)
+    private var lastSessionCrashTimestamp: Double = 0
+    @AppStorage(SettingsKeys.lastCrashBannerDismissedAt)
+    private var lastCrashBannerDismissedAt: Double = 0
+
     @State private var showWhatsNewSheet: Bool = false
+    @State private var debugBundleExporting: Bool = false
     
     private var whatsNewIsUnread: Bool {
     // “new” if either changes
@@ -2895,6 +2903,41 @@ struct StudioConsoleView: View {
         }
     }
 
+    @ViewBuilder private var diagnosticsSection: some View {
+        glassCard(
+            icon: "ladybug",
+            title: "Support / Diagnostics",
+            subtitle: "Crash reporting & exports"
+        ) {
+            Toggle("Crash Reporting", isOn: $crashReportingEnabled)
+                .onChange(of: crashReportingEnabled) { newValue in
+                    DiagnosticsCenter.shared.event(category: "diagnostics", level: .info, message: "Crash reporting \(newValue ? "enabled" : "disabled")")
+                    SentryService.shared.setEnabled(newValue)
+                }
+
+            HStack(spacing: 10) {
+                GlassCTAButton(title: "Copy Debug Bundle", systemName: "doc.on.doc") {
+                    performCopyDebugBundle()
+                }
+                .disabled(debugBundleExporting)
+
+                GlassCTAButton(title: "Share Debug Bundle", systemName: "square.and.arrow.up") {
+                    performShareDebugBundle()
+                }
+                .disabled(debugBundleExporting)
+            }
+
+            if debugBundleExporting {
+                ProgressView()
+                    .progressViewStyle(.circular)
+            }
+
+            Text("Includes device/app info and recent logs. Personal data is redacted.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+    }
+
     
     // MARK: - Split content
     private var contentStack: some View {
@@ -3017,6 +3060,39 @@ struct StudioConsoleView: View {
             shouldScrollToTunerRail = false
         }
     }
+
+    private var crashBannerVisible: Bool {
+        lastSessionCrashTimestamp > 0 && lastCrashBannerDismissedAt < lastSessionCrashTimestamp
+    }
+
+    private func dismissCrashBanner() {
+        lastCrashBannerDismissedAt = Date().timeIntervalSince1970
+    }
+
+    private func performCopyDebugBundle() {
+        guard !debugBundleExporting else { return }
+        debugBundleExporting = true
+        DiagnosticsCenter.shared.event(category: "diagnostics", level: .info, message: "Copy debug bundle")
+        SentryService.shared.breadcrumb(category: "diagnostics", message: "Copy debug bundle")
+        Task { @MainActor in
+            let summary = await DiagnosticsCenter.shared.exportClipboardSummary()
+            DebugBundleSharing.copyToClipboard(text: summary)
+            debugBundleExporting = false
+        }
+    }
+
+    private func performShareDebugBundle() {
+        guard !debugBundleExporting else { return }
+        debugBundleExporting = true
+        DiagnosticsCenter.shared.event(category: "diagnostics", level: .info, message: "Share debug bundle")
+        SentryService.shared.breadcrumb(category: "diagnostics", message: "Share debug bundle")
+        Task { @MainActor in
+            if let url = try? await DiagnosticsCenter.shared.exportDebugBundle() {
+                DebugBundleSharing.shareFile(url: url)
+            }
+            debugBundleExporting = false
+        }
+    }
     private var showQuickThemeHomeTile: Bool {
         let q = homeQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         if q.isEmpty { return true }
@@ -3030,6 +3106,52 @@ struct StudioConsoleView: View {
         if q.isEmpty { return true }
         return fuzzyMatch(q, in: "Learn Tenney") ||
                fuzzyMatch(q, in: "Tours, practice, and a searchable control glossary")
+    }
+
+    private var crashBannerView: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(Color.orange)
+                .imageScale(.large)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Tenney appears to have crashed last session.")
+                    .font(.subheadline.weight(.semibold))
+                Text("Share diagnostics or dismiss this notice.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Button {
+                performShareDebugBundle()
+            } label: {
+                Text("Share diagnostics")
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(.ultraThinMaterial, in: Capsule())
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                dismissCrashBanner()
+            } label: {
+                Text("Dismiss")
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.secondary.opacity(0.12), in: Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(12)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color.secondary.opacity(0.14), lineWidth: 1)
+        )
     }
 
 
@@ -3072,6 +3194,9 @@ struct StudioConsoleView: View {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
             )
+            if crashBannerVisible {
+                crashBannerView
+            }
             //            if showQuickThemeHomeTile {
             //  glassCard(
             //      icon: "paintpalette",
@@ -3248,6 +3373,7 @@ struct StudioConsoleView: View {
                 quickSetupCard
                 defaultViewSection
                 whatsNewSection
+                diagnosticsSection
                 aboutSection
             }
         }

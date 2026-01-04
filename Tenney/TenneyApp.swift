@@ -7,6 +7,12 @@
 
 import SwiftUI
 import AVFAudio
+#if canImport(UIKit)
+import UIKit
+#endif
+#if os(macOS)
+import AppKit
+#endif
 
 enum ThemeStyleChoice: String, CaseIterable, Identifiable {
     case system, light, dark
@@ -15,6 +21,10 @@ enum ThemeStyleChoice: String, CaseIterable, Identifiable {
 
 @main
 struct TenneyApp: App {
+    @Environment(\.scenePhase) private var scenePhase
+
+    @AppStorage(SettingsKeys.crashReportingEnabled)
+    private var crashReportingEnabled: Bool = false
     
     private func seedLatticeSoundDefaultIfNeeded() {
         let ud = UserDefaults.standard
@@ -44,6 +54,38 @@ struct TenneyApp: App {
     init() {
         seedLatticeSoundDefaultIfNeeded()
         configureAudioSessionFromDefaults()
+        let crashInfo = SessionCrashMarker.shared.onLaunch()
+        if let crashInfo {
+            DiagnosticsCenter.shared.log(
+                "Previous session flagged as crash",
+                level: .warning,
+                category: "crash",
+                meta: ["timestamp": ISO8601DateFormatter().string(from: crashInfo.timestamp)]
+            )
+            SessionCrashMarker.shared.clearCrashBannerDismissalOnNewCrash()
+        } else {
+            UserDefaults.standard.set(0, forKey: SettingsKeys.lastSessionCrashTimestamp)
+        }
+        if UserDefaults.standard.bool(forKey: SettingsKeys.crashReportingEnabled) {
+            SentryService.shared.setEnabled(true)
+        }
+#if canImport(UIKit)
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.willTerminateNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            SessionCrashMarker.shared.markCleanTermination()
+        }
+#elseif os(macOS)
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            SessionCrashMarker.shared.markCleanTermination()
+        }
+#endif
     }
 
     var body: some Scene {
@@ -54,6 +96,12 @@ struct TenneyApp: App {
                 .environmentObject(appModel)
                 .preferredColorScheme(appScheme)
                 .onAppear { appModel.configureAndStart() }
+                .onChange(of: crashReportingEnabled) { SentryService.shared.setEnabled($0) }
+                .onChange(of: scenePhase) { phase in
+                    if phase == .background || phase == .inactive {
+                        SessionCrashMarker.shared.markCleanTermination()
+                    }
+                }
         }
         .defaultSize(width: 1320, height: 820)
 
@@ -61,6 +109,12 @@ struct TenneyApp: App {
             MacPreferencesRootView()
                 .environmentObject(appModel)
                 .preferredColorScheme(appScheme)
+                .onChange(of: crashReportingEnabled) { SentryService.shared.setEnabled($0) }
+                .onChange(of: scenePhase) { phase in
+                    if phase == .background || phase == .inactive {
+                        SessionCrashMarker.shared.markCleanTermination()
+                    }
+                }
         }
 
         .commands {
@@ -73,6 +127,12 @@ struct TenneyApp: App {
                 .environmentObject(appModel)
                 .preferredColorScheme(appScheme)   // ← global scheme driven by Settings
                 .onAppear { appModel.configureAndStart() }
+                .onChange(of: crashReportingEnabled) { SentryService.shared.setEnabled($0) }
+                .onChange(of: scenePhase) { phase in
+                    if phase == .background || phase == .inactive {
+                        SessionCrashMarker.shared.markCleanTermination()
+                    }
+                }
 
         }
 #endif
