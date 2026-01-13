@@ -56,6 +56,10 @@ struct TenneyApp: App {
     init() {
         seedLatticeSoundDefaultIfNeeded()
         configureAudioSessionFromDefaults()
+        let isFirstRun = (UserDefaults.standard.object(forKey: SettingsKeys.setupWizardDone) == nil)
+            || !UserDefaults.standard.bool(forKey: SettingsKeys.setupWizardDone)
+        ToneOutputEngine.shared.stopAll()
+        latticeStore.hardResetAudioAndTransientState(clearSelection: isFirstRun) // silence without flipping settings.
         let crashInfo = SessionCrashMarker.shared.onLaunch()
         if let crashInfo {
             DiagnosticsCenter.shared.log(

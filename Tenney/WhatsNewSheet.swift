@@ -101,7 +101,7 @@ struct WhatsNewSheet: View {
     
     private struct RealLatticePreview: View {
         let app: AppModel
-        @StateObject private var store = LatticeStore()
+        @StateObject private var store = LatticeStore(allowPersistence: false)
 
         let gridMode: LatticeGridMode?
         let connectionMode: LatticeConnectionMode?
@@ -128,12 +128,16 @@ struct WhatsNewSheet: View {
                 .environment(\.latticePreviewHideDistance, true)
                 .allowsHitTesting(false)
                 .onAppear {
+                    store.auditionEnabled = false // preview-only silence without touching defaults.
+                    store.hardResetAudioAndTransientState(clearSelection: true)
                     // deterministic “real nodes” for node-restyle previews
                     if !seedSelection.isEmpty {
-                        store.clearSelection()
                         store.setPivot(.init(e3: 0, e5: 0))
                         for c in seedSelection { store.toggleSelection(c) }
                     }
+                }
+                .onDisappear {
+                    store.hardResetAudioAndTransientState(clearSelection: false)
                 }
         }
     }

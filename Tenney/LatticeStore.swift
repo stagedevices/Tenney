@@ -89,6 +89,7 @@ final class LatticeStore: ObservableObject {
     }
 
     private var didRestorePersist: Bool = false
+    private let allowPersistence: Bool
 
     /// Axis shifts (transpositions) along any prime axis (includes 3 and 5)
     @Published var axisShift: [Int:Int] = [3:0, 5:0, 7:0, 11:0, 13:0, 17:0, 19:0, 23:0, 29:0, 31:0]
@@ -635,6 +636,7 @@ final class LatticeStore: ObservableObject {
     }
 
     private func scheduleSave() {
+        guard allowPersistence else { return }
         saveWorkItem?.cancel()
         let job = DispatchWorkItem { [weak self] in self?.save() }
         saveWorkItem = job
@@ -643,6 +645,7 @@ final class LatticeStore: ObservableObject {
 
     @discardableResult
         func load() -> Bool {
+            guard allowPersistence else { return false }
             guard rememberLastViewSetting else { return false }
             guard let data = UserDefaults.standard.data(forKey: persistKey) else { return false }
             if let blob = try? JSONDecoder().decode(PersistBlob.self, from: data) {
@@ -666,6 +669,7 @@ final class LatticeStore: ObservableObject {
     }
 
     private func save() {
+        guard allowPersistence else { return }
         guard rememberLastViewSetting else { return }
         let blob = PersistBlob(
             camera: .init(tx: camera.translation.x, ty: camera.translation.y, scale: Double(camera.scale)),
@@ -686,7 +690,8 @@ final class LatticeStore: ObservableObject {
     // MARK: - Init
     private var cancellables = Set<AnyCancellable>()
 
-    init() {
+    init(allowPersistence: Bool = true) {
+        self.allowPersistence = allowPersistence // preview-only stores can opt out of disk writes.
         let didLoad = load()
                 if !didLoad {
                     // No persisted camera yet → seed from the user’s default preset.
@@ -762,7 +767,7 @@ final class LatticeStore: ObservableObject {
 
         visiblePrimes.subtract([2, 3, 5])
         // Keep UtilityBar audition + Lattice toolbar audition in lockstep.
-        if let app = AppModelLocator.shared {
+        if allowPersistence, let app = AppModelLocator.shared {
             self.auditionEnabled = app.latticeAuditionOn
 
             app.$latticeAuditionOn
@@ -779,10 +784,12 @@ final class LatticeStore: ObservableObject {
             .dropFirst()
             .sink { [weak self] on in
                 guard let self = self else { return }
-                if let app = AppModelLocator.shared, app.latticeAuditionOn != on {
-                    app.latticeAuditionOn = on
+                if self.allowPersistence {
+                    if let app = AppModelLocator.shared, app.latticeAuditionOn != on {
+                        app.latticeAuditionOn = on
+                    }
+                    AppModelLocator.shared?.playTestTone = false
                 }
-                AppModelLocator.shared?.playTestTone = false
                 if on {
                     guard self.latticeSoundEnabled else { return }
                     if self.selectionOrder.isEmpty && self.selectionOrderGhosts.isEmpty {
@@ -895,7 +902,29 @@ final class LatticeStore: ObservableObject {
         let v = UserDefaults.standard.double(forKey: SettingsKeys.safeAmp)
         return Float(v > 0 ? v : 0.18)
     }
-     func stopAllLatticeVoices(hard: Bool) {
+
+    /// Ensure silence without mutating persisted user settings; optionally clear transient selection state.
+    func hardResetAudioAndTransientState(clearSelection: Bool) {
+        pendingPlaneAudition.values.forEach { $0.cancel() }
+        pendingPlaneAudition.removeAll()
+        pendingGhostAudition.values.forEach { $0.cancel() }
+        pendingGhostAudition.removeAll()
+        ToneOutputEngine.shared.stopAll()
+        voiceForCoord.removeAll()
+        voiceForGhost.removeAll()
+        lastTriggerAt.removeAll()
+        lastTriggerAtGhost.removeAll()
+        pausedPlane.removeAll()
+        if clearSelection {
+            selected.removeAll()
+            selectionOrder.removeAll()
+            selectedGhosts.removeAll()
+            selectionOrderGhosts.removeAll()
+            selectionAnims.removeAll()
+            selectionOrderKeys.removeAll()
+        }
+    }
+    func stopAllLatticeVoices(hard: Bool) {
          if hard {
                 ToneOutputEngine.shared.stopAll()
                 voiceForCoord.removeAll()

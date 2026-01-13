@@ -50,6 +50,7 @@ private let libraryStore = ScaleLibraryStore.shared
     @StateObject private var tunerStore = TunerStore()
     @State private var latticeAxisShift: [Int:Int] = loadLatticeAxisShiftSnapshot()
     @EnvironmentObject private var app: AppModel
+    @EnvironmentObject private var latticeStore: LatticeStore
     @State private var mode: AppScreenMode = .tuner
     @State private var showSettings = false
     
@@ -256,8 +257,14 @@ private let libraryStore = ScaleLibraryStore.shared
         // Still in ContentView.body view modifiers
         .onAppear {
             presentWhatsNewIfEligible()
+            if app.showOnboardingWizard {
+                latticeStore.hardResetAudioAndTransientState(clearSelection: !setupWizardDone)
+            }
         }
         .onChange(of: app.showOnboardingWizard) { isShowing in
+            if isShowing {
+                latticeStore.hardResetAudioAndTransientState(clearSelection: !setupWizardDone)
+            }
             // As soon as onboarding closes, show What's New (if needed)
             if !isShowing { presentWhatsNewIfEligible() }
         }
