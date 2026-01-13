@@ -180,10 +180,14 @@ final class ToneOutputEngine {
         var freq: Double
         var amp: Float
         var owner: VoiceOwner
+        var ownerKey: String
     }
 
     private var metaLock = os_unfair_lock_s()
     private var metaByID: [VoiceID: VoiceMeta] = [:]
+
+    private var ownerLock = os_unfair_lock_s()
+    private var activeVoicesByOwner: [String: VoiceID] = [:]
 
     // Builder suspend stash (what we restore on dismiss)
     private var builderSuspended: [VoiceSnapshot] = []
@@ -235,18 +239,27 @@ final class ToneOutputEngine {
 
     /// Low-level voice control
     @discardableResult
-    func sustain(freq: Double, amp: Float) -> VoiceID {
-        sustain(freq: freq, amp: amp, owner: .other, attackMs: nil, releaseMs: nil)
+    func sustain(freq: Double, amp: Float, callsite: StaticString = #fileID, line: Int = #line) -> VoiceID {
+        sustain(freq: freq, amp: amp, owner: .other, ownerKey: nil, attackMs: nil, releaseMs: nil, callsite: callsite, line: line)
     }
     @discardableResult
     func sustain(
         freq: Double,
         amp: Float,
         owner: VoiceOwner,
+        ownerKey: String? = nil,
         attackMs: Double?,
-        releaseMs: Double?
+        releaseMs: Double?,
+        callsite: StaticString = #fileID,
+        line: Int = #line
     ) -> VoiceID {
         if !isRunning { startEngineIfNeeded() }
+
+        let resolvedOwnerKey = ownerKey ?? owner.rawValue
+        if let existingID = ownerVoiceID(for: resolvedOwnerKey) {
+            stop(ownerKey: resolvedOwnerKey, releaseSeconds: 0.0, callsite: callsite, line: line)
+            metaRemove(existingID)
+        }
 
         let id = nextID; nextID &+= 1
         let cfg = config
@@ -259,7 +272,11 @@ final class ToneOutputEngine {
         let r = max(1, Int((rMs / 1000.0) * sr))
 
         enqueue(.sustain(id: id, freq: Float(freq), amp: amp, attackSamps: a, releaseSamps: r))
-        metaSet(id, VoiceMeta(freq: freq, amp: amp, owner: owner))
+        metaSet(id, VoiceMeta(freq: freq, amp: amp, owner: owner, ownerKey: resolvedOwnerKey))
+        setOwnerVoiceID(id, for: resolvedOwnerKey)
+#if DEBUG
+        logVoiceEvent("START", ownerKey: resolvedOwnerKey, freq: freq, callsite: callsite, line: line)
+#endif
         return id
     }
     
@@ -287,23 +304,42 @@ final class ToneOutputEngine {
     func retune(id: VoiceID, to freq: Double, hardSync: Bool = false) {
         enqueue(.retune(id: id, freq: Float(freq), hardSync: hardSync))
         if let m = metaAll().first(where: { $0.0 == id })?.1 {
-            metaSet(id, VoiceMeta(freq: freq, amp: m.amp, owner: m.owner))
+            metaSet(id, VoiceMeta(freq: freq, amp: m.amp, owner: m.owner, ownerKey: m.ownerKey))
         }
 
     }
 
-    func release(id: VoiceID, seconds: Double) {
+    func release(id: VoiceID, seconds: Double, callsite: StaticString = #fileID, line: Int = #line) {
         let rs = max(0.0, seconds)
         let samps = max(1, Int(rs * sampleRate))
         enqueue(.release(id: id, releaseSamps: samps))
+#if DEBUG
+        if let meta = metaGet(id) {
+            logVoiceEvent("STOP", ownerKey: meta.ownerKey, freq: meta.freq, callsite: callsite, line: line)
+        } else {
+            logVoiceEvent("STOP", ownerKey: "unknown", freq: nil, callsite: callsite, line: line)
+        }
+#endif
         
     }
 
-    func stopAll() {
+    func stop(ownerKey: String, releaseSeconds: Double = 0.0, callsite: StaticString = #fileID, line: Int = #line) {
+        guard let id = ownerVoiceID(for: ownerKey) else { return }
+        release(id: id, seconds: releaseSeconds, callsite: callsite, line: line)
+        clearOwnerVoiceID(for: ownerKey)
+    }
+
+    func stopAll(callsite: StaticString = #fileID, line: Int = #line) {
+#if DEBUG
+        for (_, meta) in metaAll() {
+            logVoiceEvent("STOP", ownerKey: meta.ownerKey, freq: meta.freq, callsite: callsite, line: line)
+        }
+#endif
         enqueue(.stopAll)
         os_unfair_lock_lock(&metaLock)
         metaByID.removeAll(keepingCapacity: true)
         os_unfair_lock_unlock(&metaLock)
+        clearAllOwnerVoices()
 
         testToneID = nil
     }
@@ -364,10 +400,45 @@ final class ToneOutputEngine {
     @inline(__always) private func metaRemove(_ id: VoiceID) {
         os_unfair_lock_lock(&metaLock); metaByID.removeValue(forKey: id); os_unfair_lock_unlock(&metaLock)
     }
+    @inline(__always) private func metaGet(_ id: VoiceID) -> VoiceMeta? {
+        os_unfair_lock_lock(&metaLock); defer { os_unfair_lock_unlock(&metaLock) }
+        return metaByID[id]
+    }
     @inline(__always) private func metaAll() -> [(VoiceID, VoiceMeta)] {
         os_unfair_lock_lock(&metaLock); defer { os_unfair_lock_unlock(&metaLock) }
         return Array(metaByID)
     }
+
+    @inline(__always) private func ownerVoiceID(for ownerKey: String) -> VoiceID? {
+        os_unfair_lock_lock(&ownerLock); defer { os_unfair_lock_unlock(&ownerLock) }
+        return activeVoicesByOwner[ownerKey]
+    }
+
+    @inline(__always) private func setOwnerVoiceID(_ id: VoiceID, for ownerKey: String) {
+        os_unfair_lock_lock(&ownerLock); activeVoicesByOwner[ownerKey] = id; os_unfair_lock_unlock(&ownerLock)
+    }
+
+    @inline(__always) private func clearOwnerVoiceID(for ownerKey: String) {
+        os_unfair_lock_lock(&ownerLock); activeVoicesByOwner.removeValue(forKey: ownerKey); os_unfair_lock_unlock(&ownerLock)
+    }
+
+    @inline(__always) private func clearAllOwnerVoices() {
+        os_unfair_lock_lock(&ownerLock); activeVoicesByOwner.removeAll(keepingCapacity: true); os_unfair_lock_unlock(&ownerLock)
+    }
+
+#if DEBUG
+    private func logVoiceEvent(
+        _ kind: String,
+        ownerKey: String,
+        freq: Double?,
+        callsite: StaticString,
+        line: Int
+    ) {
+        let ts = String(format: "%.3f", Date().timeIntervalSince1970)
+        let freqStr = freq.map { String(format: "%.2f", $0) } ?? "n/a"
+        print("[ToneOutput] \(kind) owner=\(ownerKey) freq=\(freqStr) ts=\(ts) from=\(callsite):\(line)")
+    }
+#endif
 
     // MARK: Internals
 

@@ -1854,7 +1854,14 @@ struct LatticeView: View {
         // Stop any previous preview instantly, then start the new one
         if let id = infoVoiceID { ToneOutputEngine.shared.release(id: id, seconds: 0.0) }
         guard (UserDefaults.standard.object(forKey: SettingsKeys.latticeSoundEnabled) as? Bool ?? true) else { return }
-        infoVoiceID = ToneOutputEngine.shared.sustain(freq: hz, amp: 0.22)
+        infoVoiceID = ToneOutputEngine.shared.sustain(
+            freq: hz,
+            amp: 0.22,
+            owner: .other,
+            ownerKey: "lattice:info",
+            attackMs: nil,
+            releaseMs: nil
+        )
         infoOctaveOffset = newOffset
     }
 
