@@ -95,9 +95,17 @@ struct TenneyApp: App {
                 .environmentObject(latticeStore)
                 .environmentObject(appModel)
                 .preferredColorScheme(appScheme)
-                .onAppear { appModel.configureAndStart() }
+                .onAppear {
+                    appModel.configureAndStart()
+                    if scenePhase == .active {
+                        latticeStore.performBootSelectionClearIfNeeded()
+                    }
+                }
                 .onChange(of: crashReportingEnabled) { SentryService.shared.setEnabled($0) }
                 .onChange(of: scenePhase) { phase in
+                    if phase == .active {
+                        latticeStore.performBootSelectionClearIfNeeded()
+                    }
                     if phase == .background || phase == .inactive {
                         SessionCrashMarker.shared.markCleanTermination()
                     }
@@ -126,9 +134,17 @@ struct TenneyApp: App {
                 .environmentObject(latticeStore)
                 .environmentObject(appModel)
                 .preferredColorScheme(appScheme)   // ← global scheme driven by Settings
-                .onAppear { appModel.configureAndStart() }
+                .onAppear {
+                    appModel.configureAndStart()
+                    if scenePhase == .active {
+                        latticeStore.performBootSelectionClearIfNeeded()
+                    }
+                }
                 .onChange(of: crashReportingEnabled) { SentryService.shared.setEnabled($0) }
                 .onChange(of: scenePhase) { phase in
+                    if phase == .active {
+                        latticeStore.performBootSelectionClearIfNeeded()
+                    }
                     if phase == .background || phase == .inactive {
                         SessionCrashMarker.shared.markCleanTermination()
                     }
