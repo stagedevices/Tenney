@@ -120,8 +120,11 @@ public final class PitchFFT {
 
         real = Array(repeating: 0, count: n)
         imag = Array(repeating: 0, count: n)
-
+        
+        #if DEBUG
         debugHook?("[PitchFFT] resizeFFT n=\(n) log2n=\(log2n) sr=\(sr)")
+        #endif
+        
         prevPhaseByBin.removeAll(keepingCapacity: true)
         hasPrevPhase = false
 
@@ -212,7 +215,10 @@ public final class PitchFFT {
                 // Coarse f0 via HPS (within peakSearchHz)
                 let (f0HpsRaw, confHps) = coarseHPS(mags: mags, sr: sr, n: n, peakBin: peakIndex)
                 let f0Hps = promoteIfSubharmonic(f0: f0HpsRaw, mags: mags, peakBin: peakIndex, sr: sr, n: n)
+                
+                #if DEBUG
                 debugHook?("[PitchFFT] peak=\(String(format:"%.2f", peakFreq))Hz (bin \(peakIndex))  hps=\(String(format:"%.2f", f0Hps ?? -1))Hz")
+                #endif
                 
                 let floorPow = estimateNoiseFloorPow(mags: mags, sr: sr, n: n)
                 // ---- Multi-harmonic consensus + optional phase refinement ----
