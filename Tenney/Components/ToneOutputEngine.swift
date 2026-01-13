@@ -257,8 +257,20 @@ final class ToneOutputEngine {
 
         let resolvedOwnerKey = ownerKey ?? owner.rawValue
         if let existingID = ownerVoiceID(for: resolvedOwnerKey) {
-            stop(ownerKey: resolvedOwnerKey, releaseSeconds: 0.0, callsite: callsite, line: line)
-            metaRemove(existingID)
+            retune(id: existingID, to: freq, hardSync: false)
+            metaSet(existingID, VoiceMeta(freq: freq, amp: amp, owner: owner, ownerKey: resolvedOwnerKey))
+#if DEBUG
+            logVoiceEvent(
+                "UPDATE",
+                ownerKey: resolvedOwnerKey,
+                freq: freq,
+                attackMs: attackMs ?? config.attackMs,
+                releaseMs: releaseMs ?? config.releaseMs,
+                callsite: callsite,
+                line: line
+            )
+#endif
+            return existingID
         }
 
         let id = nextID; nextID &+= 1
@@ -275,7 +287,15 @@ final class ToneOutputEngine {
         metaSet(id, VoiceMeta(freq: freq, amp: amp, owner: owner, ownerKey: resolvedOwnerKey))
         setOwnerVoiceID(id, for: resolvedOwnerKey)
 #if DEBUG
-        logVoiceEvent("START", ownerKey: resolvedOwnerKey, freq: freq, callsite: callsite, line: line)
+        logVoiceEvent(
+            "START",
+            ownerKey: resolvedOwnerKey,
+            freq: freq,
+            attackMs: aMs,
+            releaseMs: rMs,
+            callsite: callsite,
+            line: line
+        )
 #endif
         return id
     }
@@ -301,7 +321,7 @@ final class ToneOutputEngine {
 
 
 
-    func retune(id: VoiceID, to freq: Double, hardSync: Bool = false) {
+    func retune(id: VoiceID, to freq: Double, hardSync: Bool = false, callsite: StaticString = #fileID, line: Int = #line) {
         enqueue(.retune(id: id, freq: Float(freq), hardSync: hardSync))
         if let m = metaAll().first(where: { $0.0 == id })?.1 {
             metaSet(id, VoiceMeta(freq: freq, amp: m.amp, owner: m.owner, ownerKey: m.ownerKey))
@@ -314,10 +334,27 @@ final class ToneOutputEngine {
         let samps = max(1, Int(rs * sampleRate))
         enqueue(.release(id: id, releaseSamps: samps))
 #if DEBUG
+        let releaseMs = rs * 1000.0
         if let meta = metaGet(id) {
-            logVoiceEvent("STOP", ownerKey: meta.ownerKey, freq: meta.freq, callsite: callsite, line: line)
+            logVoiceEvent(
+                "STOP",
+                ownerKey: meta.ownerKey,
+                freq: meta.freq,
+                attackMs: nil,
+                releaseMs: releaseMs,
+                callsite: callsite,
+                line: line
+            )
         } else {
-            logVoiceEvent("STOP", ownerKey: "unknown", freq: nil, callsite: callsite, line: line)
+            logVoiceEvent(
+                "STOP",
+                ownerKey: "unknown",
+                freq: nil,
+                attackMs: nil,
+                releaseMs: releaseMs,
+                callsite: callsite,
+                line: line
+            )
         }
 #endif
         
@@ -332,7 +369,15 @@ final class ToneOutputEngine {
     func stopAll(callsite: StaticString = #fileID, line: Int = #line) {
 #if DEBUG
         for (_, meta) in metaAll() {
-            logVoiceEvent("STOP", ownerKey: meta.ownerKey, freq: meta.freq, callsite: callsite, line: line)
+            logVoiceEvent(
+                "STOP",
+                ownerKey: meta.ownerKey,
+                freq: meta.freq,
+                attackMs: nil,
+                releaseMs: 0,
+                callsite: callsite,
+                line: line
+            )
         }
 #endif
         enqueue(.stopAll)
@@ -431,12 +476,16 @@ final class ToneOutputEngine {
         _ kind: String,
         ownerKey: String,
         freq: Double?,
+        attackMs: Double?,
+        releaseMs: Double?,
         callsite: StaticString,
         line: Int
     ) {
         let ts = String(format: "%.3f", Date().timeIntervalSince1970)
         let freqStr = freq.map { String(format: "%.2f", $0) } ?? "n/a"
-        print("[ToneOutput] \(kind) owner=\(ownerKey) freq=\(freqStr) ts=\(ts) from=\(callsite):\(line)")
+        let attackStr = attackMs.map { String(format: "%.1f", $0) } ?? "n/a"
+        let releaseStr = releaseMs.map { String(format: "%.1f", $0) } ?? "n/a"
+        print("[ToneOutput] \(kind) owner=\(ownerKey) freq=\(freqStr) attackMs=\(attackStr) releaseMs=\(releaseStr) ts=\(ts) from=\(callsite):\(line)")
     }
 #endif
 

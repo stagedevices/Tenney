@@ -1689,7 +1689,6 @@ struct LatticeView: View {
                 let raw = app.rootHz * (Double(cn) / Double(cd))
                 let freq = foldToAudible(raw, minHz: 20, maxHz: 5000)
                 releaseInfoVoice()
-                infoOctaveOffset = 0
 
                 focusedPoint = (
                     pos: cand.pos,
@@ -1716,9 +1715,11 @@ struct LatticeView: View {
                 #endif
                     }
                     store.toggleSelection(c)
+                    infoOctaveOffset = store.octaveOffset(for: c)
                     selectionHapticTick &+= 1
                 } else if let g = cand.ghost {
                     store.toggleOverlay(prime: g.prime, e3: g.e3, e5: g.e5, eP: g.eP)
+                    infoOctaveOffset = 0
                     selectionHapticTick &+= 1
                 }
 
@@ -3603,12 +3604,18 @@ struct LatticeView: View {
                             let newOffset = infoOctaveOffset - 1
                             let hzNew = f.hz * pow(2.0, Double(newOffset))
                             switchInfoTone(toHz: hzNew, newOffset: newOffset)
+                            if let coord = f.coord, store.selected.contains(coord) {
+                                store.setOctaveOffset(for: coord, to: newOffset)
+                            }
                         }
 
                         GlassPuckButton(systemName: "chevron.up", isEnabled: canUp) {
                             let newOffset = infoOctaveOffset + 1
                             let hzNew = f.hz * pow(2.0, Double(newOffset))
                             switchInfoTone(toHz: hzNew, newOffset: newOffset)
+                            if let coord = f.coord, store.selected.contains(coord) {
+                                store.setOctaveOffset(for: coord, to: newOffset)
+                            }
                         }
                     }
                     if store.labelMode == .heji {
