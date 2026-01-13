@@ -947,12 +947,41 @@ final class LatticeStore: ObservableObject {
     struct PersistBlob: Codable {
         struct Cam: Codable { let tx: Double; let ty: Double; let scale: Double }
         struct Coord: Codable { let e3: Int; let e5: Int }
+        struct Ghost: Codable, Hashable {
+            let e3: Int
+            let e5: Int
+            let p: Int
+            let eP: Int
+
+            init(e3: Int, e5: Int, p: Int, eP: Int) {
+                self.e3 = e3
+                self.e5 = e5
+                self.p = p
+                self.eP = eP
+            }
+
+            init(from ghost: GhostMonzo) {
+                self.init(e3: ghost.e3, e5: ghost.e5, p: ghost.p, eP: ghost.eP)
+            }
+
+            func toGhostMonzo() -> GhostMonzo {
+                GhostMonzo(e3: e3, e5: e5, p: p, eP: eP)
+            }
+        }
+
+        struct GhostOffset: Codable, Hashable {
+            let ghost: Ghost
+            let offset: Int
+        }
         let camera: Cam
         let pivot: Coord
         let visiblePrimes: [Int]
         let axisShift: [Int:Int]
         let mode: String
         let selected: [Coord]
+        let selectedGhosts: [Ghost]?
+        let selectionOrderGhosts: [Ghost]?
+        let octaveOffsets: [GhostOffset]?
         let guidesOn: Bool
         let labelMode: String
         let audition: Bool
@@ -981,6 +1010,21 @@ final class LatticeStore: ObservableObject {
             mode = LatticeMode(rawValue: blob.mode) ?? .explore
             if Self.didBootSelectionClearThisProcess {
                 selected = Set(blob.selected.map { LatticeCoord(e3: $0.e3, e5: $0.e5) })
+                if let ghosts = blob.selectedGhosts {
+                    selectedGhosts = Set(ghosts.map { $0.toGhostMonzo() })
+                }
+                if let ghostOrder = blob.selectionOrderGhosts {
+                    selectionOrderGhosts = ghostOrder.map { $0.toGhostMonzo() }
+                }
+                if let ghostOffsets = blob.octaveOffsets {
+                    var offsets: [GhostMonzo: Int] = [:]
+                    offsets.reserveCapacity(ghostOffsets.count)
+                    for entry in ghostOffsets {
+                        offsets[entry.ghost.toGhostMonzo()] = entry.offset
+                    }
+                    octaveOffsetByGhost = offsets
+                }
+                normalizeSelectionState(reason: "restore")
             } else {
                 clearAllSelectionsSilently()
             }
@@ -1003,6 +1047,9 @@ final class LatticeStore: ObservableObject {
             axisShift: axisShift,
             mode: mode.rawValue,
             selected: selected.map { PersistBlob.Coord(e3: $0.e3, e5: $0.e5) },
+            selectedGhosts: selectedGhosts.map { PersistBlob.Ghost(from: $0) },
+            selectionOrderGhosts: selectionOrderGhosts.map { PersistBlob.Ghost(from: $0) },
+            octaveOffsets: octaveOffsetByGhost.map { PersistBlob.GhostOffset(ghost: PersistBlob.Ghost(from: $0.key), offset: $0.value) },
             guidesOn: guidesOn,
             labelMode: labelMode.rawValue,
             audition: auditionEnabled
@@ -1141,6 +1188,9 @@ final class LatticeStore: ObservableObject {
         $axisShift.dropFirst().sink { [weak self] _ in self?.scheduleSave() }.store(in: &cancellables)
         $mode.dropFirst().sink { [weak self] _ in self?.scheduleSave() }.store(in: &cancellables)
         $selected.dropFirst().sink { [weak self] _ in self?.scheduleSave() }.store(in: &cancellables)
+        $selectedGhosts.dropFirst().sink { [weak self] _ in self?.scheduleSave() }.store(in: &cancellables)
+        $selectionOrderGhosts.dropFirst().sink { [weak self] _ in self?.scheduleSave() }.store(in: &cancellables)
+        $octaveOffsetByGhost.dropFirst().sink { [weak self] _ in self?.scheduleSave() }.store(in: &cancellables)
     }
 
     // MARK: - Audio helpers
