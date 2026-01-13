@@ -89,6 +89,8 @@ final class LatticeStore: ObservableObject {
     }
 
     private var didRestorePersist: Bool = false
+    private var didPerformBootSelectionClear: Bool = false
+    private var suppressPersist: Bool = false
 
     /// Axis shifts (transpositions) along any prime axis (includes 3 and 5)
     @Published var axisShift: [Int:Int] = [3:0, 5:0, 7:0, 11:0, 13:0, 17:0, 19:0, 23:0, 29:0, 31:0]
@@ -575,6 +577,42 @@ final class LatticeStore: ObservableObject {
         voiceForGhost.removeAll()
     }
 
+    func performBootSelectionClearIfNeeded() {
+        guard !didPerformBootSelectionClear else { return }
+        didPerformBootSelectionClear = true
+
+        cancelPendingAuditions()
+        stopSelectionAudio(hard: true)
+        ToneOutputEngine.shared.stopAll()
+
+        suppressPersist = true
+        clearAllSelectionsSilently()
+        suppressPersist = false
+
+        stopSelectionAudio(hard: true)
+        ToneOutputEngine.shared.stopAll()
+    }
+
+    private func cancelPendingAuditions() {
+        for work in pendingPlaneAudition.values { work.cancel() }
+        pendingPlaneAudition.removeAll()
+        for work in pendingGhostAudition.values { work.cancel() }
+        pendingGhostAudition.removeAll()
+    }
+
+    private func clearAllSelectionsSilently() {
+        selected.removeAll()
+        selectionOrder.removeAll()
+        selectedGhosts.removeAll()
+        selectionOrderGhosts.removeAll()
+        selectionOrderKeys.removeAll()
+        selectionAnims.removeAll()
+        brushVisited.removeAll()
+        pausedPlane.removeAll()
+        lastTriggerAt.removeAll()
+        lastTriggerAtGhost.removeAll()
+    }
+
     var selectedCount: Int { selectionOrder.count + selectionOrderGhosts.count }
 
     // ===== Builder staging (for red counter in lattice) =====
@@ -635,6 +673,7 @@ final class LatticeStore: ObservableObject {
     }
 
     private func scheduleSave() {
+        guard !suppressPersist else { return }
         saveWorkItem?.cancel()
         let job = DispatchWorkItem { [weak self] in self?.save() }
         saveWorkItem = job
@@ -654,7 +693,11 @@ final class LatticeStore: ObservableObject {
             let defaults = axisShift
             axisShift = defaults.merging(blob.axisShift) { _, new in new }
             mode = LatticeMode(rawValue: blob.mode) ?? .explore
-            selected = Set(blob.selected.map { LatticeCoord(e3: $0.e3, e5: $0.e5) })
+            if didPerformBootSelectionClear {
+                clearAllSelectionsSilently()
+            } else {
+                selected = Set(blob.selected.map { LatticeCoord(e3: $0.e3, e5: $0.e5) })
+            }
             guidesOn = blob.guidesOn
             labelMode = JILabelMode(rawValue: blob.labelMode) ?? .ratio
             auditionEnabled = blob.audition
