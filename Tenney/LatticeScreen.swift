@@ -46,6 +46,11 @@ struct LatticeScreen: View {
                 // If your app sets AppModelLocator.shared in TenneyApp/ContentView already, this is harmless.
                 // Keep the root provider updated (future-proof if you migrate LatticeStore to use it).
                 LatticeStore.rootHzProvider = { AppModelLocator.shared?.rootHz ?? 415.0 }
+                store.normalizeSelectionState(reason: "lattice appear")
+                store.resyncAuditionToSelection(forceRebuild: false, reason: "lattice appear")
+#if DEBUG
+                store.debugLogSelectionState(reason: "lattice appear")
+#endif
             }
             .onChange(of: scenePhase) { phase in
                 if phase != .active {
@@ -73,6 +78,9 @@ struct LatticeScreen: View {
             .onDisappear {
                 store.stopSelectionAudio(hard: true)
                store.stopAllLatticeVoices(hard: true)
+#if DEBUG
+                store.debugLogSelectionState(reason: "lattice disappear")
+#endif
             }
 #if !os(macOS)
             .navigationTitle("Lattice")

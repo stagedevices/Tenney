@@ -441,21 +441,42 @@ final class LatticeStore: ObservableObject {
         max(0.05, configuredReleaseMs() / 1000.0)
     }
 
-    private func syncAuditionVoicesToSelection(reason: AuditionSyncReason) {
+    func resyncAuditionToSelection(forceRebuild: Bool, reason: String) {
         cancelPendingAuditions()
+
+#if DEBUG
+        debugLogSelectionState(reason: "resync audition \(reason)")
+#endif
 
         guard auditionEnabled, latticeSoundEnabled else {
             stopSelectionAudio(hard: false)
+#if DEBUG
+            logLatticeAuditionSummary(
+                action: "STOP_ALL",
+                desiredOwners: [],
+                forceRebuild: forceRebuild,
+                reason: reason
+            )
+#endif
             return
         }
 
         let desiredPlane = Set(selected)
         let desiredGhosts = Set(selectedGhosts)
+
+        if forceRebuild {
+            stopSelectionAudio(hard: false)
+        }
+
         let attackMs = configuredAttackMs()
         let releaseMs = configuredReleaseMs()
         let releaseSeconds = configuredReleaseSeconds()
 
+        var desiredOwners: [String] = []
+        desiredOwners.reserveCapacity(desiredPlane.count + desiredGhosts.count)
+
         for c in desiredPlane {
+            desiredOwners.append(latticeOwnerKey(for: c))
             if pausedPlane.contains(c) { continue }
             let f = exactFreq(for: c)
             let amp = amplitude(for: c)
@@ -483,6 +504,7 @@ final class LatticeStore: ObservableObject {
         }
 
         for g in desiredGhosts {
+            desiredOwners.append(latticeOwnerKey(for: g))
             let f = exactFreq(for: g)
             let amp = amplitude(for: g)
             let existed = voiceForGhost[g] != nil
@@ -539,6 +561,68 @@ final class LatticeStore: ObservableObject {
             )
 #endif
         }
+
+#if DEBUG
+        logLatticeAuditionSummary(
+            action: "RESYNC",
+            desiredOwners: desiredOwners,
+            forceRebuild: forceRebuild,
+            reason: reason
+        )
+#endif
+    }
+
+    private func syncAuditionVoicesToSelection(reason: AuditionSyncReason) {
+        resyncAuditionToSelection(forceRebuild: false, reason: reason.rawValue)
+    }
+
+    func normalizeSelectionState(reason: String) {
+        var nextOrder = selectionOrder.filter { selected.contains($0) }
+        let missingPlane = selected.subtracting(Set(nextOrder))
+            .sorted { lhs, rhs in
+                if lhs.e3 != rhs.e3 { return lhs.e3 < rhs.e3 }
+                return lhs.e5 < rhs.e5
+            }
+        nextOrder.append(contentsOf: missingPlane)
+        if nextOrder != selectionOrder {
+            selectionOrder = nextOrder
+        }
+
+        var nextGhostOrder = selectionOrderGhosts.filter { selectedGhosts.contains($0) }
+        let missingGhosts = selectedGhosts.subtracting(Set(nextGhostOrder))
+            .sorted { lhs, rhs in
+                if lhs.p != rhs.p { return lhs.p < rhs.p }
+                if lhs.e3 != rhs.e3 { return lhs.e3 < rhs.e3 }
+                if lhs.e5 != rhs.e5 { return lhs.e5 < rhs.e5 }
+                return lhs.eP < rhs.eP
+            }
+        nextGhostOrder.append(contentsOf: missingGhosts)
+        if nextGhostOrder != selectionOrderGhosts {
+            selectionOrderGhosts = nextGhostOrder
+        }
+
+        if !selectionOrderKeys.isEmpty {
+            let validKeys = selectionOrderKeys.filter { key in
+                switch key {
+                case .plane(let c):
+                    return selected.contains(c)
+                case .ghost(let g):
+                    return selectedGhosts.contains(g)
+                }
+            }
+            let desiredKeys = selectionOrder.map { SelectionKey.plane($0) } + selectionOrderGhosts.map { SelectionKey.ghost($0) }
+            var mergedKeys = validKeys
+            for key in desiredKeys where !mergedKeys.contains(key) {
+                mergedKeys.append(key)
+            }
+            if mergedKeys != selectionOrderKeys {
+                selectionOrderKeys = mergedKeys
+            }
+        }
+
+#if DEBUG
+        debugLogSelectionState(reason: "normalize \(reason)")
+#endif
     }
 
 #if DEBUG
@@ -549,14 +633,25 @@ final class LatticeStore: ObservableObject {
         freq: Double?,
         attackMs: Double?,
         releaseMs: Double?,
-        reason: AuditionSyncReason,
+        reason: String,
         callsite: StaticString = #fileID,
         line: Int = #line
     ) {
         let freqStr = freq.map { String(format: "%.2f", $0) } ?? "n/a"
         let attackStr = attackMs.map { String(format: "%.1f", $0) } ?? "n/a"
         let releaseStr = releaseMs.map { String(format: "%.1f", $0) } ?? "n/a"
-        print("[LatticeAudition] \(kind) owner=\(ownerKey) ratio=\(ratio) freq=\(freqStr) attackMs=\(attackStr) releaseMs=\(releaseStr) reason=\(reason.rawValue) from=\(callsite):\(line)")
+        print("[LatticeAudition] \(kind) owner=\(ownerKey) ratio=\(ratio) freq=\(freqStr) attackMs=\(attackStr) releaseMs=\(releaseStr) reason=\(reason) from=\(callsite):\(line)")
+    }
+
+    private func logLatticeAuditionSummary(action: String, desiredOwners: [String], forceRebuild: Bool, reason: String) {
+        let owners = desiredOwners.sorted().joined(separator: ",")
+        print("[LatticeAudition] \(action) forceRebuild=\(forceRebuild) desiredOwners=[\(owners)] reason=\(reason)")
+    }
+
+    func debugLogSelectionState(reason: String) {
+        print(
+            "[LatticeSelection] \(reason) selected=\(selected.count) order=\(selectionOrder.count) ghosts=\(selectedGhosts.count) ghostOrder=\(selectionOrderGhosts.count) orderKeys=\(selectionOrderKeys.count)"
+        )
     }
 #endif
 
@@ -585,6 +680,9 @@ final class LatticeStore: ObservableObject {
         }
         if pushUndo { undoStack.append(.toggle(c: c)); redoStack.removeAll() }
         syncAuditionVoicesToSelection(reason: .selectionChange)
+#if DEBUG
+        debugLogSelectionState(reason: "toggle selection \(c)")
+#endif
     }
     // Stop any currently-sustaining selection voices (plane + ghosts).
     func stopSelectionAudio(hard: Bool = true) {
@@ -661,6 +759,9 @@ final class LatticeStore: ObservableObject {
         }
         if pushUndo { undoStack.append(.toggleGhost(g: g)); redoStack.removeAll() }
         syncAuditionVoicesToSelection(reason: .selectionChange)
+#if DEBUG
+        debugLogSelectionState(reason: "toggle ghost \(ratioStringGhost(g))")
+#endif
     }
 
     func setPivot(_ c: LatticeCoord) { pivot = c }
@@ -682,6 +783,9 @@ final class LatticeStore: ObservableObject {
         for g in voiceForGhost.keys { ToneOutputEngine.shared.stop(ownerKey: latticeOwnerKey(for: g), releaseSeconds: 0.5) }
         voiceForCoord.removeAll()
         voiceForGhost.removeAll()
+#if DEBUG
+        debugLogSelectionState(reason: "clear selection")
+#endif
     }
 
     func performBootSelectionClearIfNeeded() {
@@ -938,7 +1042,10 @@ final class LatticeStore: ObservableObject {
                     app.latticeAuditionOn = on
                 }
                 AppModelLocator.shared?.playTestTone = false
-                self.syncAuditionVoicesToSelection(reason: .auditionToggle)
+#if DEBUG
+                self.debugLogSelectionState(reason: "audition toggle \(on)")
+#endif
+                self.resyncAuditionToSelection(forceRebuild: true, reason: "audition toggled")
             }
             .store(in: &cancellables)
 
