@@ -53,6 +53,7 @@ final class LatticeStore: ObservableObject {
     @Published private var octaveOffsetByGhost: [GhostMonzo: Int] = [:]
 
     @Published var auditionEnabled: Bool = true
+    @Published private var latticeSoundEnabled: Bool = true
     @Published var guidesOn: Bool = true
     @Published var labelMode: JILabelMode = .ratio
     @Published var showHelp: Bool = false
@@ -442,6 +443,14 @@ final class LatticeStore: ObservableObject {
     }
 
     func resyncAuditionToSelection(forceRebuild: Bool, reason: String) {
+        resyncAuditionToSelection(
+            effectiveEnabled: auditionEnabled && latticeSoundEnabled,
+            forceRebuild: forceRebuild,
+            reason: reason
+        )
+    }
+
+    func resyncAuditionToSelection(effectiveEnabled: Bool, forceRebuild: Bool, reason: String) {
         cancelPendingAuditions()
 
         let orderedPlane = selectionOrder.filter { selected.contains($0) }
@@ -472,11 +481,11 @@ final class LatticeStore: ObservableObject {
 
 #if DEBUG
         print(
-            "[LatticeAudition] resync start forceRebuild=\(forceRebuild) auditionEnabled=\(auditionEnabled) latticeSoundEnabled=\(latticeSoundEnabled) desired=\(desiredOwners.count) selected=\(selected.count) ghosts=\(selectedGhosts.count) voices=\(voiceForCoord.count + voiceForGhost.count) reason=\(reason)"
+            "[LatticeAudition] resync start forceRebuild=\(forceRebuild) auditionEnabled=\(auditionEnabled) latticeSoundEnabled=\(latticeSoundEnabled) effectiveEnabled=\(effectiveEnabled) desired=\(desiredOwners.count) selected=\(selected.count) ghosts=\(selectedGhosts.count) voices=\(voiceForCoord.count + voiceForGhost.count) reason=\(reason)"
         )
 #endif
 #if DEBUG
-        if auditionEnabled && latticeSoundEnabled && selected.count > 0 && desiredPlaneCoords.isEmpty {
+        if effectiveEnabled && selected.count > 0 && desiredPlaneCoords.isEmpty {
             assertionFailure("[LatticeAudition] desiredPlaneCoords empty with selection present reason=\(reason)")
         }
 #endif
@@ -485,7 +494,7 @@ final class LatticeStore: ObservableObject {
         debugLogSelectionState(reason: "resync audition \(reason)")
 #endif
 
-        guard auditionEnabled, latticeSoundEnabled else {
+        guard effectiveEnabled else {
             stopSelectionAudio(hard: false)
 #if DEBUG
             logLatticeAuditionSummary(
@@ -751,7 +760,6 @@ final class LatticeStore: ObservableObject {
         let duration = max(0.0, Double(durationMS) / 1000.0)
         let work = DispatchWorkItem { [weak self] in
             guard let self = self else { return }
-            self.auditionEnabled = true
             self.resyncAuditionToSelection(forceRebuild: true, reason: "info voice resume")
         }
         reenableAuditionWorkItem = work
@@ -1050,8 +1058,11 @@ final class LatticeStore: ObservableObject {
         NotificationCenter.default.addObserver(forName: .settingsChanged, object: nil, queue: .main) { [weak self] note in
             guard let self else { return }
             
-            if note.userInfo?[SettingsKeys.latticeSoundEnabled] != nil, !self.latticeSoundEnabled {
-                self.stopAllLatticeVoices(hard: true)
+            if note.userInfo?[SettingsKeys.latticeSoundEnabled] != nil {
+                self.latticeSoundEnabled = Self.readLatticeSoundEnabled()
+                if !self.latticeSoundEnabled {
+                    self.stopAllLatticeVoices(hard: true)
+                }
             }
 
             if let raw = note.userInfo?[SettingsKeys.tenneyDistanceMode] as? String,
@@ -1095,22 +1106,33 @@ final class LatticeStore: ObservableObject {
                 .store(in: &cancellables)
         }
 
-        // Audition toggle: start/stop lattice tones, and ensure app test tone is off to keep output clean.
-        $auditionEnabled
-            .dropFirst()
-            .sink { [weak self] on in
-                guard let self = self else { return }
-                if let app = AppModelLocator.shared, app.latticeAuditionOn != on {
-                    app.latticeAuditionOn = on
-                }
-                AppModelLocator.shared?.playTestTone = false
+        latticeSoundEnabled = Self.readLatticeSoundEnabled()
+
+        Publishers.CombineLatest(
+            $auditionEnabled.removeDuplicates(),
+            $latticeSoundEnabled.removeDuplicates()
+        )
+        .receive(on: RunLoop.main)
+        .debounce(for: .milliseconds(0), scheduler: RunLoop.main)
+        .dropFirst()
+        .sink { [weak self] audition, sound in
+            guard let self else { return }
+            let effectiveEnabled = audition && sound
+            self.auditionGateSequence += 1
+            AppModelLocator.shared?.playTestTone = false
 #if DEBUG
-                print("[LatticeAudition] auditionEnabled=\(on) selected=\(self.selected.count) ghosts=\(self.selectedGhosts.count)")
-                self.debugLogSelectionState(reason: "audition toggle \(on)")
+            print(
+                "[LatticeAudition] gateSeq=\(self.auditionGateSequence) audition=\(audition) sound=\(sound) effectiveEnabled=\(effectiveEnabled) selected=\(self.selected.count)"
+            )
+            self.debugLogSelectionState(reason: "audition/sound gate \(self.auditionGateSequence)")
 #endif
-                self.resyncAuditionToSelection(forceRebuild: true, reason: "audition toggled")
-            }
-            .store(in: &cancellables)
+            self.resyncAuditionToSelection(
+                effectiveEnabled: effectiveEnabled,
+                forceRebuild: true,
+                reason: "audition/sound gate changed"
+            )
+        }
+        .store(in: &cancellables)
 
         // Auto-save on any relevant change
         $camera.dropFirst().sink { [weak self] _ in self?.scheduleSave() }.store(in: &cancellables)
@@ -1127,13 +1149,13 @@ final class LatticeStore: ObservableObject {
     private var lastTriggerAtGhost: [GhostMonzo: Date] = [:]
     private var voiceForGhost: [GhostMonzo: Int] = [:]
     private var reenableAuditionWorkItem: DispatchWorkItem?
+    private var auditionGateSequence: Int = 0
     
-    // Default true when unset.
-        private var latticeSoundEnabled: Bool {
-            let ud = UserDefaults.standard
-            if ud.object(forKey: SettingsKeys.latticeSoundEnabled) == nil { return true }
-            return ud.bool(forKey: SettingsKeys.latticeSoundEnabled)
-        }
+    private static func readLatticeSoundEnabled() -> Bool {
+        let ud = UserDefaults.standard
+        if ud.object(forKey: SettingsKeys.latticeSoundEnabled) == nil { return true }
+        return ud.bool(forKey: SettingsKeys.latticeSoundEnabled)
+    }
 
     /// Exact-ratio frequency for a 3×5-plane coord, folded into [root/2, 2*root].
     private func exactFreq(for c: LatticeCoord) -> Double {
