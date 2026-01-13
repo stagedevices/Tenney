@@ -992,7 +992,14 @@ struct ScaleBuilderScreen: View {
                 ToneOutputEngine.shared.retune(id: id, to: f, hardSync: false)
             } else {
                 guard soundOn else { return }
-                    let id = ToneOutputEngine.shared.sustain(freq: f, amp: Float(safeAmp), owner: .builder, attackMs: 4, releaseMs: 40)
+                    let id = ToneOutputEngine.shared.sustain(
+                        freq: f,
+                        amp: Float(safeAmp),
+                        owner: .builder,
+                        ownerKey: "builder:pad:\(idx)",
+                        attackMs: 4,
+                        releaseMs: 40
+                    )
                 voiceForIndex[idx] = id
             }
         }
@@ -1102,7 +1109,14 @@ struct ScaleBuilderScreen: View {
                 let off = padOctaveOffset[idx, default: 0]
                 let f = foldToAudible(root * (Double(cn) / Double(cd)) * pow(2.0, Double(ratio.octave + off)))
                 guard soundOn else { return }
-                let voiceID = ToneOutputEngine.shared.sustain(freq: f, amp: Float(safeAmp), owner: .builder, attackMs: 4, releaseMs: 40)
+                let voiceID = ToneOutputEngine.shared.sustain(
+                    freq: f,
+                    amp: Float(safeAmp),
+                    owner: .builder,
+                    ownerKey: "builder:pad:\(idx)",
+                    attackMs: 4,
+                    releaseMs: 40
+                )
                 voiceForIndex[idx] = voiceID
             }
         }
@@ -1127,7 +1141,14 @@ struct ScaleBuilderScreen: View {
                     guard soundOn else { return }
 
                     guard soundOn else { return }
-                    let voiceID = ToneOutputEngine.shared.sustain(freq: f, amp: Float(safeAmp), owner: .builder, attackMs: 4, releaseMs: 40)
+                    let voiceID = ToneOutputEngine.shared.sustain(
+                        freq: f,
+                        amp: Float(safeAmp),
+                        owner: .builder,
+                        ownerKey: "builder:preview:\(i)",
+                        attackMs: 4,
+                        releaseMs: 40
+                    )
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
                         ToneOutputEngine.shared.release(id: voiceID, seconds: 0.06)
                     }
