@@ -443,10 +443,42 @@ final class LatticeStore: ObservableObject {
 
     func resyncAuditionToSelection(forceRebuild: Bool, reason: String) {
         cancelPendingAuditions()
+
+        let orderedPlane = selectionOrder.filter { selected.contains($0) }
+        let missingPlane = selected.subtracting(Set(orderedPlane))
+            .sorted { lhs, rhs in
+                if lhs.e3 != rhs.e3 { return lhs.e3 < rhs.e3 }
+                return lhs.e5 < rhs.e5
+            }
+        let desiredPlaneCoords = orderedPlane + missingPlane
+
+        let orderedGhosts = selectionOrderGhosts.filter { selectedGhosts.contains($0) }
+        let missingGhosts = selectedGhosts.subtracting(Set(orderedGhosts))
+            .sorted { lhs, rhs in
+                if lhs.p != rhs.p { return lhs.p < rhs.p }
+                if lhs.e3 != rhs.e3 { return lhs.e3 < rhs.e3 }
+                if lhs.e5 != rhs.e5 { return lhs.e5 < rhs.e5 }
+                return lhs.eP < rhs.eP
+            }
+        let desiredGhostCoords = orderedGhosts + missingGhosts
+
+        let desiredPlane = Set(desiredPlaneCoords)
+        let desiredGhosts = Set(desiredGhostCoords)
+
+        var desiredOwners: [String] = []
+        desiredOwners.reserveCapacity(desiredPlaneCoords.count + desiredGhostCoords.count)
+        desiredOwners.append(contentsOf: desiredPlaneCoords.map { latticeOwnerKey(for: $0) })
+        desiredOwners.append(contentsOf: desiredGhostCoords.map { latticeOwnerKey(for: $0) })
+
 #if DEBUG
         print(
-            "[LatticeAudition] resync start forceRebuild=\(forceRebuild) selected=\(selected.count) ghosts=\(selectedGhosts.count) voices=\(voiceForCoord.count + voiceForGhost.count) reason=\(reason)"
+            "[LatticeAudition] resync start forceRebuild=\(forceRebuild) auditionEnabled=\(auditionEnabled) latticeSoundEnabled=\(latticeSoundEnabled) desired=\(desiredOwners.count) selected=\(selected.count) ghosts=\(selectedGhosts.count) voices=\(voiceForCoord.count + voiceForGhost.count) reason=\(reason)"
         )
+#endif
+#if DEBUG
+        if auditionEnabled && latticeSoundEnabled && selected.count > 0 && desiredPlaneCoords.isEmpty {
+            assertionFailure("[LatticeAudition] desiredPlaneCoords empty with selection present reason=\(reason)")
+        }
 #endif
 
 #if DEBUG
@@ -458,16 +490,13 @@ final class LatticeStore: ObservableObject {
 #if DEBUG
             logLatticeAuditionSummary(
                 action: "STOP_ALL",
-                desiredOwners: [],
+                desiredOwners: desiredOwners,
                 forceRebuild: forceRebuild,
                 reason: reason
             )
 #endif
             return
         }
-
-        let desiredPlane = Set(selected)
-        let desiredGhosts = Set(selectedGhosts)
 
         if forceRebuild {
             resetAuditionStateForReenable()
@@ -477,11 +506,7 @@ final class LatticeStore: ObservableObject {
         let releaseMs = configuredReleaseMs()
         let releaseSeconds = configuredReleaseSeconds()
 
-        var desiredOwners: [String] = []
-        desiredOwners.reserveCapacity(desiredPlane.count + desiredGhosts.count)
-
-        for c in desiredPlane {
-            desiredOwners.append(latticeOwnerKey(for: c))
+        for c in desiredPlaneCoords {
             if pausedPlane.contains(c) { continue }
             let f = exactFreq(for: c)
             let amp = amplitude(for: c)
@@ -508,8 +533,7 @@ final class LatticeStore: ObservableObject {
 #endif
         }
 
-        for g in desiredGhosts {
-            desiredOwners.append(latticeOwnerKey(for: g))
+        for g in desiredGhostCoords {
             let f = exactFreq(for: g)
             let amp = amplitude(for: g)
             let existed = voiceForGhost[g] != nil
