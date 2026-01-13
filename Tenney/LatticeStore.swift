@@ -42,6 +42,7 @@ final class LatticeStore: ObservableObject {
     // Plane (3×5) selection
     @Published var selected: Set<LatticeCoord> = []
     @Published var selectionOrder: [LatticeCoord] = []
+    @Published private var octaveOffsetByCoord: [LatticeCoord: Int] = [:]
 
     // Overlay (higher-prime) selections: absolute world monzos
     struct GhostMonzo: Hashable {
@@ -49,6 +50,7 @@ final class LatticeStore: ObservableObject {
     }
     @Published var selectedGhosts: Set<GhostMonzo> = []
     @Published var selectionOrderGhosts: [GhostMonzo] = []
+    @Published private var octaveOffsetByGhost: [GhostMonzo: Int] = [:]
 
     @Published var auditionEnabled: Bool = true
     @Published var guidesOn: Bool = true
@@ -392,6 +394,172 @@ final class LatticeStore: ObservableObject {
         "lattice:ghost:\(g.p):\(g.e3):\(g.e5):\(g.eP)"
     }
 
+    private enum AuditionSyncReason: String {
+        case auditionToggle
+        case selectionChange
+        case octaveChange
+        case resume
+    }
+
+    func octaveOffset(for c: LatticeCoord) -> Int {
+        octaveOffsetByCoord[c] ?? 0
+    }
+
+    func octaveOffset(for g: GhostMonzo) -> Int {
+        octaveOffsetByGhost[g] ?? 0
+    }
+
+    func setOctaveOffset(for c: LatticeCoord, to offset: Int) {
+        guard selected.contains(c) else { return }
+        if offset == 0 {
+            octaveOffsetByCoord.removeValue(forKey: c)
+        } else {
+            octaveOffsetByCoord[c] = offset
+        }
+        syncAuditionVoicesToSelection(reason: .octaveChange)
+    }
+
+    func setOctaveOffset(for g: GhostMonzo, to offset: Int) {
+        guard selectedGhosts.contains(g) else { return }
+        if offset == 0 {
+            octaveOffsetByGhost.removeValue(forKey: g)
+        } else {
+            octaveOffsetByGhost[g] = offset
+        }
+        syncAuditionVoicesToSelection(reason: .octaveChange)
+    }
+
+    private func configuredAttackMs() -> Double {
+        ToneOutputEngine.shared.config.attackMs
+    }
+
+    private func configuredReleaseMs() -> Double {
+        ToneOutputEngine.shared.config.releaseMs
+    }
+
+    private func configuredReleaseSeconds() -> Double {
+        max(0.05, configuredReleaseMs() / 1000.0)
+    }
+
+    private func syncAuditionVoicesToSelection(reason: AuditionSyncReason) {
+        cancelPendingAuditions()
+
+        guard auditionEnabled, latticeSoundEnabled else {
+            stopSelectionAudio(hard: false)
+            return
+        }
+
+        let desiredPlane = Set(selected)
+        let desiredGhosts = Set(selectedGhosts)
+        let attackMs = configuredAttackMs()
+        let releaseMs = configuredReleaseMs()
+        let releaseSeconds = configuredReleaseSeconds()
+
+        for c in desiredPlane {
+            if pausedPlane.contains(c) { continue }
+            let f = exactFreq(for: c)
+            let amp = amplitude(for: c)
+            let existed = voiceForCoord[c] != nil
+            let id = ToneOutputEngine.shared.sustain(
+                freq: f,
+                amp: amp,
+                owner: .lattice,
+                ownerKey: latticeOwnerKey(for: c),
+                attackMs: attackMs,
+                releaseMs: releaseMs
+            )
+            voiceForCoord[c] = id
+#if DEBUG
+            logLatticeAuditionEvent(
+                existed ? "UPDATE" : "START",
+                ownerKey: latticeOwnerKey(for: c),
+                ratio: ratioStringPlane(c),
+                freq: f,
+                attackMs: attackMs,
+                releaseMs: releaseMs,
+                reason: reason
+            )
+#endif
+        }
+
+        for g in desiredGhosts {
+            let f = exactFreq(for: g)
+            let amp = amplitude(for: g)
+            let existed = voiceForGhost[g] != nil
+            let id = ToneOutputEngine.shared.sustain(
+                freq: f,
+                amp: amp,
+                owner: .lattice,
+                ownerKey: latticeOwnerKey(for: g),
+                attackMs: attackMs,
+                releaseMs: releaseMs
+            )
+            voiceForGhost[g] = id
+#if DEBUG
+            logLatticeAuditionEvent(
+                existed ? "UPDATE" : "START",
+                ownerKey: latticeOwnerKey(for: g),
+                ratio: ratioStringGhost(g),
+                freq: f,
+                attackMs: attackMs,
+                releaseMs: releaseMs,
+                reason: reason
+            )
+#endif
+        }
+
+        for c in voiceForCoord.keys.filter({ !desiredPlane.contains($0) }) {
+            ToneOutputEngine.shared.stop(ownerKey: latticeOwnerKey(for: c), releaseSeconds: releaseSeconds)
+            voiceForCoord.removeValue(forKey: c)
+#if DEBUG
+            logLatticeAuditionEvent(
+                "STOP",
+                ownerKey: latticeOwnerKey(for: c),
+                ratio: ratioStringPlane(c),
+                freq: nil,
+                attackMs: nil,
+                releaseMs: releaseMs,
+                reason: reason
+            )
+#endif
+        }
+
+        for g in voiceForGhost.keys.filter({ !desiredGhosts.contains($0) }) {
+            ToneOutputEngine.shared.stop(ownerKey: latticeOwnerKey(for: g), releaseSeconds: releaseSeconds)
+            voiceForGhost.removeValue(forKey: g)
+#if DEBUG
+            logLatticeAuditionEvent(
+                "STOP",
+                ownerKey: latticeOwnerKey(for: g),
+                ratio: ratioStringGhost(g),
+                freq: nil,
+                attackMs: nil,
+                releaseMs: releaseMs,
+                reason: reason
+            )
+#endif
+        }
+    }
+
+#if DEBUG
+    private func logLatticeAuditionEvent(
+        _ kind: String,
+        ownerKey: String,
+        ratio: String,
+        freq: Double?,
+        attackMs: Double?,
+        releaseMs: Double?,
+        reason: AuditionSyncReason,
+        callsite: StaticString = #fileID,
+        line: Int = #line
+    ) {
+        let freqStr = freq.map { String(format: "%.2f", $0) } ?? "n/a"
+        let attackStr = attackMs.map { String(format: "%.1f", $0) } ?? "n/a"
+        let releaseStr = releaseMs.map { String(format: "%.1f", $0) } ?? "n/a"
+        print("[LatticeAudition] \(kind) owner=\(ownerKey) ratio=\(ratio) freq=\(freqStr) attackMs=\(attackStr) releaseMs=\(releaseStr) reason=\(reason.rawValue) from=\(callsite):\(line)")
+    }
+#endif
+
     // MARK: - Selection (plane)
     func toggleSelection(_ c: LatticeCoord, pushUndo: Bool = true) {
         let key: SelectionKey = .plane(c)
@@ -402,12 +570,8 @@ final class LatticeStore: ObservableObject {
             pendingPlaneAudition.removeValue(forKey: c)
             startSelectionAnim(key, targetOn: false)
             if let i = selectionOrder.firstIndex(of: c) { selectionOrder.remove(at: i) }
-            if let vid = voiceForCoord[c] {
-                let rel = max(0.05, ToneOutputEngine.shared.config.releaseMs / 1000.0)
-                ToneOutputEngine.shared.release(id: vid, seconds: rel)
-                voiceForCoord.removeValue(forKey: c)
-            }
-            ToneOutputEngine.shared.stop(ownerKey: latticeOwnerKey(for: c), releaseSeconds: 0.0)
+            octaveOffsetByCoord.removeValue(forKey: c)
+            pausedPlane.remove(c)
         } else {
             selected.insert(c)
             LearnEventBus.shared.send(.latticeNodeSelected(ratioStringPlane(c)))
@@ -415,99 +579,35 @@ final class LatticeStore: ObservableObject {
             selectionOrder.append(c)
             startSelectionAnim(key, targetOn: true)
             if auditionEnabled && latticeSoundEnabled {
-                pendingPlaneAudition[c]?.cancel()
-
-                let now = Date()
-                let fire = { [weak self] in
-                    guard let self else { return }
-                    guard self.auditionEnabled,
-                          self.selected.contains(c),
-                          self.voiceForCoord[c] == nil
-                    else { return }
-
-                    let f = self.exactFreq(for: c)
-                    let amp = self.amplitude(for: c)
-                    let id = ToneOutputEngine.shared.sustain(
-                        freq: f,
-                        amp: amp,
-                        owner: .lattice,
-                        ownerKey: self.latticeOwnerKey(for: c),
-                        attackMs: 8,
-                        releaseMs: 60
-                    )
-                    self.voiceForCoord[c] = id
-                    self.lastTriggerAt[c] = Date()
-
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred(intensity: 0.9)
-                       LearnEventBus.shared.send(.latticeNodeAuditioned(self.ratioStringPlane(c)))
-                   }
-
-                if let last = lastTriggerAt[c] {
-                    let dt = now.timeIntervalSince(last)
-                    if dt < auditionMinInterval {
-                        let work = DispatchWorkItem(block: fire)
-                        pendingPlaneAudition[c] = work
-                        DispatchQueue.main.asyncAfter(deadline: .now() + (auditionMinInterval - dt), execute: work)
-                    } else {
-                        fire()
-                    }
-                } else {
-                    fire()
-                }
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred(intensity: 0.9)
+                LearnEventBus.shared.send(.latticeNodeAuditioned(ratioStringPlane(c)))
             }
         }
         if pushUndo { undoStack.append(.toggle(c: c)); redoStack.removeAll() }
+        syncAuditionVoicesToSelection(reason: .selectionChange)
     }
     // Stop any currently-sustaining selection voices (plane + ghosts).
     func stopSelectionAudio(hard: Bool = true) {
-        let rel = hard ? 0.0 : max(0.05, ToneOutputEngine.shared.config.releaseMs / 1000.0)
+        let rel = hard ? 0.0 : configuredReleaseSeconds()
         for id in voiceForCoord.values { ToneOutputEngine.shared.release(id: id, seconds: rel) }
         for c in voiceForCoord.keys { ToneOutputEngine.shared.stop(ownerKey: latticeOwnerKey(for: c), releaseSeconds: rel) }
         for id in voiceForGhost.values { ToneOutputEngine.shared.release(id: id, seconds: rel) }
         for g in voiceForGhost.keys { ToneOutputEngine.shared.stop(ownerKey: latticeOwnerKey(for: g), releaseSeconds: rel) }
         voiceForCoord.removeAll()
         voiceForGhost.removeAll()
+        pausedPlane.removeAll()
     }
 // MARK: – STOP CURRENT NODE AUDITION FOR OCTAVE SWITCHING
     // Re-start audition for the current selection set (if wanted later).
     func reAuditionSelectionIfNeeded() {
-        guard auditionEnabled else { return }
-        guard latticeSoundEnabled else { return }
-        // This function is a "restart"; ensure we don't stack voices.
-        stopSelectionAudio(hard: true)
-        for c in selectionOrder {
-        let f = exactFreq(for: c)
-        let amp = amplitude(for: c)
-        let id = ToneOutputEngine.shared.sustain(
-            freq: f,
-            amp: amp,
-            owner: .lattice,
-            ownerKey: latticeOwnerKey(for: c),
-            attackMs: 8,
-            releaseMs: 60
-        )
-        voiceForCoord[c] = id
-    }
-    for g in selectionOrderGhosts {
-        let f = exactFreq(for: g)
-        let amp = amplitude(for: g)
-        let id = ToneOutputEngine.shared.sustain(
-            freq: f,
-            amp: amp,
-            owner: .lattice,
-            ownerKey: latticeOwnerKey(for: g),
-            attackMs: 8,
-            releaseMs: 60
-        )
-        voiceForGhost[g] = id
-    }
+        syncAuditionVoicesToSelection(reason: .resume)
     }
     // ⬇️ ADD: track preview-paused voices so we can resume only that one
     private var pausedPlane: Set<LatticeCoord> = []
 
     func pauseSelectionVoice(for c: LatticeCoord, hard: Bool = true) {
         guard let id = voiceForCoord[c] else { return }
-        let rel = hard ? 0.0 : max(0.05, ToneOutputEngine.shared.config.releaseMs / 1000.0)
+        let rel = hard ? 0.0 : configuredReleaseSeconds()
         ToneOutputEngine.shared.release(id: id, seconds: rel)
         voiceForCoord.removeValue(forKey: c)
         ToneOutputEngine.shared.stop(ownerKey: latticeOwnerKey(for: c), releaseSeconds: rel)
@@ -525,8 +625,8 @@ final class LatticeStore: ObservableObject {
             amp: amp,
             owner: .lattice,
             ownerKey: latticeOwnerKey(for: c),
-            attackMs: 8,
-            releaseMs: 60
+            attackMs: configuredAttackMs(),
+            releaseMs: configuredReleaseMs()
         )
         voiceForCoord[c] = id
     }
@@ -546,12 +646,7 @@ final class LatticeStore: ObservableObject {
             pendingGhostAudition[g]?.cancel()
             pendingGhostAudition.removeValue(forKey: g)
             if let i = selectionOrderGhosts.firstIndex(of: g) { selectionOrderGhosts.remove(at: i) }
-            if let vid = voiceForGhost[g] {
-                let rel = max(0.05, UserDefaults.standard.double(forKey: SettingsKeys.releaseSec))
-                ToneOutputEngine.shared.release(id: vid, seconds: rel)
-                voiceForGhost.removeValue(forKey: g)
-            }
-            ToneOutputEngine.shared.stop(ownerKey: latticeOwnerKey(for: g), releaseSeconds: 0.0)
+            octaveOffsetByGhost.removeValue(forKey: g)
         } else {
             selectedGhosts.insert(g)
             LearnEventBus.shared.send(.latticeNodeSelected(ratioStringGhost(g)))
@@ -560,54 +655,12 @@ final class LatticeStore: ObservableObject {
             startSelectionAnim(key, targetOn: true)
 
             if auditionEnabled && latticeSoundEnabled {
-                pendingGhostAudition[g]?.cancel()
-
-                let now = Date()
-                let minInterval: TimeInterval = auditionMinInterval // if you didn't add this constant, use 0.12
-
-                let fire = { [weak self] in
-                    guard let self else { return }
-                    guard self.auditionEnabled,
-                          self.selectedGhosts.contains(g),
-                          self.voiceForGhost[g] == nil
-                    else {
-                        self.pendingGhostAudition.removeValue(forKey: g)
-                        return
-                    }
-
-                    let f = self.exactFreq(for: g)
-                    let amp = self.amplitude(for: g)
-                    let id = ToneOutputEngine.shared.sustain(
-                        freq: f,
-                        amp: amp,
-                        owner: .lattice,
-                        ownerKey: self.latticeOwnerKey(for: g),
-                        attackMs: 8,
-                        releaseMs: 60
-                    )
-                    self.voiceForGhost[g] = id
-                    self.lastTriggerAtGhost[g] = Date()
-
-                    self.pendingGhostAudition.removeValue(forKey: g)
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred(intensity: 0.9)
-                        LearnEventBus.shared.send(.latticeNodeAuditioned(self.ratioStringGhost(g)))
-                    }
-
-                if let last = lastTriggerAtGhost[g] {
-                    let dt = now.timeIntervalSince(last)
-                    if dt < minInterval {
-                        let work = DispatchWorkItem(block: fire)
-                        pendingGhostAudition[g] = work
-                        DispatchQueue.main.asyncAfter(deadline: .now() + (minInterval - dt), execute: work)
-                    } else {
-                        fire()
-                    }
-                } else {
-                    fire()
-                }
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred(intensity: 0.9)
+                LearnEventBus.shared.send(.latticeNodeAuditioned(ratioStringGhost(g)))
             }
         }
         if pushUndo { undoStack.append(.toggleGhost(g: g)); redoStack.removeAll() }
+        syncAuditionVoicesToSelection(reason: .selectionChange)
     }
 
     func setPivot(_ c: LatticeCoord) { pivot = c }
@@ -620,6 +673,9 @@ final class LatticeStore: ObservableObject {
         selectionOrder.removeAll()
         selectedGhosts.removeAll()
         selectionOrderGhosts.removeAll()
+        octaveOffsetByCoord.removeAll()
+        octaveOffsetByGhost.removeAll()
+        pausedPlane.removeAll()
         for id in voiceForCoord.values { ToneOutputEngine.shared.release(id: id, seconds: 0.5) }
         for c in voiceForCoord.keys { ToneOutputEngine.shared.stop(ownerKey: latticeOwnerKey(for: c), releaseSeconds: 0.5) }
         for id in voiceForGhost.values { ToneOutputEngine.shared.release(id: id, seconds: 0.5) }
@@ -663,6 +719,8 @@ final class LatticeStore: ObservableObject {
         pausedPlane.removeAll()
         lastTriggerAt.removeAll()
         lastTriggerAtGhost.removeAll()
+        octaveOffsetByCoord.removeAll()
+        octaveOffsetByGhost.removeAll()
     }
 
     var selectedCount: Int { selectionOrder.count + selectionOrderGhosts.count }
@@ -686,7 +744,8 @@ final class LatticeStore: ObservableObject {
             let e5 = c.e5 + pivot.e5 + (axisShift[5] ?? 0)
             let p = (e3 > 0 ? Int(pow(3.0, Double(e3))) : 1) * (e5 > 0 ? Int(pow(5.0, Double(e5))) : 1)
             let q = (e3 < 0 ? Int(pow(3.0, Double(-e3))) : 1) * (e5 < 0 ? Int(pow(5.0, Double(-e5))) : 1)
-            return RatioRef(p: p, q: q, octave: 0, monzo: [3:e3, 5:e5])
+            let octave = octaveOffsetByCoord[c] ?? 0
+            return RatioRef(p: p, q: q, octave: octave, monzo: [3:e3, 5:e5])
         }
 
         // Overlays (higher primes)
@@ -700,7 +759,8 @@ final class LatticeStore: ObservableObject {
                       * (eP < 0 ? Int(pow(Double(pPrime), Double(-eP))) : 1)
             var monzo: [Int:Int] = [3:e3, 5:e5]
             monzo[pPrime] = eP
-            return RatioRef(p: pNum, q: qDen, octave: 0, monzo: monzo)
+            let octave = octaveOffsetByGhost[g] ?? 0
+            return RatioRef(p: pNum, q: qDen, octave: octave, monzo: monzo)
         }
 
         return refs
@@ -878,58 +938,7 @@ final class LatticeStore: ObservableObject {
                     app.latticeAuditionOn = on
                 }
                 AppModelLocator.shared?.playTestTone = false
-                if on {
-                    guard self.latticeSoundEnabled else { return }
-                    if self.selectionOrder.isEmpty && self.selectionOrderGhosts.isEmpty {
-                        // Select AND start 1/1 explicitly (no dependence on toggleSelection side-effects).
-                        let unison = LatticeCoord(e3: 0, e5: 0)
-                        self.selected.insert(unison)
-                        self.selectionOrder.append(unison)
-                        let f = self.exactFreq(for: unison)
-                        let amp = self.amplitude(for: unison)
-                        let id = ToneOutputEngine.shared.sustain(
-                            freq: f,
-                            amp: amp,
-                            owner: .lattice,
-                            ownerKey: self.latticeOwnerKey(for: unison),
-                            attackMs: 8,
-                            releaseMs: 60
-                        )
-                        self.voiceForCoord[unison] = id
-                    } else {
-                        // Start sustained tones for all current selections.
-                        for c in self.selectionOrder {
-                            let f = self.exactFreq(for: c)
-                            let amp = self.amplitude(for: c)
-                            let id = ToneOutputEngine.shared.sustain(
-                                freq: f,
-                                amp: amp,
-                                owner: .lattice,
-                                ownerKey: self.latticeOwnerKey(for: c),
-                                attackMs: 8,
-                                releaseMs: 60
-                            )
-                            self.voiceForCoord[c] = id
-                        }
-                        for g in self.selectionOrderGhosts {
-                            let f = self.exactFreq(for: g)
-                            let amp = self.amplitude(for: g)
-                            let id = ToneOutputEngine.shared.sustain(
-                                freq: f,
-                                amp: amp,
-                                owner: .lattice,
-                                ownerKey: self.latticeOwnerKey(for: g),
-                                attackMs: 8,
-                                releaseMs: 60
-                            )
-                            self.voiceForGhost[g] = id
-                        }
-                    }
-                } else {
-                    stopAllLatticeVoices(hard: true)
-                    self.voiceForCoord.removeAll()
-                    self.voiceForGhost.removeAll()
-                }
+                self.syncAuditionVoicesToSelection(reason: .auditionToggle)
             }
             .store(in: &cancellables)
 
@@ -969,7 +978,8 @@ final class LatticeStore: ObservableObject {
         while Double(num) / Double(den) <  1.0 { num &*= 2 }
 
         let root = AppModelLocator.shared?.rootHz ?? 415.0
-        var f = root * (Double(num) / Double(den))
+        let octaveOffset = octaveOffsetByCoord[c] ?? 0
+        var f = root * (Double(num) / Double(den)) * pow(2.0, Double(octaveOffset))
         if UserDefaults.standard.bool(forKey: SettingsKeys.foldAudible) {
             let lo = 20.0, hi = 5000.0
             while f < lo { f *= 2 }
@@ -991,7 +1001,8 @@ final class LatticeStore: ObservableObject {
         while Double(num) / Double(den) <  1.0 { num &*= 2 }
 
         let root = AppModelLocator.shared?.rootHz ?? 415.0
-        var f = root * (Double(num) / Double(den))
+        let octaveOffset = octaveOffsetByGhost[g] ?? 0
+        var f = root * (Double(num) / Double(den)) * pow(2.0, Double(octaveOffset))
         if UserDefaults.standard.bool(forKey: SettingsKeys.foldAudible) {
             let lo = 20.0, hi = 5000.0
             while f < lo { f *= 2 }
@@ -1018,11 +1029,14 @@ final class LatticeStore: ObservableObject {
                 voiceForGhost.removeAll()
                 return
             }
-            let rel = max(0.05, ToneOutputEngine.shared.config.releaseMs / 1000.0)
+            let rel = configuredReleaseSeconds()
             for id in voiceForCoord.values { ToneOutputEngine.shared.release(id: id, seconds: rel) }
+            for c in voiceForCoord.keys { ToneOutputEngine.shared.stop(ownerKey: latticeOwnerKey(for: c), releaseSeconds: rel) }
             for id in voiceForGhost.values { ToneOutputEngine.shared.release(id: id, seconds: rel) }
+            for g in voiceForGhost.keys { ToneOutputEngine.shared.stop(ownerKey: latticeOwnerKey(for: g), releaseSeconds: rel) }
             voiceForCoord.removeAll()
             voiceForGhost.removeAll()
+            pausedPlane.removeAll()
     }
 
 }
