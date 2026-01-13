@@ -274,7 +274,6 @@ struct LatticeView: View {
     @State private var pausedForInfoCoord: LatticeCoord? = nil
     
     // LatticeView.swift
-    @State private var reenableAuditionWorkItem: DispatchWorkItem?
     
     @State private var selectionHapticTick: Int = 0
     @State private var focusHapticTick: Int = 0
@@ -1585,11 +1584,7 @@ struct LatticeView: View {
     private func silenceSelectionMomentarily(_ duration: TimeInterval = 0.06) {
         guard store.auditionEnabled else { return }
         // Briefly pause selection audition so only the info voice is heard
-        store.auditionEnabled = false
-        reenableAuditionWorkItem?.cancel()
-        let work = DispatchWorkItem { store.auditionEnabled = true }
-        reenableAuditionWorkItem = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + duration, execute: work)
+        store.pauseAuditionForInfoVoice(durationMS: Int(duration * 1000.0))
     }
     
     

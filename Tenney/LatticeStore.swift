@@ -443,6 +443,11 @@ final class LatticeStore: ObservableObject {
 
     func resyncAuditionToSelection(forceRebuild: Bool, reason: String) {
         cancelPendingAuditions()
+#if DEBUG
+        print(
+            "[LatticeAudition] resync start forceRebuild=\(forceRebuild) selected=\(selected.count) ghosts=\(selectedGhosts.count) voices=\(voiceForCoord.count + voiceForGhost.count) reason=\(reason)"
+        )
+#endif
 
 #if DEBUG
         debugLogSelectionState(reason: "resync audition \(reason)")
@@ -465,7 +470,7 @@ final class LatticeStore: ObservableObject {
         let desiredGhosts = Set(selectedGhosts)
 
         if forceRebuild {
-            stopSelectionAudio(hard: false)
+            resetAuditionStateForReenable()
         }
 
         let attackMs = configuredAttackMs()
@@ -568,6 +573,9 @@ final class LatticeStore: ObservableObject {
             desiredOwners: desiredOwners,
             forceRebuild: forceRebuild,
             reason: reason
+        )
+        print(
+            "[LatticeAudition] resync end forceRebuild=\(forceRebuild) selected=\(selected.count) ghosts=\(selectedGhosts.count) voices=\(voiceForCoord.count + voiceForGhost.count) reason=\(reason)"
         )
 #endif
     }
@@ -686,6 +694,11 @@ final class LatticeStore: ObservableObject {
     }
     // Stop any currently-sustaining selection voices (plane + ghosts).
     func stopSelectionAudio(hard: Bool = true) {
+#if DEBUG
+        print(
+            "[LatticeAudition] stopSelectionAudio hard=\(hard) voicesBefore=\(voiceForCoord.count + voiceForGhost.count)"
+        )
+#endif
         let rel = hard ? 0.0 : configuredReleaseSeconds()
         for id in voiceForCoord.values { ToneOutputEngine.shared.release(id: id, seconds: rel) }
         for c in voiceForCoord.keys { ToneOutputEngine.shared.stop(ownerKey: latticeOwnerKey(for: c), releaseSeconds: rel) }
@@ -694,6 +707,31 @@ final class LatticeStore: ObservableObject {
         voiceForCoord.removeAll()
         voiceForGhost.removeAll()
         pausedPlane.removeAll()
+#if DEBUG
+        print(
+            "[LatticeAudition] stopSelectionAudio hard=\(hard) voicesAfter=\(voiceForCoord.count + voiceForGhost.count)"
+        )
+#endif
+    }
+
+    private func resetAuditionStateForReenable() {
+        cancelPendingAuditions()
+        stopSelectionAudio(hard: true)
+    }
+    
+    func pauseAuditionForInfoVoice(durationMS: Int) {
+        guard auditionEnabled else { return }
+        cancelPendingAuditions()
+        stopSelectionAudio(hard: false)
+        reenableAuditionWorkItem?.cancel()
+        let duration = max(0.0, Double(durationMS) / 1000.0)
+        let work = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            self.auditionEnabled = true
+            self.resyncAuditionToSelection(forceRebuild: true, reason: "info voice resume")
+        }
+        reenableAuditionWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration, execute: work)
     }
 // MARK: – STOP CURRENT NODE AUDITION FOR OCTAVE SWITCHING
     // Re-start audition for the current selection set (if wanted later).
@@ -1043,6 +1081,7 @@ final class LatticeStore: ObservableObject {
                 }
                 AppModelLocator.shared?.playTestTone = false
 #if DEBUG
+                print("[LatticeAudition] auditionEnabled=\(on) selected=\(self.selected.count) ghosts=\(self.selectedGhosts.count)")
                 self.debugLogSelectionState(reason: "audition toggle \(on)")
 #endif
                 self.resyncAuditionToSelection(forceRebuild: true, reason: "audition toggled")
@@ -1063,6 +1102,7 @@ final class LatticeStore: ObservableObject {
     private var voiceForCoord: [LatticeCoord: Int] = [:]
     private var lastTriggerAtGhost: [GhostMonzo: Date] = [:]
     private var voiceForGhost: [GhostMonzo: Int] = [:]
+    private var reenableAuditionWorkItem: DispatchWorkItem?
     
     // Default true when unset.
         private var latticeSoundEnabled: Bool {
