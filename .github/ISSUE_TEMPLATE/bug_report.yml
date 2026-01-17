@@ -1,0 +1,146 @@
+name: "Bug report"
+description: "Report a problem in Tenney with reproducible steps."
+title: "[Bug] "
+labels:
+  - "type:bug"
+  - "status:triage"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. If you can, include **repro steps** and a **screen recording**—it helps a lot.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: "What happened?"
+      description: "A clear, concise description of the bug."
+      placeholder: "When I…, Tenney…"
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: "What did you expect to happen?"
+      placeholder: "I expected…"
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: "Steps to reproduce"
+      description: "Numbered steps are best."
+      placeholder: |
+        1. Go to…
+        2. Tap…
+        3. Observe…
+    validations:
+      required: true
+
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: "How often does it happen?"
+      options:
+        - "Every time"
+        - "Often"
+        - "Sometimes"
+        - "Rarely"
+        - "Once"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: "Area"
+      description: "Where does this bug appear?"
+      options:
+        - "Lattice"
+        - "Tuner"
+        - "Builder / Pads"
+        - "Export / Interop"
+        - "Stage mode"
+        - "Library / Organization"
+        - "Sync / Sharing"
+        - "Docs"
+        - "Other / Not sure"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: platforms
+    attributes:
+      label: "Platform(s)"
+      description: "Select all that apply."
+      options:
+        - label: "iOS (iPhone)"
+        - label: "iPadOS"
+        - label: "macOS"
+    validations:
+      required: true
+
+  - type: input
+    id: tenney_version
+    attributes:
+      label: "Tenney version"
+      description: "App version/build number if you know it."
+      placeholder: "e.g. 0.2.9 (123)"
+    validations:
+      required: false
+
+  - type: input
+    id: os_version
+    attributes:
+      label: "OS version"
+      placeholder: "e.g. iOS 18.2 / macOS 15.1"
+    validations:
+      required: false
+
+  - type: input
+    id: device
+    attributes:
+      label: "Device"
+      description: "Example: iPhone 15 Pro, iPad Air (M2), MacBook Pro (M1)"
+      placeholder: "Device model…"
+    validations:
+      required: false
+
+  - type: textarea
+    id: attachments
+    attributes:
+      label: "Screenshots / screen recording"
+      description: "Attach images or a short recording if possible."
+      placeholder: "Drag & drop files here…"
+    validations:
+      required: false
+
+  - type: textarea
+    id: data
+    attributes:
+      label: "Example scale or data (optional)"
+      description: "If the bug is data-dependent, attach the scale/export that triggers it."
+      placeholder: "Attach .scl / Tenney export / CSV, or paste a minimal excerpt…"
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: "Logs / diagnostics (optional)"
+      description: "Paste any relevant logs. Remove personal info."
+      render: shell
+      placeholder: "Paste logs here…"
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: "Anything else?"
+      description: "Extra context, suspected causes, or related issues."
+      placeholder: "Notes…"
+    validations:
+      required: false
