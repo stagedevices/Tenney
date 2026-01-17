@@ -1,0 +1,140 @@
+name: "Feature request"
+description: "Suggest an improvement to Tenney (performer-first, research-friendly)."
+title: "[Feature] "
+labels:
+  - "type:feature"
+  - "status:triage"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve Tenney. The best requests are specific, performer-aware, and include context.
+        
+        **Tip:** If you have an example scale or dataset, attach it (e.g. `.scl`, Tenney export, CSV).
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: "What are you trying to do?"
+      description: "Describe the outcome you want (job-to-be-done)."
+      placeholder: "I want to… so that…"
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: "What’s blocking you today?"
+      description: "What’s the current pain, limitation, or workaround?"
+      placeholder: "Right now I… which is frustrating because…"
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: "Proposed change"
+      description: "Describe the feature you’d like. Keep it concrete."
+      placeholder: "Add/Change…"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: "Area"
+      description: "Where does this belong?"
+      options:
+        - "Lattice"
+        - "Tuner"
+        - "Builder / Pads"
+        - "Export / Interop"
+        - "Stage mode"
+        - "Library / Organization"
+        - "Docs"
+        - "Other / Not sure"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: impact
+    attributes:
+      label: "Primary impact"
+      description: "What does this improve most?"
+      options:
+        - "Performance (stage / rehearsal)"
+        - "Research / analysis"
+        - "Collaboration / sharing"
+        - "Accessibility / clarity"
+        - "Speed / efficiency"
+        - "Other"
+    validations:
+      required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: "Why it matters"
+      description: "What changes for you (or your ensemble) if this exists?"
+      placeholder: "This would help because…"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: "Urgency"
+      options:
+        - "Nice to have"
+        - "Important"
+        - "Blocking (can’t proceed without it)"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: platforms
+    attributes:
+      label: "Platform(s)"
+      description: "Select all that apply."
+      options:
+        - label: "iOS (iPhone)"
+        - label: "iPadOS"
+        - label: "macOS"
+    validations:
+      required: true
+
+  - type: input
+    id: os_version
+    attributes:
+      label: "OS version(s)"
+      description: "Example: iOS 18.2, macOS 15.1"
+      placeholder: "iOS …, iPadOS …, macOS …"
+    validations:
+      required: false
+
+  - type: textarea
+    id: examples
+    attributes:
+      label: "Examples / references (optional)"
+      description: "Links, screenshots, or other tools you’re referencing."
+      placeholder: "Links or images…"
+    validations:
+      required: false
+
+  - type: textarea
+    id: data
+    attributes:
+      label: "Example scale or data (optional)"
+      description: "If relevant, attach files or paste a minimal example."
+      placeholder: "Attach .scl / Tenney export / CSV, or paste a small excerpt…"
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: "Anything else?"
+      description: "Extra context, edge cases, constraints, or acceptance criteria."
+      placeholder: "Notes…"
+    validations:
+      required: false
