@@ -217,7 +217,7 @@ public final class PitchFFT {
                 let f0Hps = promoteIfSubharmonic(f0: f0HpsRaw, mags: mags, peakBin: peakIndex, sr: sr, n: n)
                 
                 #if DEBUG
-                debugHook?("[PitchFFT] peak=\(String(format:"%.2f", peakFreq))Hz (bin \(peakIndex))  hps=\(String(format:"%.2f", f0Hps ?? -1))Hz")
+                 debugHook?("[PitchFFT] peak=\(String(format:"%.2f", peakFreq))Hz (bin \(peakIndex))  hps=\(String(format:"%.2f", f0Hps ?? -1))Hz")
                 #endif
                 
                 let floorPow = estimateNoiseFloorPow(mags: mags, sr: sr, n: n)
