@@ -109,7 +109,7 @@ object TenneyScaleSerializer : KSerializer<TenneyScale> {
                     ListSerializer(TenneyScaleTone.serializer()),
                     obj.getValue("tones")
                 )
-                tones.map { it.ref }
+               tones.filter { it.isEnabled }.map { it.ref }
             }
             else -> emptyList()
         }
