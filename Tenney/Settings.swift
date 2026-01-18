@@ -4586,20 +4586,18 @@ private struct GlassNavTile<Destination: View>: View {
     @ViewBuilder private var aboutSection: some View {
         glassCard(
             icon: "info.circle",
-            title: "About Tenney",
-            subtitle: "Version, acknowledgments, licenses"
+            title: "About",
+            subtitle: "Info, links, feedback, and acknowledgements"
         ) {
             NavigationLink {
                 AboutView()
                     .toolbar(.visible, for: .navigationBar)
-                    .navigationTitle("About")
-                    .navigationBarTitleDisplayMode(.inline)
             } label: {
                 HStack(spacing: 12) {
                     Image("Logo")
                         .resizable()
                         .scaledToFit()
-                        .frame(width: 28, height: 28)
+                        .frame(width: 30, height: 30)
                         .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
 
                     VStack(alignment: .leading, spacing: 2) {

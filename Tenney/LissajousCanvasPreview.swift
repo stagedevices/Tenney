@@ -198,14 +198,36 @@ struct LissajousCanvasPreview: View {
             return CGPoint(x: cx + CGFloat(x) * r, y: cy - CGFloat(y) * r)
         }
 
+        let traceShade = GraphicsContext.Shading.linearGradient(
+
+        Gradient(colors: [e3.opacity(0.85), e5.opacity(0.95)]),
+
+        startPoint: rect.origin,
+
+        endPoint: CGPoint(x: rect.maxX, y: rect.maxY)
+
+        )
+        
         if dotMode {
-            let d = max(0.8, dotSize)
-            let stepDots = max(1, n / 600)
-            for i in stride(from: 0, to: n, by: stepDots) {
-                let p = point(i)
-                let dotRect = CGRect(x: p.x - d/2, y: p.y - d/2, width: d, height: d)
-                ctx.fill(Path(ellipseIn: dotRect), with: .color(e5.opacity(0.9)))
-            }
+
+        let d = max(0.8, dotSize)
+
+        let stepDots = max(1, n / 600)
+
+        var dots = Path()
+
+        for i in stride(from: 0, to: n, by: stepDots) {
+
+        let p = point(i)
+
+        let dotRect = CGRect(x: p.x - d/2, y: p.y - d/2, width: d, height: d)
+
+        dots.addEllipse(in: dotRect)
+
+        }
+
+        ctx.fill(dots, with: traceShade)
+
         } else {
             for i in 0..<n {
                 let p = point(i)
@@ -215,11 +237,7 @@ struct LissajousCanvasPreview: View {
             let w = CGFloat(max(0.6, strokeWidth))
             ctx.stroke(
                 curve,
-                with: .linearGradient(
-                    Gradient(colors: [e3.opacity(0.85), e5.opacity(0.95)]),
-                    startPoint: rect.origin,
-                    endPoint: CGPoint(x: rect.maxX, y: rect.maxY)
-                ),
+                with: traceShade,
                 lineWidth: w
             )
         }

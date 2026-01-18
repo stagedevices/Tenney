@@ -2,10 +2,16 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>TFInternalTestingOnly</key>
+	<false/>
+	<key>CFBundleExecutable</key>
+	<string></string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleDisplayName</key>
 	<string>Tenney</string>
+	<key>CFBundleIdentifier</key>
+	<string></string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Tenney uses the microphone to analyze pitch in real time for tuning. Audio isn’t recorded or stored.</string>
 	<key>SentryDSN</key>

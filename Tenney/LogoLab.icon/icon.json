@@ -1,0 +1,411 @@
+{
+  "fill" : "automatic",
+  "groups" : [
+    {
+      "blend-mode-specializations" : [
+        {
+          "value" : "hard-light"
+        },
+        {
+          "appearance" : "dark",
+          "value" : "plus-lighter"
+        },
+        {
+          "appearance" : "tinted",
+          "value" : "plus-darker"
+        }
+      ],
+      "blur-material" : 0.28,
+      "hidden" : false,
+      "layers" : [
+        {
+          "fill-specializations" : [
+            {
+              "value" : {
+                "linear-gradient" : [
+                  "display-p3:1.00000,0.48252,0.00000,1.00000",
+                  "display-p3:0.96471,0.20765,0.00000,1.00000"
+                ],
+                "orientation" : {
+                  "start" : {
+                    "x" : 0.28705731150038083,
+                    "y" : -0.07317851157830586
+                  },
+                  "stop" : {
+                    "x" : 0.7614442117288654,
+                    "y" : 0.8825554159049362
+                  }
+                }
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "linear-gradient" : [
+                  "display-p3:0.00000,0.80234,1.00000,1.00000",
+                  "display-p3:0.00000,0.28920,0.96611,1.00000"
+                ],
+                "orientation" : {
+                  "start" : {
+                    "x" : 0.2835548362528563,
+                    "y" : 0.08259540676416828
+                  },
+                  "stop" : {
+                    "x" : 0.7614442117288654,
+                    "y" : 0.8825554159049362
+                  }
+                }
+              }
+            },
+            {
+              "appearance" : "tinted",
+              "value" : {
+                "linear-gradient" : [
+                  "display-p3:0.27226,1.00000,0.83852,1.00000",
+                  "display-p3:0.13201,0.00000,0.96611,1.00000"
+                ],
+                "orientation" : {
+                  "start" : {
+                    "x" : 0.2835548362528563,
+                    "y" : 0.08259540676416828
+                  },
+                  "stop" : {
+                    "x" : 0.7614442117288654,
+                    "y" : 0.8825554159049362
+                  }
+                }
+              }
+            }
+          ],
+          "image-name" : "assets2 2.png",
+          "name" : "assets2 2",
+          "opacity" : 0.37,
+          "position" : {
+            "scale" : 0.07,
+            "translation-in-points" : [
+              -0.03499999999996817,
+              184.8984375
+            ]
+          }
+        },
+        {
+          "fill-specializations" : [
+            {
+              "value" : {
+                "linear-gradient" : [
+                  "display-p3:0.00000,0.74594,0.96471,1.00000",
+                  "display-p3:0.00000,0.35475,1.00000,1.00000"
+                ],
+                "orientation" : {
+                  "start" : {
+                    "x" : 0.2398687485186068,
+                    "y" : 0
+                  },
+                  "stop" : {
+                    "x" : 0.7167293789997636,
+                    "y" : 0.7856063300142246
+                  }
+                }
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "linear-gradient" : [
+                  "display-p3:0.95526,1.00000,0.00000,1.00000",
+                  "display-p3:0.96611,0.30744,0.00000,1.00000"
+                ],
+                "orientation" : {
+                  "start" : {
+                    "x" : 0.2398687485186068,
+                    "y" : 0
+                  },
+                  "stop" : {
+                    "x" : 0.7167293789997636,
+                    "y" : 0.7856063300142246
+                  }
+                }
+              }
+            },
+            {
+              "appearance" : "tinted",
+              "value" : {
+                "linear-gradient" : [
+                  "display-p3:1.00000,0.99843,0.00284,1.00000",
+                  "display-p3:0.96611,0.06321,0.00000,1.00000"
+                ],
+                "orientation" : {
+                  "start" : {
+                    "x" : 0.2398687485186068,
+                    "y" : 0
+                  },
+                  "stop" : {
+                    "x" : 0.7167293789997636,
+                    "y" : 0.7856063300142246
+                  }
+                }
+              }
+            }
+          ],
+          "image-name" : "assets 2.png",
+          "name" : "assets 2",
+          "position" : {
+            "scale" : 0.06,
+            "translation-in-points" : [
+              1.0249999999999773,
+              -244.453125
+            ]
+          }
+        }
+      ],
+      "lighting" : "individual",
+      "name" : "Group",
+      "opacity" : 0.54,
+      "shadow" : {
+        "kind" : "layer-color",
+        "opacity" : 0.55
+      },
+      "specular" : true,
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.25
+      }
+    },
+    {
+      "blend-mode-specializations" : [
+        {
+          "value" : "overlay"
+        },
+        {
+          "appearance" : "dark",
+          "value" : "plus-lighter"
+        },
+        {
+          "appearance" : "tinted",
+          "value" : "plus-darker"
+        }
+      ],
+      "blur-material" : 0.28,
+      "hidden" : false,
+      "layers" : [
+        {
+          "fill-specializations" : [
+            {
+              "value" : {
+                "linear-gradient" : [
+                  "display-p3:1.00000,0.48252,0.00000,1.00000",
+                  "display-p3:0.96471,0.20765,0.00000,1.00000"
+                ],
+                "orientation" : {
+                  "start" : {
+                    "x" : 0.28705731150038083,
+                    "y" : -0.07317851157830586
+                  },
+                  "stop" : {
+                    "x" : 0.7614442117288654,
+                    "y" : 0.8825554159049362
+                  }
+                }
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "linear-gradient" : [
+                  "display-p3:0.00000,0.80234,1.00000,1.00000",
+                  "display-p3:0.00000,0.28920,0.96611,1.00000"
+                ],
+                "orientation" : {
+                  "start" : {
+                    "x" : 0.2835548362528563,
+                    "y" : 0.08259540676416828
+                  },
+                  "stop" : {
+                    "x" : 0.7614442117288654,
+                    "y" : 0.8825554159049362
+                  }
+                }
+              }
+            },
+            {
+              "appearance" : "tinted",
+              "value" : {
+                "linear-gradient" : [
+                  "display-p3:0.27226,1.00000,0.83852,1.00000",
+                  "display-p3:0.13201,0.00000,0.96611,1.00000"
+                ],
+                "orientation" : {
+                  "start" : {
+                    "x" : 0.2835548362528563,
+                    "y" : 0.08259540676416828
+                  },
+                  "stop" : {
+                    "x" : 0.7614442117288654,
+                    "y" : 0.8825554159049362
+                  }
+                }
+              }
+            }
+          ],
+          "image-name" : "assets2 2.png",
+          "name" : "assets2 2",
+          "position" : {
+            "scale" : 0.07,
+            "translation-in-points" : [
+              -0.03499999999996817,
+              184.8984375
+            ]
+          }
+        },
+        {
+          "fill-specializations" : [
+            {
+              "value" : {
+                "linear-gradient" : [
+                  "display-p3:0.00000,0.74594,0.96471,1.00000",
+                  "display-p3:0.00000,0.35475,1.00000,1.00000"
+                ],
+                "orientation" : {
+                  "start" : {
+                    "x" : 0.2398687485186068,
+                    "y" : 0
+                  },
+                  "stop" : {
+                    "x" : 0.7167293789997636,
+                    "y" : 0.7856063300142246
+                  }
+                }
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "linear-gradient" : [
+                  "display-p3:0.95526,1.00000,0.00000,1.00000",
+                  "display-p3:0.96611,0.30744,0.00000,1.00000"
+                ],
+                "orientation" : {
+                  "start" : {
+                    "x" : 0.2398687485186068,
+                    "y" : 0
+                  },
+                  "stop" : {
+                    "x" : 0.7167293789997636,
+                    "y" : 0.7856063300142246
+                  }
+                }
+              }
+            },
+            {
+              "appearance" : "tinted",
+              "value" : {
+                "linear-gradient" : [
+                  "display-p3:1.00000,0.99843,0.00284,1.00000",
+                  "display-p3:0.96611,0.06321,0.00000,1.00000"
+                ],
+                "orientation" : {
+                  "start" : {
+                    "x" : 0.2398687485186068,
+                    "y" : 0
+                  },
+                  "stop" : {
+                    "x" : 0.7167293789997636,
+                    "y" : 0.7856063300142246
+                  }
+                }
+              }
+            }
+          ],
+          "image-name" : "assets 2.png",
+          "name" : "assets 2",
+          "position" : {
+            "scale" : 0.06,
+            "translation-in-points" : [
+              1.0249999999999773,
+              -244.453125
+            ]
+          }
+        }
+      ],
+      "lighting" : "individual",
+      "name" : "Group",
+      "opacity" : 1,
+      "shadow" : {
+        "kind" : "layer-color",
+        "opacity" : 0.55
+      },
+      "specular" : true,
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.25
+      }
+    },
+    {
+      "blend-mode-specializations" : [
+        {
+          "value" : "multiply"
+        },
+        {
+          "appearance" : "dark",
+          "value" : "hard-light"
+        },
+        {
+          "appearance" : "tinted",
+          "value" : "plus-darker"
+        }
+      ],
+      "layers" : [
+        {
+          "fill" : {
+            "linear-gradient" : [
+              "display-p3:0.78431,0.78431,0.78431,1.00000",
+              "srgb:0.47059,0.47059,0.47059,1.00000"
+            ],
+            "orientation" : {
+              "start" : {
+                "x" : 0.5,
+                "y" : 0
+              },
+              "stop" : {
+                "x" : 0.5,
+                "y" : 0.7
+              }
+            }
+          },
+          "image-name" : "grid-png-43559.png",
+          "name" : "grid-png-43559",
+          "position" : {
+            "scale" : 1.01,
+            "translation-in-points" : [
+              0,
+              -59.74781250000001
+            ]
+          }
+        }
+      ],
+      "opacity-specializations" : [
+        {
+          "value" : 0.51
+        },
+        {
+          "appearance" : "tinted",
+          "value" : 1
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.5
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "circles" : [
+      "watchOS"
+    ],
+    "squares" : "shared"
+  }
+}
