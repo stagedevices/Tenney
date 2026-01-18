@@ -11,6 +11,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.abs
 
+@OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
 class RatioMathFixtureTest {
     private val json = Json {
         ignoreUnknownKeys = true
