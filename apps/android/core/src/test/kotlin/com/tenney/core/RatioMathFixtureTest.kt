@@ -39,14 +39,14 @@ class RatioMathFixtureTest {
                 "reduced" -> {
                     val p = case.input["p"].asInt()
                     val q = case.input["q"].asInt()
-                    val expected = case.expected.jsonObject
+                    val expected = case.expected.asObject()
                     assertEquals("case=${case.id}", expected["p"].asInt(), RatioMath.reduced(p, q).first)
                     assertEquals("case=${case.id}", expected["q"].asInt(), RatioMath.reduced(p, q).second)
                 }
                 "canonicalPQUnit" -> {
                     val p = case.input["p"].asInt()
                     val q = case.input["q"].asInt()
-                    val expected = case.expected.jsonObject
+                    val expected = case.expected.asObject()
                     assertEquals("case=${case.id}", expected["p"].asInt(), RatioMath.canonicalPQUnit(p, q).first)
                     assertEquals("case=${case.id}", expected["q"].asInt(), RatioMath.canonicalPQUnit(p, q).second)
                 }
@@ -106,7 +106,19 @@ class RatioMathFixtureTest {
         }
     }
 
-    private fun JsonElement?.asInt(): Int = (this as JsonPrimitive).int
-    private fun JsonElement?.asDouble(): Double = (this as JsonPrimitive).double
-    private fun JsonElement?.asString(): String = (this as JsonPrimitive).content
+    private fun JsonElement?.asPrimitive(): JsonPrimitive =
+        this as? JsonPrimitive ?: error("Expected JsonPrimitive, got ${this?.let { it::class.simpleName } ?: "null"}")
+
+    private fun JsonElement?.asObject(): JsonObject =
+        this as? JsonObject ?: error("Expected JsonObject, got ${this?.let { it::class.simpleName } ?: "null"}")
+
+    private fun JsonElement?.asInt(): Int =
+        asPrimitive().content.toIntOrNull()
+           ?: error("Expected int, got '${asPrimitive().content}'")
+
+    private fun JsonElement?.asDouble(): Double =
+        asPrimitive().content.toDoubleOrNull()
+            ?: error("Expected double, got '${asPrimitive().content}'")
+
+    private fun JsonElement?.asString(): String = asPrimitive().content
 }
