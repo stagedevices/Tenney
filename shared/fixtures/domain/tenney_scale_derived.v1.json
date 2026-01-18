@@ -1,0 +1,31 @@
+[
+  {
+    "id": "monzos_only",
+    "degrees": [
+      { "p": 3, "q": 2, "octave": 0, "monzo": { "2": 0, "3": 1 } },
+      { "p": 5, "q": 4, "octave": 0, "monzo": { "5": 1 } }
+    ],
+    "expected": { "detectedLimit": 5, "maxTenneyHeight": 5 }
+  },
+  {
+    "id": "no_monzos_factor",
+    "degrees": [
+      { "p": 9, "q": 8, "octave": 0, "monzo": {} },
+      { "p": 25, "q": 9, "octave": 0, "monzo": {} }
+    ],
+    "expected": { "detectedLimit": 5, "maxTenneyHeight": 25 }
+  },
+  {
+    "id": "mixed_sources",
+    "degrees": [
+      { "p": 11, "q": 8, "octave": 0, "monzo": { "11": 1 } },
+      { "p": 49, "q": 32, "octave": 0, "monzo": {} }
+    ],
+    "expected": { "detectedLimit": 11, "maxTenneyHeight": 49 }
+  },
+  {
+    "id": "empty_degrees",
+    "degrees": [],
+    "expected": { "detectedLimit": 2, "maxTenneyHeight": 1 }
+  }
+]

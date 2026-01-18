@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROPS_FILE="$SCRIPT_DIR/gradle/wrapper/gradle-wrapper.properties"
+
+if [[ ! -f "$PROPS_FILE" ]]; then
+  echo "Missing $PROPS_FILE" >&2
+  exit 1
+fi
+
+distributionUrl=$(grep -E '^distributionUrl=' "$PROPS_FILE" | cut -d= -f2-)
+distributionUrl=${distributionUrl//\\:/:}
+
+if [[ -z "$distributionUrl" ]]; then
+  echo "distributionUrl not set in $PROPS_FILE" >&2
+  exit 1
+fi
+
+zipName="${distributionUrl##*/}"
+version="${zipName%-bin.zip}"
+installBase="$HOME/.gradle/tenney-wrapper"
+installDir="$installBase/$version"
+
+gradleHome="$installDir/$version"
+
+if [[ ! -x "$gradleHome/bin/gradle" ]]; then
+  mkdir -p "$installDir"
+  tmpZip="$installDir/$zipName"
+  echo "Downloading Gradle $version..." >&2
+  curl -fsSL "$distributionUrl" -o "$tmpZip"
+  unzip -q -o "$tmpZip" -d "$installDir"
+fi
+
+exec "$gradleHome/bin/gradle" "$@"
