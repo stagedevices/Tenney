@@ -1,5 +1,6 @@
 package com.tenney.core
 
+import kotlin.text.isBlank
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
@@ -87,6 +88,7 @@ object TenneyScaleSerializer : KSerializer<TenneyScale> {
         "false" -> false
         else -> null
     }
+    private fun String?.nilIfBlank(): String? = this?.let { if (it.isBlank()) null else it }
 
     override fun deserialize(decoder: Decoder): TenneyScale {
         val input = decoder as? JsonDecoder
@@ -94,8 +96,8 @@ object TenneyScaleSerializer : KSerializer<TenneyScale> {
         val obj = input.decodeJsonElement() as? JsonObject
             ?: error("TenneyScale must be a JSON object")
 
-        val id = obj.prim("id")?.content ?: UUID.randomUUID().toString()
-        val name = obj.prim("name")?.content ?: "Untitled Scale"
+        val id = obj.prim("id")?.content.nilIfBlank() ?: UUID.randomUUID().toString()
+        val name = obj.prim("name")?.content.nilIfBlank() ?: "Untitled Scale"
         val descriptionText = obj.prim("descriptionText")?.content
             ?: obj.prim("notes")?.content
             ?: ""
@@ -122,9 +124,9 @@ object TenneyScaleSerializer : KSerializer<TenneyScale> {
         val referenceHz = obj.prim("referenceHz")?.doubleOrNullCompat()
             ?: obj.prim("rootHz")?.doubleOrNullCompat()
             ?: 440.0
-        val rootLabel = obj.prim("rootLabel")?.content
+        val rootLabel = obj.prim("rootLabel")?.content.nilIfBlank()
         val periodRatio = obj.prim("periodRatio")?.doubleOrNullCompat() ?: 2.0
-        val author = obj.prim("author")?.content
+       val author = obj.prim("author")?.content.nilIfBlank()
 
         val detectedLimit = obj.prim("detectedLimit")?.intOrNullCompat()
             ?: TenneyScaleDerived.detectedLimit(degrees)
