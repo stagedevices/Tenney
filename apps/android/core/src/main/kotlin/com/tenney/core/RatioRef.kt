@@ -13,6 +13,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.encodeToJsonElement
+import kotlinx.serialization.json.intOrNull
 import kotlin.math.max
 
 @Serializable(with = RatioRefSerializer::class)
@@ -41,7 +42,7 @@ object RatioRefSerializer : KSerializer<RatioRef> {
         val q = (obj["q"] as? JsonPrimitive)?.intOrNull ?: 1
         val octave = (obj["octave"] as? JsonPrimitive)?.intOrNull ?: 0
         val monzo = obj["monzo"]?.let {
-            input.json.decodeFromJsonElement(MapSerializer, it)
+            input.json.decodeFromJsonElement(mapSerializer, it)
         } ?: emptyMap()
         return RatioRef.of(p = p, q = q, octave = octave, monzo = monzo)
     }
@@ -54,13 +55,11 @@ object RatioRefSerializer : KSerializer<RatioRef> {
                 "p" to JsonPrimitive(value.p),
                 "q" to JsonPrimitive(value.q),
                 "octave" to JsonPrimitive(value.octave),
-                "monzo" to output.json.encodeToJsonElement(MapSerializer, value.monzo)
+                "monzo" to output.json.encodeToJsonElement(mapSerializer, value.monzo)
             )
         )
         output.encodeJsonElement(obj)
     }
 
-    private companion object {
-        val MapSerializer = MapSerializer(Int.serializer(), Int.serializer())
-    }
+    private val mapSerializer = MapSerializer(Int.serializer(), Int.serializer())
 }
