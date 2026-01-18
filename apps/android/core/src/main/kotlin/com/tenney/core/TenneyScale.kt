@@ -11,13 +11,8 @@ import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.JsonEncoder
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.booleanOrNull
-import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.decodeFromJsonElement
-import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.encodeToJsonElement
-import kotlinx.serialization.json.intOrNull
-import kotlinx.serialization.json.jsonPrimitive
 import java.util.UUID
 
 @Serializable(with = TenneyScaleSerializer::class)
@@ -84,16 +79,25 @@ internal data class TenneyScaleTone(
 object TenneyScaleSerializer : KSerializer<TenneyScale> {
     override val descriptor = buildClassSerialDescriptor("TenneyScale")
 
+    private fun JsonObject.prim(key: String): JsonPrimitive? = this[key] as? JsonPrimitive
+    private fun JsonPrimitive.intOrNullCompat(): Int? = this.content.toIntOrNull()
+    private fun JsonPrimitive.doubleOrNullCompat(): Double? = this.content.toDoubleOrNull()
+    private fun JsonPrimitive.boolOrNullCompat(): Boolean? = when (this.content) {
+        "true" -> true
+        "false" -> false
+        else -> null
+    }
+
     override fun deserialize(decoder: Decoder): TenneyScale {
         val input = decoder as? JsonDecoder
             ?: error("TenneyScaleSerializer only supports JSON")
         val obj = input.decodeJsonElement() as? JsonObject
             ?: error("TenneyScale must be a JSON object")
 
-        val id = obj["id"]?.jsonPrimitive?.contentOrNull ?: UUID.randomUUID().toString()
-        val name = obj["name"]?.jsonPrimitive?.contentOrNull ?: "Untitled Scale"
-        val descriptionText = obj["descriptionText"]?.jsonPrimitive?.contentOrNull
-            ?: obj["notes"]?.jsonPrimitive?.contentOrNull
+        val id = obj.prim("id")?.content ?: UUID.randomUUID().toString()
+        val name = obj.prim("name")?.content ?: "Untitled Scale"
+        val descriptionText = obj.prim("descriptionText")?.content
+            ?: obj.prim("notes")?.content
             ?: ""
 
         val degrees = when {
@@ -113,18 +117,18 @@ object TenneyScaleSerializer : KSerializer<TenneyScale> {
         val tags = obj["tags"]?.let {
             input.json.decodeFromJsonElement(ListSerializer(String.serializer()), it)
         } ?: emptyList()
-        val favorite = obj["favorite"]?.jsonPrimitive?.booleanOrNull ?: false
-        val lastPlayed = obj["lastPlayed"]?.jsonPrimitive?.doubleOrNull
-        val referenceHz = obj["referenceHz"]?.jsonPrimitive?.doubleOrNull
-            ?: obj["rootHz"]?.jsonPrimitive?.doubleOrNull
+        val favorite = obj.prim("favorite")?.boolOrNullCompat() ?: false
+        val lastPlayed = obj.prim("lastPlayed")?.doubleOrNullCompat()
+        val referenceHz = obj.prim("referenceHz")?.doubleOrNullCompat()
+            ?: obj.prim("rootHz")?.doubleOrNullCompat()
             ?: 440.0
-        val rootLabel = obj["rootLabel"]?.jsonPrimitive?.contentOrNull
-        val periodRatio = obj["periodRatio"]?.jsonPrimitive?.doubleOrNull ?: 2.0
-        val author = obj["author"]?.jsonPrimitive?.contentOrNull
+        val rootLabel = obj.prim("rootLabel")?.content
+        val periodRatio = obj.prim("periodRatio")?.doubleOrNullCompat() ?: 2.0
+        val author = obj.prim("author")?.content
 
-        val detectedLimit = obj["detectedLimit"]?.jsonPrimitive?.intOrNull
+        val detectedLimit = obj.prim("detectedLimit")?.intOrNullCompat()
             ?: TenneyScaleDerived.detectedLimit(degrees)
-        val maxTenneyHeight = obj["maxTenneyHeight"]?.jsonPrimitive?.intOrNull
+        val maxTenneyHeight = obj.prim("maxTenneyHeight")?.intOrNullCompat()
             ?: TenneyScaleDerived.maxTenneyHeight(degrees)
 
         return TenneyScale(
