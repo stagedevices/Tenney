@@ -25,7 +25,6 @@ Tenney is a **performer-first just-intonation tuner, lattice tool, and scale bui
    ```sh
    cd apps/android
    ./gradlew test
-``
 
 3. Fixture-driven tests live under `shared/fixtures/` and are consumed by the Android JVM modules.
 
