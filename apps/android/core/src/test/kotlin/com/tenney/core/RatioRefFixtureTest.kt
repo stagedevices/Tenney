@@ -6,6 +6,7 @@ import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
+@OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
 class RatioRefFixtureTest {
     private val json = Json {
         ignoreUnknownKeys = true
