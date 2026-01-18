@@ -1,0 +1,15 @@
+[
+  {
+    "id": "basic_parse",
+    "text": "! comment\n4\n0\n127\n69\n0\n440.0\n0\n1\n",
+    "expected": {
+      "mappingSize": 4,
+      "firstMIDINote": 0,
+      "lastMIDINote": 127,
+      "middleNote": 69,
+      "referenceDegreeIndex": 0,
+      "referenceFrequencyHz": 440.0,
+      "degreeOfNote": [0, 1, -1, -1]
+    }
+  }
+]

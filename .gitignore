@@ -1,1 +1,20 @@
-.sentryclirc
+# Android/Gradle
+.gradle/
+**/build/
+local.properties
+
+# IntelliJ/Android Studio
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
+
+# Kotlin
+.kotlin/
+
+# macOS
+.DS_Store
+
+# Logs
+*.log

@@ -1,0 +1,14 @@
+[
+  {
+    "id": "basic_parse",
+    "text": "! comment\n\nTest scale\n3\n! notes\n100.0 extra\n3/2 note\n700.0\n",
+    "expected": {
+      "description": "Test scale",
+      "entries": [
+        { "type": "cents", "value": 100.0 },
+        { "type": "ratio", "n": 3, "d": 2 },
+        { "type": "cents", "value": 700.0 }
+      ]
+    }
+  }
+]

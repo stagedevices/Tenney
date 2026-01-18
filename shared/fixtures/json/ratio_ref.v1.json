@@ -1,0 +1,22 @@
+[
+  {
+    "id": "basic_ratio",
+    "input": { "p": 3, "q": 2, "octave": 0, "monzo": {} },
+    "expected": { "p": 3, "q": 2, "octave": 0, "monzo": {} }
+  },
+  {
+    "id": "with_octave",
+    "input": { "p": 3, "q": 2, "octave": 1, "monzo": {} },
+    "expected": { "p": 3, "q": 2, "octave": 1, "monzo": {} }
+  },
+  {
+    "id": "with_monzo",
+    "input": { "p": 3, "q": 2, "octave": 0, "monzo": { "3": 1 } },
+    "expected": { "p": 3, "q": 2, "octave": 0, "monzo": { "3": 1 } }
+  },
+  {
+    "id": "clamps_invalid_inputs",
+    "input": { "p": -3, "q": 0, "octave": 0, "monzo": {} },
+    "expected": { "p": 1, "q": 1, "octave": 0, "monzo": {} }
+  }
+]

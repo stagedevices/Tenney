@@ -1,0 +1,36 @@
+[
+  {
+    "id": "legacy_decode",
+    "input": {
+      "id": "33333333-3333-3333-3333-333333333333",
+      "name": "Legacy Scale",
+      "notes": "Legacy notes",
+      "rootHz": 415.0,
+      "tones": [
+        {
+          "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+          "ref": { "p": 3, "q": 2, "octave": 0, "monzo": {} },
+          "name": "Perfect Fifth",
+          "isEnabled": true
+        }
+      ]
+    },
+    "expected": {
+      "id": "33333333-3333-3333-3333-333333333333",
+      "name": "Legacy Scale",
+      "descriptionText": "Legacy notes",
+      "degrees": [
+        { "p": 3, "q": 2, "octave": 0, "monzo": {} }
+      ],
+      "tags": [],
+      "favorite": false,
+      "lastPlayed": null,
+      "referenceHz": 415.0,
+      "rootLabel": null,
+      "periodRatio": 2.0,
+      "detectedLimit": 3,
+      "maxTenneyHeight": 3,
+      "author": null
+    }
+  }
+]
