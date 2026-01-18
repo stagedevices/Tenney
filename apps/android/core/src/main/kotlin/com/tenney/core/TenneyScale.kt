@@ -92,6 +92,8 @@ object TenneyScaleSerializer : KSerializer<TenneyScale> {
         val t = it.trim()
         if (t.isEmpty() || t.equals("null", ignoreCase = true)) null else t
     }
+    // Back-compat helper name (used by id/name parsing below)
+    private fun String?.nilIfBlank(): String? = this.nilIfBlankOrNullLiteral()
 
     override fun deserialize(decoder: Decoder): TenneyScale {
         val input = decoder as? JsonDecoder
