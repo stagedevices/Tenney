@@ -12,6 +12,10 @@ body:
         
         **Tip:** If you have an example scale or dataset, attach it (e.g. `.scl`, Tenney export, CSV).
 
+        **Docs:**
+        - [Tenney JSON Contract](shared/spec/json.md)
+        - [Tenney Parity Checklist](shared/spec/parity-checklist.md)
+
   - type: textarea
     id: goal
     attributes:

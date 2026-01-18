@@ -19,6 +19,11 @@ cd apps/android
 ./gradlew test
 ```
 
+## Docs
+
+- [Tenney JSON Contract](shared/spec/json.md)
+- [Tenney Parity Checklist](shared/spec/parity-checklist.md)
+
 ## How to contribute
 
 - **Math & domain logic**: update `:core` and the fixtures in `shared/fixtures/**`.
