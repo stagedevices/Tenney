@@ -10,8 +10,9 @@ object TenneyScaleDerived {
                 val candidate = ref.monzo.keys.filter { it != 2 }.maxOrNull() ?: 2
                 if (candidate > maxPrime) maxPrime = candidate
             } else {
-                maxPrime = maxOf(maxPrime, maxOddPrimeFactor(ref.p))
-                maxPrime = maxOf(maxPrime, maxOddPrimeFactor(ref.q))
+                val (rp, rq) = RatioMath.reduced(ref.p, ref.q)
+                maxPrime = maxOf(maxPrime, maxOddPrimeFactor(rp))
+                maxPrime = maxOf(maxPrime, maxOddPrimeFactor(rq))
             }
         }
         return maxPrime
