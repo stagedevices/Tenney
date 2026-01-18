@@ -154,16 +154,15 @@ struct ScaleLibrarySheet: View {
                 }
             }
             // Per-scale actions presented as a medium detent sheet
-                        .sheet(item: $actionTarget) { s in
-                            ScaleActionsSheet(
-                                scale: s,
-                                onOpen: { openInBuilder(s) },
-                                onAdd:  { addToBuilder(s) },
-                                onPlay: { playScalePreview(s) }
-                            )
-                            .presentationDetents([.medium])
-                            .presentationDragIndicator(.visible)
-                        }
+            .sheet(item: $actionTarget) { s in
+                ScaleActionsSheet(
+                    scale: s,
+                    onOpen: { openInBuilder(s) },
+                    onAdd:  { addToBuilder(s) }
+                )
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+            }
         }
     }
 }
@@ -278,50 +277,990 @@ private struct ScaleActionsSheet: View {
     let scale: TenneyScale
     let onOpen: () -> Void
     let onAdd:  () -> Void
-    let onPlay: () -> Void
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var library = ScaleLibraryStore.shared
+    @AppStorage(SettingsKeys.staffA4Hz) private var staffA4Hz: Double = 440
+    @AppStorage(SettingsKeys.builderExportFormats) private var exportFormatsRaw: Int = ExportFormat.default.rawValue
+    @AppStorage(SettingsKeys.builderExportRootMode) private var exportA4ModeRaw: String = ExportA4Mode.appDefault.rawValue
+    @AppStorage(SettingsKeys.builderExportCustomA4Hz) private var customExportA4Hz: Double = 440.0
+    @AppStorage("Tenney.SoundOn") private var soundOn: Bool = true
+    @AppStorage(SettingsKeys.safeAmp) private var safeAmp: Double = 0.18
+    @StateObject private var playback = ScaleSheetPlayback()
+
+    @State private var playbackMode: ScalePlaybackMode = .arp
+    @State private var focusedDegreeID: String? = nil
+    @State private var showExportSheet = false
+    @State private var exportErrorMessage: String? = nil
+    @State private var exportURLs: [URL] = []
+    @State private var isPresentingShareSheet = false
+    @State private var showRenameSheet = false
+    @State private var showTagsSheet = false
+    @State private var showDeleteConfirm = false
+    @State private var renameText = ""
+    @State private var tagsDraft: [String] = []
+    @State private var newTagText = ""
+    @State private var folderDraft = ""
+    @State private var copyMessage: String? = nil
+
+    private static let relativeFormatter: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .abbreviated
+        return f
+    }()
+    private static let absoluteFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .short
+        return f
+    }()
+
+    private var currentScale: TenneyScale {
+        library.scales[scale.id] ?? scale
+    }
+
+    private var exportFormats: ExportFormat {
+        ExportFormat(rawValue: exportFormatsRaw)
+    }
+
+    private var exportA4Mode: ExportA4Mode {
+        ExportA4Mode(rawValue: exportA4ModeRaw) ?? .appDefault
+    }
+
+    private var exportA4ModeBinding: Binding<ExportA4Mode> {
+        Binding(
+            get: { ExportA4Mode(rawValue: exportA4ModeRaw) ?? .appDefault },
+            set: { exportA4ModeRaw = $0.rawValue }
+        )
+    }
+
+    private var exportA4Hz: Double {
+        switch exportA4Mode {
+        case .appDefault:
+            return 440.0
+        case .hz440:
+            return 440.0
+        case .custom:
+            return max(1.0, customExportA4Hz)
+        }
+    }
+
+    private var degreesSorted: [RatioRef] {
+        currentScale.degrees.enumerated().sorted { lhs, rhs in
+            let l = degreeFrequency(lhs.element)
+            let r = degreeFrequency(rhs.element)
+            if l == r { return lhs.offset < rhs.offset }
+            return l < r
+        }.map(\.element)
+    }
+
+    private var folderName: String? {
+        currentScale.tags.first { isFolderTag($0) }
+            .map { String($0.dropFirst(folderPrefix.count)).trimmingCharacters(in: .whitespacesAndNewlines) }
+    }
+
+    private var visibleTags: [String] {
+        currentScale.tags.filter { !isFolderTag($0) }
+    }
+
+    private var headerSummary: String {
+        let rootNote = NotationFormatter.spelledETNote(freqHz: currentScale.referenceHz, a4Hz: staffA4Hz)
+        let hzInt = Int(round(currentScale.referenceHz))
+        return "\(currentScale.size) notes · \(currentScale.detectedLimit)-limit · Root: \(rootNote.letter)\(rootNote.accidental)\(rootNote.octave) (\(hzInt) Hz)"
+    }
+
+    private var referenceSummary: String {
+        let hzInt = Int(round(staffA4Hz))
+        return "Reference: A4 = \(hzInt) Hz"
+    }
+
+    private var lastEditedSummary: String {
+        guard let last = currentScale.lastPlayed else {
+            return "Last edited: Never"
+        }
+        let relative = Self.relativeFormatter.localizedString(for: last, relativeTo: Date())
+        let absolute = Self.absoluteFormatter.string(from: last)
+        return "Last edited \(relative) • \(absolute)"
+    }
+
+    private var exportSummaryText: String {
+        let exts: [String] = [
+            exportFormats.contains(.scl)     ? ".scl"      : nil,
+            exportFormats.contains(.kbm)     ? ".kbm"      : nil,
+            exportFormats.contains(.ableton) ? ".ascl"     : nil,
+            exportFormats.contains(.freqs)   ? "freqs.txt" : nil,
+            exportFormats.contains(.cents)   ? "cents.txt" : nil
+        ].compactMap { $0 }
+
+        if exts.isEmpty {
+            return "Select at least one format to export."
+        }
+
+        let formatsPart = "Will export: " + exts.joined(separator: ", ")
+
+        let a4Label: String
+        switch exportA4Mode {
+        case .appDefault:
+            let hzInt = Int(round(exportA4Hz))
+            a4Label = "A4: App default (\(hzInt) Hz)"
+        case .hz440:
+            a4Label = "A4: 440 Hz"
+        case .custom:
+            let hzInt = Int(round(exportA4Hz))
+            a4Label = "A4: Custom (\(hzInt) Hz)"
+        }
+
+        return "\(formatsPart) • \(a4Label)"
+    }
+
+    private var builderRootSummary: String {
+        let hz = currentScale.referenceHz
+        let (name, oct) = NotationFormatter.staffNoteName(freqHz: hz)
+        let hzInt = Int(round(hz))
+        return "Root: \(name)\(oct) (\(hzInt) Hz)"
+    }
 
     var body: some View {
-        VStack(spacing: 14) {
-            // Header
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(scale.name).font(.headline)
-                    Text("\(scale.size) notes · \(scale.detectedLimit)-limit · Root \(Int(scale.referenceHz)) Hz")
-                        .font(.caption).foregroundStyle(.secondary)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                glassCard {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(currentScale.name)
+                            .font(.title3.weight(.semibold))
+                        Text(headerSummary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(referenceSummary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        HStack(spacing: 6) {
+                            Image(systemName: "clock")
+                                .foregroundStyle(.secondary)
+                            Text(lastEditedSummary)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        if !visibleTags.isEmpty || (folderName?.isEmpty == false) {
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 88), spacing: 8)], spacing: 8) {
+                                if let folderName, !folderName.isEmpty {
+                                    chip(text: folderName, systemImage: "folder.fill")
+                                }
+                                ForEach(visibleTags, id: \.self) { tag in
+                                    chip(text: tag, systemImage: "tag.fill")
+                                }
+                            }
+                        } else {
+                            Text("No tags or folders yet")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
-                Spacer()
-            }
-            .padding(.bottom, 2)
 
-            // Primary: Open in Builder (bold)
-            Button {
-                onOpen(); dismiss()
-            } label: {
-                Text("Open in Builder").font(.headline.weight(.semibold)).frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
+                Button {
+                    onOpen()
+                    dismiss()
+                } label: {
+                    Label("Open in Builder", systemImage: "square.stack.3d.up.fill")
+                        .font(.headline.weight(.semibold))
+                        .frame(maxWidth: .infinity, minHeight: 48)
+                }
+                .buttonStyle(.borderedProminent)
 
-            // Secondary: Add to Builder
-            Button {
-                onAdd(); dismiss()
-            } label: {
-                Text("Add to Builder").frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Actions")
+                        .font(.footnote.weight(.semibold))
+                        .textCase(.uppercase)
+                        .foregroundStyle(.secondary)
 
-            // Tertiary: Play Scale
-            Button {
-                onPlay()
-            } label: {
-                Text("Play Scale").frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-            .tint(.secondary)
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                        ActionTileButton(
+                            title: "Set as Current",
+                            systemImage: "arrow.turn.down.right",
+                            tint: .blue
+                        ) {
+                            onAdd()
+                            dismiss()
+                        }
 
-            Button("Cancel") { dismiss() }
-                .padding(.top, 6)
+                        ActionTileButton(
+                            title: "Export…",
+                            systemImage: "square.and.arrow.up",
+                            tint: .accentColor
+                        ) {
+                            showExportSheet = true
+                        }
+
+                        Menu {
+                            Button {
+                                copyRatios()
+                            } label: {
+                                Label("Copy ratios", systemImage: "list.number")
+                            }
+                            Button {
+                                copyJSON()
+                            } label: {
+                                Label("Copy as JSON", systemImage: "curlybraces")
+                            }
+                            Button {
+                                copySCL()
+                            } label: {
+                                Label("Copy .scl text", systemImage: "doc.plaintext")
+                            }
+                        } label: {
+                            ActionTileLabel(
+                                title: "Copy…",
+                                systemImage: "doc.on.doc",
+                                tint: .secondary
+                            )
+                        }
+
+                        ActionTileButton(
+                            title: "Rename…",
+                            systemImage: "pencil",
+                            tint: .secondary
+                        ) {
+                            renameText = currentScale.name
+                            showRenameSheet = true
+                        }
+
+                        ActionTileButton(
+                            title: "Edit Tags…",
+                            systemImage: "tag",
+                            tint: .secondary
+                        ) {
+                            tagsDraft = visibleTags
+                            folderDraft = folderName ?? ""
+                            newTagText = ""
+                            showTagsSheet = true
+                        }
+                    }
+
+                    Button(role: .destructive) {
+                        showDeleteConfirm = true
+                    } label: {
+                        Label("Delete Scale", systemImage: "trash")
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                    .buttonStyle(.bordered)
+                }
+
+                glassCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Label("Hear", systemImage: "speaker.wave.2.fill")
+                            .font(.headline)
+                        Picker("Playback Mode", selection: $playbackMode) {
+                            ForEach(ScalePlaybackMode.allCases) { mode in
+                                Text(mode.title).tag(mode)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+
+                        if let focused = focusedDegreeLabel() {
+                            Text("Drone focus: \(focused)")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Button {
+                            playScale()
+                        } label: {
+                            Label("Play", systemImage: "play.fill")
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Degrees")
+                        .font(.footnote.weight(.semibold))
+                        .textCase(.uppercase)
+                        .foregroundStyle(.secondary)
+
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 72), spacing: 8)], spacing: 8) {
+                        ForEach(degreesSorted, id: \.id) { ratio in
+                            Button {
+                                focusedDegreeID = ratio.id
+                            } label: {
+                                RatioChip(
+                                    ratio: ratio,
+                                    isSelected: focusedDegreeID == ratio.id
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+
+                    VStack(spacing: 8) {
+                        ForEach(degreesSorted, id: \.id) { ratio in
+                            DegreeRow(
+                                ratio: ratio,
+                                rootHz: currentScale.referenceHz,
+                                isSelected: focusedDegreeID == ratio.id
+                            )
+                            .onTapGesture {
+                                focusedDegreeID = ratio.id
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(16)
         }
-        .padding(16)
+        .overlay(alignment: .bottom) {
+            if let copyMessage {
+                Text(copyMessage)
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .overlay(
+                        Capsule()
+                            .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+                    )
+                    .padding(.bottom, 12)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .sheet(isPresented: $showExportSheet) {
+            ScrollView {
+                ScaleExportSheet(
+                    title: resolvedName(),
+                    builderRootSummary: builderRootSummary,
+                    exportSummaryText: exportSummaryText,
+                    exportFormats: exportFormats,
+                    exportErrorMessage: exportErrorMessage,
+                    onToggleFormat: { toggleFormat($0) },
+                    onExport: { performExportNow() },
+                    onDone: { showExportSheet = false },
+                    exportA4Mode: exportA4ModeBinding,
+                    customA4Hz: $customExportA4Hz
+                )
+                .padding(.horizontal, 16)
+                .padding(.bottom, 24)
+            }
+            .presentationDetents([.medium, .large])
+        }
+        .sheet(isPresented: $isPresentingShareSheet) {
+            ActivityView(activityItems: exportURLs)
+        }
+        .sheet(isPresented: $showRenameSheet) {
+            NavigationStack {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Rename Scale")
+                        .font(.headline)
+                    TextField("Scale name", text: $renameText)
+                        .textFieldStyle(.roundedBorder)
+                    Spacer()
+                }
+                .padding(16)
+                .navigationTitle("Rename")
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { showRenameSheet = false }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Save") {
+                            applyRename()
+                            showRenameSheet = false
+                        }
+                        .disabled(renameText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                }
+            }
+            .presentationDetents([.medium])
+        }
+        .sheet(isPresented: $showTagsSheet) {
+            NavigationStack {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Folder")
+                        .font(.footnote.weight(.semibold))
+                        .textCase(.uppercase)
+                        .foregroundStyle(.secondary)
+                    TextField("Folder name", text: $folderDraft)
+                        .textFieldStyle(.roundedBorder)
+
+                    Text("Tags")
+                        .font(.footnote.weight(.semibold))
+                        .textCase(.uppercase)
+                        .foregroundStyle(.secondary)
+
+                    if tagsDraft.isEmpty {
+                        Text("No tags yet")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 88), spacing: 8)], spacing: 8) {
+                            ForEach(tagsDraft, id: \.self) { tag in
+                                RemovableChip(text: tag) {
+                                    tagsDraft.removeAll { $0 == tag }
+                                }
+                            }
+                        }
+                    }
+
+                    HStack(spacing: 8) {
+                        TextField("Add tag", text: $newTagText)
+                            .textFieldStyle(.roundedBorder)
+                        Button("Add") {
+                            let trimmed = newTagText.trimmingCharacters(in: .whitespacesAndNewlines)
+                            guard !trimmed.isEmpty else { return }
+                            if !tagsDraft.contains(trimmed) {
+                                tagsDraft.append(trimmed)
+                            }
+                            newTagText = ""
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(newTagText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+
+                    Spacer()
+                }
+                .padding(16)
+                .navigationTitle("Tags & Folder")
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { showTagsSheet = false }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Save") {
+                            applyTags()
+                            showTagsSheet = false
+                        }
+                    }
+                }
+            }
+            .presentationDetents([.medium, .large])
+        }
+        .alert("Delete scale?", isPresented: $showDeleteConfirm) {
+            Button("Delete", role: .destructive) {
+                library.deleteScale(id: currentScale.id)
+                dismiss()
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("This will remove “\(currentScale.name)” from your Library.")
+        }
+        .onDisappear {
+            playback.stop()
+        }
+    }
+
+    private func playScale() {
+        guard soundOn else { return }
+        let focus = degreesSorted.first { $0.id == focusedDegreeID }
+        playback.play(
+            mode: playbackMode,
+            scale: currentScale,
+            degrees: degreesSorted,
+            focus: focus,
+            safeAmp: safeAmp
+        )
+    }
+
+    private func focusedDegreeLabel() -> String? {
+        guard let id = focusedDegreeID,
+              let ratio = degreesSorted.first(where: { $0.id == id }) else { return nil }
+        let label = ratioDisplay(ratio).label
+        if ratio.octave != 0 {
+            return "\(label) (\(ratio.octave > 0 ? "+\(ratio.octave)" : "\(ratio.octave)") oct)"
+        }
+        return label
+    }
+
+    private func degreeFrequency(_ ratio: RatioRef) -> Double {
+        RatioMath.hz(rootHz: currentScale.referenceHz, p: ratio.p, q: ratio.q, octave: ratio.octave, fold: false)
+    }
+
+    private func ratioDisplay(_ ratio: RatioRef) -> (label: String, octave: Int) {
+        let (p, q) = RatioMath.canonicalPQUnit(ratio.p, ratio.q)
+        return ("\(p)/\(q)", ratio.octave)
+    }
+
+    private func copyRatios() {
+        let lines = degreesSorted.map { ratio -> String in
+            let display = ratioDisplay(ratio)
+            if display.octave != 0 {
+                return "\(display.label) [\(display.octave)]"
+            }
+            return display.label
+        }
+        copyToPasteboard(lines.joined(separator: "\n"), message: "Copied ratios")
+    }
+
+    private func copyJSON() {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        do {
+            let data = try encoder.encode(currentScale)
+            if let string = String(data: data, encoding: .utf8) {
+                copyToPasteboard(string, message: "Copied JSON")
+            }
+        } catch {
+            copyToPasteboard("{}", message: "Copy failed")
+        }
+    }
+
+    private func copySCL() {
+        let text = ScalaExporter.sclText(
+            scaleName: resolvedName(),
+            description: currentScale.descriptionText,
+            degrees: currentScale.degrees
+        )
+        copyToPasteboard(text, message: "Copied .scl")
+    }
+
+    private func copyToPasteboard(_ string: String, message: String) {
+#if canImport(UIKit)
+        UIPasteboard.general.string = string
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+#elseif canImport(AppKit)
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(string, forType: .string)
+#endif
+        showCopyMessage(message)
+    }
+
+    private func showCopyMessage(_ message: String) {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) {
+            copyMessage = message
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            withAnimation(.easeOut(duration: 0.25)) {
+                copyMessage = nil
+            }
+        }
+    }
+
+    private func applyRename() {
+        let trimmed = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        var updated = currentScale
+        updated.name = trimmed
+        updated.lastPlayed = Date()
+        library.updateScale(updated)
+    }
+
+    private func applyTags() {
+        var updated = currentScale
+        var tags = tagsDraft
+        tags.removeAll { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let folder = folderDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !folder.isEmpty {
+            tags.append("\(folderPrefix)\(folder)")
+        }
+        updated.tags = Array(Set(tags)).sorted()
+        updated.lastPlayed = Date()
+        library.updateScale(updated)
+    }
+
+    private func toggleFormat(_ format: ExportFormat) {
+        var current = exportFormats
+        if current.contains(format) {
+            current.remove(format)
+        } else {
+            current.insert(format)
+        }
+        exportFormatsRaw = current.rawValue
+        if exportErrorMessage != nil {
+            exportErrorMessage = nil
+        }
+    }
+
+    private func performExportNow() {
+        exportErrorMessage = nil
+
+        let degrees = currentScale.degrees
+        guard !degrees.isEmpty else {
+            exportErrorMessage = "Scale has no degrees to export."
+            return
+        }
+
+        let name = sanitizedFilename(from: resolvedName())
+        let desc = currentScale.descriptionText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let rootHz = exportA4Hz
+
+        var urls: [URL] = []
+
+        if exportFormats.contains(.scl) {
+            let text = ScalaExporter.sclText(
+                scaleName: resolvedName(),
+                description: desc,
+                degrees: degrees
+            )
+            if let url = writeExportFile(named: "\(name).scl", contents: text) {
+                urls.append(url)
+            }
+        }
+
+        if exportFormats.contains(.kbm) {
+            let text = ScalaExporter.kbmText(
+                referenceHz: rootHz,
+                scaleSize: max(1, degrees.count)
+            )
+            if let url = writeExportFile(named: "\(name).kbm", contents: text) {
+                urls.append(url)
+            }
+        }
+
+        if exportFormats.contains(.freqs) {
+            let lines: [String] = degrees.map { r in
+                let ratio = (Double(r.p) / Double(r.q)) * pow(2.0, Double(r.octave))
+                let hz = ratio * currentScale.referenceHz
+                return String(format: "%.8f", hz)
+            }
+            if let url = writeExportFile(named: "\(name)_freqs.txt", contents: lines.joined(separator: "\n")) {
+                urls.append(url)
+            }
+        }
+
+        if exportFormats.contains(.cents) {
+            let lines: [String] = degrees.map { r in
+                let ratio = (Double(r.p) / Double(r.q)) * pow(2.0, Double(r.octave))
+                let cents = 1200.0 * log2(ratio)
+                return String(format: "%.8f", cents)
+            }
+            if let url = writeExportFile(named: "\(name)_cents.txt", contents: lines.joined(separator: "\n")) {
+                urls.append(url)
+            }
+        }
+
+        if exportFormats.contains(.ableton) {
+            let text = ScalaExporter.sclText(
+                scaleName: resolvedName(),
+                description: desc,
+                degrees: degrees
+            )
+            if let url = writeExportFile(named: "\(name).ascl", contents: text) {
+                urls.append(url)
+            }
+        }
+
+        if let readmeURL = writeReadmeFile(baseName: name, degrees: degrees) {
+            urls.append(readmeURL)
+        }
+
+        guard !urls.isEmpty else {
+            exportErrorMessage = "Nothing was exported."
+            return
+        }
+
+        exportErrorMessage = nil
+        exportURLs = urls
+        isPresentingShareSheet = true
+    }
+
+    private func writeReadmeFile(baseName: String, degrees: [RatioRef]) -> URL? {
+        let scaleName = resolvedName()
+        let desc = currentScale.descriptionText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let a4Hz = exportA4Hz
+        let rootHz = currentScale.referenceHz
+        let (rootName, rootOct) = NotationFormatter.staffNoteName(freqHz: rootHz)
+
+        let a4ModeLabel: String = {
+            switch exportA4Mode {
+            case .appDefault: return "App default"
+            case .hz440:      return "440 Hz"
+            case .custom:     return "Custom"
+            }
+        }()
+
+        var lines: [String] = []
+        lines.append("Name: \(scaleName)")
+        lines.append("Description: \(desc)")
+        lines.append(String(format: "A4 reference: %.4f Hz (%@)", a4Hz, a4ModeLabel))
+        lines.append(String(format: "Builder root: %@%d (%.4f Hz)", rootName, rootOct, rootHz))
+        lines.append("Prime limit: \(currentScale.detectedLimit)-limit JI")
+        lines.append("Degrees (p/q [octave]):")
+
+        for (idx, r) in degrees.enumerated() {
+            lines.append("\(idx + 1): \(r.p)/\(r.q) [\(r.octave)]")
+        }
+
+        let text = lines.joined(separator: "\n")
+        return writeExportFile(named: "\(baseName)_README.txt", contents: text)
+    }
+
+    private func writeExportFile(named: String, contents: String) -> URL? {
+        let dir = FileManager.default.temporaryDirectory
+        let url = dir.appendingPathComponent(named)
+        do {
+            try contents.write(to: url, atomically: true, encoding: .utf8)
+            return url
+        } catch {
+            exportErrorMessage = "Could not write export files. Please try again."
+            return nil
+        }
+    }
+
+    private func sanitizedFilename(from name: String) -> String {
+        let invalid = CharacterSet(charactersIn: "/:\\?%*|\"<>")
+        let cleaned = name.components(separatedBy: invalid).joined(separator: "_")
+        if cleaned.isEmpty { return "Untitled_Scale" }
+        return cleaned
+    }
+
+    private func resolvedName() -> String {
+        let n = currentScale.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return n.isEmpty ? "Untitled Scale" : n
+    }
+
+    private var folderPrefix: String { "folder:" }
+
+    private func isFolderTag(_ tag: String) -> Bool {
+        tag.lowercased().hasPrefix(folderPrefix)
+    }
+
+    private func chip(text: String, systemImage: String) -> some View {
+        Label(text, systemImage: systemImage)
+            .font(.caption)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(.thinMaterial, in: Capsule())
+            .overlay(
+                Capsule()
+                    .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+            )
+    }
+
+    @ViewBuilder
+    private func glassCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
+            .padding(14)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(Color.secondary.opacity(0.15), lineWidth: 1)
+            )
+    }
+}
+
+private enum ScalePlaybackMode: String, CaseIterable, Identifiable {
+    case arp
+    case chord
+    case drone
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .arp: return "Arp"
+        case .chord: return "Chord"
+        case .drone: return "Drone"
+        }
+    }
+}
+
+private final class ScaleSheetPlayback: ObservableObject {
+    private var activeVoiceIDs: [Int] = []
+    private var token = UUID()
+
+    func play(mode: ScalePlaybackMode, scale: TenneyScale, degrees: [RatioRef], focus: RatioRef?, safeAmp: Double) {
+        stop()
+        let newToken = UUID()
+        token = newToken
+
+        let rootHz = RatioMath.foldToAudible(scale.referenceHz)
+        let selected = focus ?? degrees.first
+        let amp = Float(safeAmp)
+
+        func startTone(_ freq: Double) -> Int {
+            let ownerKey = "scaleLibrary:\(scale.id.uuidString):\(UUID().uuidString)"
+            return ToneOutputEngine.shared.sustain(
+                freq: freq,
+                amp: amp,
+                owner: .other,
+                ownerKey: ownerKey,
+                attackMs: 6,
+                releaseMs: 120
+            )
+        }
+
+        func scheduleRelease(id: Int, after seconds: Double) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { [weak self] in
+                guard let self, self.token == newToken else { return }
+                ToneOutputEngine.shared.release(id: id, seconds: 0.06)
+                self.activeVoiceIDs.removeAll { $0 == id }
+            }
+        }
+
+        switch mode {
+        case .arp:
+            for (index, ratio) in degrees.enumerated() {
+                let delay = Double(index) * 0.18
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                    guard let self, self.token == newToken else { return }
+                    let hz = RatioMath.hz(rootHz: scale.referenceHz, p: ratio.p, q: ratio.q, octave: ratio.octave, fold: true)
+                    let id = startTone(hz)
+                    self.activeVoiceIDs.append(id)
+                    scheduleRelease(id: id, after: 0.22)
+                }
+            }
+        case .chord:
+            for ratio in degrees {
+                let hz = RatioMath.hz(rootHz: scale.referenceHz, p: ratio.p, q: ratio.q, octave: ratio.octave, fold: true)
+                let id = startTone(hz)
+                activeVoiceIDs.append(id)
+                scheduleRelease(id: id, after: 0.38)
+            }
+        case .drone:
+            let rootID = startTone(rootHz)
+            activeVoiceIDs.append(rootID)
+            scheduleRelease(id: rootID, after: 0.48)
+            if let selected {
+                let hz = RatioMath.hz(rootHz: scale.referenceHz, p: selected.p, q: selected.q, octave: selected.octave, fold: true)
+                let id = startTone(hz)
+                activeVoiceIDs.append(id)
+                scheduleRelease(id: id, after: 0.48)
+            }
+        }
+    }
+
+    func stop() {
+        token = UUID()
+        for id in activeVoiceIDs {
+            ToneOutputEngine.shared.release(id: id, seconds: 0.0)
+        }
+        activeVoiceIDs.removeAll()
+    }
+}
+
+private struct ActionTileButton: View {
+    let title: String
+    let systemImage: String
+    let tint: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            ActionTileLabel(title: title, systemImage: systemImage, tint: tint)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct ActionTileLabel: View {
+    let title: String
+    let systemImage: String
+    let tint: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Image(systemName: systemImage)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(tint)
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+        }
+        .frame(maxWidth: .infinity, minHeight: 70, alignment: .leading)
+        .padding(12)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color.secondary.opacity(0.15), lineWidth: 1)
+        )
+    }
+}
+
+private struct RatioChip: View {
+    let ratio: RatioRef
+    let isSelected: Bool
+
+    var body: some View {
+        let display = RatioMath.unitLabel(ratio.p, ratio.q)
+        HStack(spacing: 6) {
+            Text(display)
+                .font(.caption.weight(.semibold))
+                .monospacedDigit()
+            if ratio.octave != 0 {
+                Text(ratio.octave > 0 ? "+\(ratio.octave)" : "\(ratio.octave)")
+                    .font(.caption2.weight(.semibold))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(.thinMaterial, in: Capsule())
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(isSelected ? .thinMaterial : .ultraThinMaterial, in: Capsule())
+        .overlay(
+            Capsule()
+                .stroke(isSelected ? Color.accentColor.opacity(0.7) : Color.secondary.opacity(0.2), lineWidth: 1)
+        )
+    }
+}
+
+private struct DegreeRow: View {
+    let ratio: RatioRef
+    let rootHz: Double
+    let isSelected: Bool
+
+    var body: some View {
+        let (p, q) = RatioMath.canonicalPQUnit(ratio.p, ratio.q)
+        let hz = RatioMath.hz(rootHz: rootHz, p: ratio.p, q: ratio.q, octave: ratio.octave, fold: true)
+        let cents = NotationFormatter.centsFromNearestET(freqHz: hz)
+        let note = NotationFormatter.spelledETNote(freqHz: hz)
+
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text("\(p)/\(q)")
+                        .font(.system(.body, design: .monospaced).weight(.semibold))
+                    if ratio.octave != 0 {
+                        Text(ratio.octave > 0 ? "+\(ratio.octave) oct" : "\(ratio.octave) oct")
+                            .font(.caption2.weight(.semibold))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(.thinMaterial, in: Capsule())
+                    }
+                }
+                Text("\(note.letter)\(note.accidental)\(note.octave)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 4) {
+                Text(String(format: "%.2f Hz", hz))
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                if abs(cents) >= 1 {
+                    let rounded = Int(cents.rounded())
+                    let sign = rounded >= 0 ? "+" : "−"
+                    Text("\(sign)\(abs(rounded))¢")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(12)
+        .background(isSelected ? .thinMaterial : .ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(isSelected ? Color.accentColor.opacity(0.6) : Color.secondary.opacity(0.12), lineWidth: 1)
+        )
+    }
+}
+
+private struct RemovableChip: View {
+    let text: String
+    let onRemove: () -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(text)
+                .font(.caption)
+            Button(action: onRemove) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.caption)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(.thinMaterial, in: Capsule())
     }
 }
