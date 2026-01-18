@@ -56,11 +56,13 @@ struct LissajousCard: View {
         case 1:
             return .one(label: activeSignals[0].label)
         case 2:
-            return .two(x: activeSignals[0].label, y: activeSignals[1].label)
+            let x = [activeSignals[1].label] // newest
+            let y = [activeSignals[0].label] // older
+            return .many(x: "Σ(" + x.joined(separator: ",") + ")", y: "Σ(" + y.joined(separator: ",") + ")")
         default:
-            // round-robin
-            let x = activeSignals.enumerated().compactMap { $0.offset % 2 == 0 ? $0.element.label : nil }
-            let y = activeSignals.enumerated().compactMap { $0.offset % 2 == 1 ? $0.element.label : nil }
+            let k = activeSignals.count / 2
+            let x = Array(activeSignals.suffix(k).reversed()).map(\.label)
+            let y = Array(activeSignals.dropLast(k).reversed()).map(\.label)
             return .many(x: "Σ(" + x.joined(separator: ",") + ")", y: "Σ(" + y.joined(separator: ",") + ")")
         }
     }

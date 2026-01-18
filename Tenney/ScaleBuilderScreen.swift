@@ -79,7 +79,9 @@ struct ScaleBuilderScreen: View {
         if let sel = selectedPad { ids.append(sel) }
 
         // Then any latched pads, stable order.
-        ids.append(contentsOf: latched.sorted().filter { $0 != selectedPad })
+        reconcileActivePadOrderWithLatched()
+        ids.append(contentsOf: activePadOrder.filter { $0 != selectedPad })
+
 
         // Keep only valid indices + de-dupe without reordering.
         ids = ids.filter { store.degrees.indices.contains($0) }
@@ -105,7 +107,9 @@ struct ScaleBuilderScreen: View {
     
     private var scopeSignals: [ToneOutputEngine.ScopeSignal] {
         // stable pad order: by pad index
-        let ordered = voiceForIndex.keys.sorted()
+        reconcileActivePadOrderWithLatched()
+        let ordered = activePadOrder.filter { voiceForIndex[$0] != nil }
+
         return ordered.compactMap { idx in
             guard let vid = voiceForIndex[idx] else { return nil }
             return .init(voiceID: vid, label: "Pad \(idx + 1)")
@@ -163,6 +167,7 @@ struct ScaleBuilderScreen: View {
     @State private var latched = Set<Int>()
     @State private var voiceForIndex: [Int:Int] = [:]   // BuilderTone voice IDs
     @State private var selectedPad: Int? = nil          // inspector selection
+    @State private var activePadOrder: [Int] = []
     @State private var enteredWithSoundOn: Bool = true
     @State private var pausedMicForBuilder = false
     @Namespace private var saveSlot
@@ -182,6 +187,26 @@ struct ScaleBuilderScreen: View {
     
     @State private var exportURLs: [URL] = []
     @State private var isPresentingShareSheet = false
+    
+    
+    private func notePadOn(_ idx: Int) {
+        activePadOrder.removeAll { $0 == idx }
+        activePadOrder.append(idx)
+    }
+
+    private func notePadOff(_ idx: Int) {
+        activePadOrder.removeAll { $0 == idx }
+    }
+
+    private func reconcileActivePadOrderWithLatched() {
+        // drop anything no longer latched
+        activePadOrder.removeAll { !latched.contains($0) }
+        // append any latched pads we somehow missed (best-effort)
+        for idx in latched where !activePadOrder.contains(idx) {
+            activePadOrder.append(idx)
+        }
+    }
+
     
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -241,6 +266,7 @@ struct ScaleBuilderScreen: View {
                 LearnEventBus.shared.send(.builderPadOctaveChanged(idx, delta))
             }
             .onAppear {
+                reconcileActivePadOrderWithLatched()
                 // Pause tuner mic while in Builder (restored on exit)
                 app.builderPresented = true
                 ToneOutputEngine.shared.builderWillPresent()
@@ -1099,10 +1125,13 @@ struct ScaleBuilderScreen: View {
                     voiceForIndex[idx] = nil
                 }
                 latched.remove(idx)
+                notePadOff(idx)
                 padOctaveOffset[idx] = 0
             } else {
                 // Turn ON
                 _ = ToneOutputEngine.shared  // touch singleton
+                notePadOn(idx)
+
                 latched.insert(idx)
                 guard soundOn else { voiceForIndex[idx] = nil; return }
                 let (cn, cd) = canonicalPQUnit(ratio.p, ratio.q)
@@ -1118,7 +1147,9 @@ struct ScaleBuilderScreen: View {
                     releaseMs: 40
                 )
                 voiceForIndex[idx] = voiceID
+                
             }
+            
         }
         
         private func stopAllPadVoices() {

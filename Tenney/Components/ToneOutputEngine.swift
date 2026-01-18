@@ -400,15 +400,12 @@ final class ToneOutputEngine {
             // Special circle mode: still “one source”, but we treat as (same voice, quadrature)
             return ([ids[0]], [ids[0]])
         case 2:
-            return ([ids[0]], [ids[1]])
+            return ([ids[1]], [ids[0]])
         default:
-            var x: [Int] = []
-            var y: [Int] = []
-            x.reserveCapacity((ids.count+1)/2)
-            y.reserveCapacity(ids.count/2)
-            for (i, id) in ids.enumerated() {
-                if i % 2 == 0 { x.append(id) } else { y.append(id) }
-            }
+            // newest half to X, older half to Y (both newest-first)
+            let k = ids.count / 2
+            let x = Array(ids.suffix(k).reversed())
+            let y = Array(ids.dropLast(k).reversed())
             return (x, y)
         }
     }

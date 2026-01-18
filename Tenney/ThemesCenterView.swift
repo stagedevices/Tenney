@@ -186,21 +186,22 @@ struct ThemesCenterView: View {
                     }
                 }
 
-                NavigationLink {
-                    ThemeStudioView()
-                } label: {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Pro Theme Studio").font(.headline)
-                            Text("Create and edit custom themes (local only).").font(.caption).foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Image(systemName: "chevron.right").foregroundStyle(.secondary)
-                    }
-                    .padding(14)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                }
-                .tenneyChromaShadow(true, radius: 18, y: 8)
+                //               NavigationLink {
+                    //                   ThemeStudioView()
+                    //               } label: {
+                    //                  HStack {
+                        //                      VStack(alignment: .leading, spacing: 4) {
+                            //                          Text("Pro Theme Studio").font(.headline)
+                            //                          Text("Create and edit custom themes (local only).").font(.caption).foregroundStyle(.secondary)
+                            //                      }
+                        //                      Spacer()
+                        //                       Image(systemName: "chevron.right").foregroundStyle(.secondary)
+                        //                   }
+                    //                   .padding(14)
+                    //                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    //                }
+                //                .tenneyChromaShadow(true, radius: 18, y: 8)
+                //
 
             }
             .padding()
