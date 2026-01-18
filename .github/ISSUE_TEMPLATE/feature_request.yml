@@ -1,5 +1,5 @@
 name: "Feature Request"
-description: "Suggest an improvement to Tenney (performer-first, research-friendly)."
+description: "Suggest an improvement to Tenney (performer-first, research-friendly; parity-aware)."
 title: "[Feature] "
 labels:
   - "type:feature"
@@ -9,8 +9,11 @@ body:
     attributes:
       value: |
         Thanks for helping improve Tenney. The best requests are specific, performer-aware, and include context.
-        
-        **Tip:** If you have an example scale or dataset, attach it (e.g. `.scl`, Tenney export, CSV).
+
+        **Parity note:** Tenney Android is under active development (see Android work on branch `android/oss-foundation`).
+        If your request should behave the same across platforms, say so.
+
+        **Tip:** If you have an example scale or dataset, attach it (e.g. `.scl`, `.kbm`, Tenney export, CSV).
 
         **Docs:**
         - [Tenney JSON Contract](shared/spec/json.md)
@@ -44,21 +47,62 @@ body:
       required: true
 
   - type: dropdown
-    id: area
+    id: layer
     attributes:
-      label: "Area"
-      description: "Where does this belong?"
+      label: "Component / layer"
+      description: "Where should work likely happen?"
       options:
-        - "Lattice"
+        - "Core (RatioMath / TenneyScale / JSON)"
+        - "Formats (Scala / KBM)"
+        - "Lattice (selection rules / rendering)"
         - "Tuner"
         - "Builder / Pads"
-        - "Export / Interop"
-        - "Stage mode"
         - "Library / Organization"
+        - "Stage mode"
+        - "Export / Interop"
+        - "Audio engine"
+        - "MIDI"
+        - "UI / Navigation"
+        - "Build / CI / Tooling"
         - "Docs"
         - "Other / Not sure"
     validations:
       required: true
+
+  - type: checkboxes
+    id: platforms
+    attributes:
+      label: "Platform(s)"
+      description: "Select all that apply."
+      options:
+        - label: "Android (Compose)"
+        - label: "iOS (iPhone)"
+        - label: "iPadOS"
+        - label: "macOS"
+        - label: "Shared (fixtures/spec/interop)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: parity
+    attributes:
+      label: "Parity expectation"
+      description: "Should this match behavior across platforms?"
+      options:
+        - "Android-only is fine"
+        - "Must match iOS/iPadOS/macOS behavior (parity)"
+        - "Not sure"
+    validations:
+      required: true
+
+  - type: input
+    id: tested_build
+    attributes:
+      label: "Build / branch tested (optional)"
+      description: "If you tested Android, include branch + commit (e.g., android/oss-foundation @ <sha>)."
+      placeholder: "android/oss-foundation @ …"
+    validations:
+      required: false
 
   - type: dropdown
     id: impact
@@ -76,11 +120,14 @@ body:
       required: true
 
   - type: textarea
-    id: why
+    id: acceptance
     attributes:
-      label: "Why it matters"
-      description: "What changes for you (or your ensemble) if this exists?"
-      placeholder: "This would help because…"
+      label: "Acceptance criteria"
+      description: "What would make this feature 'done'? (bullet points are great)"
+      placeholder: |
+        - When I …
+        - Tenney should …
+        - Edge case: …
     validations:
       required: true
 
@@ -95,24 +142,12 @@ body:
     validations:
       required: true
 
-  - type: checkboxes
-    id: platforms
-    attributes:
-      label: "Platform(s)"
-      description: "Select all that apply."
-      options:
-        - label: "iOS (iPhone)"
-        - label: "iPadOS"
-        - label: "macOS"
-    validations:
-      required: true
-
   - type: input
-    id: os_version
+    id: os_versions
     attributes:
-      label: "OS version(s)"
-      description: "Example: iOS 18.2, macOS 15.1"
-      placeholder: "iOS …, iPadOS …, macOS …"
+      label: "OS version(s) (optional)"
+      description: "Examples: Android 15, iOS 18.2, macOS 15.1"
+      placeholder: "Android … / iOS … / macOS …"
     validations:
       required: false
 
@@ -130,7 +165,7 @@ body:
     attributes:
       label: "Example scale or data (optional)"
       description: "If relevant, attach files or paste a minimal example."
-      placeholder: "Attach .scl / Tenney export / CSV, or paste a small excerpt…"
+      placeholder: "Attach .scl / .kbm / Tenney export / CSV, or paste a small excerpt…"
     validations:
       required: false
 
@@ -138,7 +173,7 @@ body:
     id: additional
     attributes:
       label: "Anything else?"
-      description: "Extra context, edge cases, constraints, or acceptance criteria."
+      description: "Extra context, edge cases, constraints, or notes."
       placeholder: "Notes…"
     validations:
       required: false

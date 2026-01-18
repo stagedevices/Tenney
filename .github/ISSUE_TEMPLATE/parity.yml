@@ -1,0 +1,163 @@
+name: "Parity mismatch / fixture failure"
+description: "Report a mismatch between fixtures/spec and Android implementation (or behavior changes that require fixture versioning)."
+title: "[Parity] "
+labels:
+  - "type:bug"
+  - "parity"
+  - "status:triage"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this when a **fixture-driven test fails** or when **behavior differs across platforms**.
+
+        **Before filing:**
+        - Run: `cd apps/android && ./gradlew test`
+        - Paste the failing test name + fixture path below.
+
+        **Docs:**
+        - JSON / encoding rules: `shared/spec/json.md`
+        - Parity checklist: `shared/spec/parity-checklist.md`
+
+        **Routing tip (optional):**
+        If you already know the area, consider using the more specific templates:
+        - Parity mismatch (math/core)
+        - Parity mismatch (formats)
+        - Parity mismatch (lattice)
+
+  - type: input
+    id: fixture_path
+    attributes:
+      label: "Fixture path"
+      description: "Path under `shared/fixtures/` that triggered the failure."
+      placeholder: "shared/fixtures/math/ratio_math.v1.json"
+    validations:
+      required: true
+
+  - type: input
+    id: failing_test
+    attributes:
+      label: "Failing test (name)"
+      description: "JUnit test method/class, or CI job step that failed."
+      placeholder: "RatioMathFixtureTest.test_ratioToHz_case_07"
+    validations:
+      required: true
+
+  - type: textarea
+    id: failure_log
+    attributes:
+      label: "Failure output (expected vs actual)"
+      description: "Paste the relevant assertion diff or log lines. Keep it minimal but sufficient."
+      placeholder: |
+        Expected: …
+        Actual: …
+        Diff: …
+    validations:
+      required: true
+
+  - type: dropdown
+    id: mismatch_type
+    attributes:
+      label: "What kind of parity mismatch is this?"
+      description: "Pick the most accurate category."
+      options:
+        - "Android implementation bug (fixture/spec is correct)"
+        - "Fixture/spec needs update (Android behavior is correct)"
+        - "Behavior intentionally changed (needs fixture version bump v1→v2)"
+        - "Not sure"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: "Area (routing)"
+      description: "Helps triage and labeling. Pick the closest match."
+      options:
+        - "Math/Core (RatioMath, TenneyScale, JSON)"
+        - "Formats (Scala / KBM)"
+        - "Lattice (selection rules / layout)"
+        - "Interop / Export"
+        - "Build / CI / Tooling"
+        - "Docs / Spec"
+        - "Other / Not sure"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: platforms
+    attributes:
+      label: "Platforms compared"
+      description: "Where did you observe the mismatch?"
+      options:
+        - label: "Android (tests/behavior)"
+        - label: "iOS"
+        - label: "iPadOS"
+        - label: "macOS"
+        - label: "Fixtures/spec only (no platform comparison)"
+    validations:
+      required: true
+
+  - type: input
+    id: android_build
+    attributes:
+      label: "Android branch/commit (if applicable)"
+      description: "Example: android/oss-foundation @ <sha>"
+      placeholder: "android/oss-foundation @ …"
+    validations:
+      required: false
+
+  - type: input
+    id: device_os
+    attributes:
+      label: "Device + OS (optional)"
+      description: "If this was observed on-device (not just tests)."
+      placeholder: "Pixel 8 / Android 15"
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: fixture_bump
+    attributes:
+      label: "Fixture versioning"
+      description: "If you believe this requires a fixture version bump, select the option below (triage will apply the label)."
+      options:
+        - label: "This likely needs a fixture version bump (e.g., v1 → v2)."
+          required: false
+        - label: "This is likely an implementation bug; fixtures/spec should remain unchanged."
+          required: false
+    validations:
+      required: false
+
+  - type: textarea
+    id: suspected_cause
+    attributes:
+      label: "Suspected cause (optional)"
+      description: "If you have a hunch, point to a file/function."
+      placeholder: "Possibly canonicalPQUnit folding logic in core/src/main/kotlin/.../RatioMath.kt"
+    validations:
+      required: false
+
+  - type: textarea
+    id: proposed_fix
+    attributes:
+      label: "Proposed fix (optional)"
+      description: "If you know what should change, outline it. If this implies fixture versioning, say so."
+      placeholder: |
+        - Fix: …
+        - OR bump fixture: ratio_math.v1.json → ratio_math.v2.json because …
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: "Confirmation"
+      description: "Helps keep the tracker clean."
+      options:
+        - label: "I ran `cd apps/android && ./gradlew test` and reproduced the failure."
+          required: true
+        - label: "I included the fixture path + failing test name."
+          required: true
+        - label: "I included expected vs actual output (or an assertion diff)."
+          required: true
