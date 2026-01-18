@@ -1,13 +1,13 @@
 package com.tenney.formats
 
-@OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
-
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Test
+
+@OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
 
 class ScalaFixtureTest {
     private val json = Json {
