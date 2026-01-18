@@ -88,7 +88,10 @@ object TenneyScaleSerializer : KSerializer<TenneyScale> {
         "false" -> false
         else -> null
     }
-    private fun String?.nilIfBlank(): String? = this?.let { if (it.isBlank()) null else it }
+    private fun String?.nilIfBlankOrNullLiteral(): String? = this?.let {
+        val t = it.trim()
+        if (t.isEmpty() || t.equals("null", ignoreCase = true)) null else t
+    }
 
     override fun deserialize(decoder: Decoder): TenneyScale {
         val input = decoder as? JsonDecoder
@@ -124,9 +127,9 @@ object TenneyScaleSerializer : KSerializer<TenneyScale> {
         val referenceHz = obj.prim("referenceHz")?.doubleOrNullCompat()
             ?: obj.prim("rootHz")?.doubleOrNullCompat()
             ?: 440.0
-        val rootLabel = obj.prim("rootLabel")?.content.nilIfBlank()
+        val rootLabel = obj.prim("rootLabel")?.content.nilIfBlankOrNullLiteral()
         val periodRatio = obj.prim("periodRatio")?.doubleOrNullCompat() ?: 2.0
-       val author = obj.prim("author")?.content.nilIfBlank()
+        val author = obj.prim("author")?.content.nilIfBlankOrNullLiteral()
 
         val detectedLimit = obj.prim("detectedLimit")?.intOrNullCompat()
             ?: TenneyScaleDerived.detectedLimit(degrees)
