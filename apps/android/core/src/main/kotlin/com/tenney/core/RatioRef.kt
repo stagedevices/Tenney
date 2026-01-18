@@ -38,9 +38,9 @@ object RatioRefSerializer : KSerializer<RatioRef> {
             ?: error("RatioRefSerializer only supports JSON")
         val obj = input.decodeJsonElement() as? JsonObject
             ?: error("RatioRef must be a JSON object")
-        val p = (obj["p"] as? JsonPrimitive)?.intOrNull ?: 1
-        val q = (obj["q"] as? JsonPrimitive)?.intOrNull ?: 1
-        val octave = (obj["octave"] as? JsonPrimitive)?.intOrNull ?: 0
+        val p = (obj["p"] as? JsonPrimitive)?.content?.toIntOrNull() ?: 1
+        val q = (obj["q"] as? JsonPrimitive)?.content?.toIntOrNull() ?: 1
+        val octave = (obj["octave"] as? JsonPrimitive)?.content?.toIntOrNull() ?: 0
         val monzo = obj["monzo"]?.let {
             input.json.decodeFromJsonElement(mapSerializer, it)
         } ?: emptyMap()
