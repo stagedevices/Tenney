@@ -89,4 +89,4 @@ Apache-2.0 — see `LICENSE`.
 ## Community
 
 * Code of Conduct: `CODE_OF_CONDUCT.md`
-* Issues: use the templates (Feature Request, Parity mismatch / fixture failure)
+* Issues: use the templates [Feature Request](https://github.com/stagedevices/Tenney/issues/new?template=feature_request.yml), [Parity mismatch / fixture failure](https://github.com/stagedevices/Tenney/issues/new?template=parity.yml)
