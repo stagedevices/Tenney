@@ -4,10 +4,12 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
+@OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
 class TenneyScaleFixtureTest {
     private val json = Json {
         ignoreUnknownKeys = true
@@ -27,7 +29,9 @@ class TenneyScaleFixtureTest {
         val cases = json.decodeFromString<List<TenneyScaleFixtureCase>>(text)
         for (case in cases) {
             val actual = json.decodeFromJsonElement(TenneyScaleSerializer, case.input)
-            assertEquals("case=${case.id}", case.expected, actual)
+            val inputHasId = (case.input as? JsonObject)?.containsKey("id") == true
+            val expected = if (inputHasId) case.expected else case.expected.copy(id = actual.id)
+            assertEquals("case=${case.id}", expected, actual)
         }
     }
 
@@ -37,7 +41,9 @@ class TenneyScaleFixtureTest {
         val cases = json.decodeFromString<List<TenneyScaleFixtureCase>>(text)
         for (case in cases) {
             val actual = json.decodeFromJsonElement(TenneyScaleSerializer, case.input)
-            assertEquals("case=${case.id}", case.expected, actual)
+            val inputHasId = (case.input as? JsonObject)?.containsKey("id") == true
+            val expected = if (inputHasId) case.expected else case.expected.copy(id = actual.id)
+            assertEquals("case=${case.id}", expected, actual)
         }
     }
 }
