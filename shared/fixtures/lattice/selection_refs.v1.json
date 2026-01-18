@@ -1,0 +1,38 @@
+[
+  {
+    "id": "basic_plane_and_ghosts",
+    "pivot": { "e3": 0, "e5": 0 },
+    "axisShift": { "3": 0, "5": 0 },
+    "selectionOrderPlane": [
+      { "e3": 0, "e5": 0 },
+      { "e3": 1, "e5": 0 },
+      { "e3": 0, "e5": -1 }
+    ],
+    "selectionOrderGhosts": [
+      { "e3": 0, "e5": 0, "p": 7, "eP": 1 },
+      { "e3": 1, "e5": -1, "p": 11, "eP": -2 }
+    ],
+    "expected": [
+      { "p": 1, "q": 1, "octave": 0, "monzo": { "3": 0, "5": 0 } },
+      { "p": 3, "q": 1, "octave": 0, "monzo": { "3": 1, "5": 0 } },
+      { "p": 1, "q": 5, "octave": 0, "monzo": { "3": 0, "5": -1 } },
+      { "p": 7, "q": 1, "octave": 0, "monzo": { "3": 0, "5": 0, "7": 1 } },
+      { "p": 3, "q": 605, "octave": 0, "monzo": { "3": 1, "5": -1, "11": -2 } }
+    ]
+  },
+  {
+    "id": "pivot_and_axis_shift",
+    "pivot": { "e3": 2, "e5": -1 },
+    "axisShift": { "3": -1, "5": 2 },
+    "selectionOrderPlane": [
+      { "e3": -2, "e5": 1 }
+    ],
+    "selectionOrderGhosts": [
+      { "e3": -1, "e5": 0, "p": 19, "eP": 1 }
+    ],
+    "expected": [
+      { "p": 25, "q": 3, "octave": 0, "monzo": { "3": -1, "5": 2 } },
+      { "p": 19, "q": 3, "octave": 0, "monzo": { "3": -1, "5": 0, "19": 1 } }
+    ]
+  }
+]

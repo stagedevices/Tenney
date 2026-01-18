@@ -1,0 +1,13 @@
+[
+  {
+    "id": "basic_serialize",
+    "input": {
+      "description": "Serialized scale",
+      "entries": [
+        { "type": "ratio", "n": 3, "d": 2 },
+        { "type": "cents", "value": 700.0 }
+      ]
+    },
+    "expected": "! Serialized scale\n2\n!\n3/2\n700.00000"
+  }
+]
