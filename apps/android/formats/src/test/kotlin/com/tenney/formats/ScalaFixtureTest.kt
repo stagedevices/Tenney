@@ -1,5 +1,7 @@
 package com.tenney.formats
 
+@OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
