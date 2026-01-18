@@ -31,7 +31,9 @@ class TenneyScaleFixtureTest {
             val actual = json.decodeFromJsonElement(TenneyScaleSerializer, case.input)
             val inputHasId = (case.input as? JsonObject)?.containsKey("id") == true
             val expected = if (inputHasId) case.expected else case.expected.copy(id = actual.id)
-            assertEquals("case=${case.id}", expected, actual)
+            if (expected != actual) {
+                throw AssertionError("case=${case.id}\nexpected=$expected\nactual=$actual")
+            }
         }
     }
 
@@ -43,7 +45,9 @@ class TenneyScaleFixtureTest {
             val actual = json.decodeFromJsonElement(TenneyScaleSerializer, case.input)
             val inputHasId = (case.input as? JsonObject)?.containsKey("id") == true
             val expected = if (inputHasId) case.expected else case.expected.copy(id = actual.id)
-            assertEquals("case=${case.id}", expected, actual)
+            if (expected != actual) {
+                throw AssertionError("case=${case.id}\nexpected=$expected\nactual=$actual")
+            }
         }
     }
 }
