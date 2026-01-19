@@ -1683,7 +1683,7 @@ struct LatticeView: View {
                 let prevFocusCoord = focusedPoint?.coord
 
                 guard let cand = hitTestCandidate(at: loc, viewRect: viewRect) else {
-                    releaseInfoVoice()
+                    endInfoPreviewAndResumeSelectionIfStillSelected()
                     focusedPoint = nil
                     return
                 }
@@ -1691,6 +1691,14 @@ struct LatticeView: View {
                 contextTarget = makeContextTarget(from: cand)
 #endif
                 
+                if cand.isPlane, let c = cand.coord, focusedPoint?.coord == c, store.selected.contains(c) {
+                    releaseInfoVoice(hard: true)
+                    focusedPoint = nil
+                    store.toggleSelection(c)
+                    selectionHapticTick &+= 1
+                    return
+                }
+
                 let (cn, cd) = canonicalPQ(cand.p, cand.q)
                 let raw = app.rootHz * (Double(cn) / Double(cd))
                 let freq = foldToAudible(raw, minHz: 20, maxHz: 5000)
@@ -1699,7 +1707,11 @@ struct LatticeView: View {
                     return (pausedForInfoCoord == c) && store.selected.contains(c)
                 }()
 
-                releaseInfoVoice(hard: true, resumeSelection: !willDeselectPausedPlane)
+                if willDeselectPausedPlane {
+                    releaseInfoVoice(hard: true)
+                } else {
+                    endInfoPreviewAndResumeSelectionIfStillSelected(hard: true)
+                }
 
                 focusedPoint = (
                     pos: cand.pos,
@@ -1834,23 +1846,24 @@ struct LatticeView: View {
 #endif
     
     //
-    private func releaseInfoVoice(hard: Bool = true, resumeSelection: Bool = true) {
+    private func releaseInfoVoice(hard: Bool = true) {
         infoSwitchSeq &+= 1
         if let id = infoVoiceID {
             ToneOutputEngine.shared.release(id: id, seconds: hard ? 0.0 : 0.05)
             infoVoiceID = nil
         }
-        // Resume the selection sustain for the focused coord if still selected
-        if let c = pausedForInfoCoord {
+        if pausedForInfoCoord != nil {
             pausedForInfoCoord = nil
+        }
+    }
 
-            guard resumeSelection else { return }
-
-            DispatchQueue.main.async {
-                // If the tap cycle deselected the node, this will now be false.
-                if store.selected.contains(c) {
-                    store.resumeSelectionVoiceIfNeeded(for: c)
-                }
+    private func endInfoPreviewAndResumeSelectionIfStillSelected(hard: Bool = true) {
+        let coordToResume = pausedForInfoCoord
+        releaseInfoVoice(hard: hard)
+        guard let c = coordToResume else { return }
+        DispatchQueue.main.async {
+            if store.selected.contains(c) {
+                store.resumeSelectionVoiceIfNeeded(for: c)
             }
         }
     }
@@ -1861,7 +1874,7 @@ struct LatticeView: View {
         
             // If audio is disabled, never leave anything paused.
             guard latticeAudioAllowed else {
-                releaseInfoVoice(hard: true)   // stops preview + resumes selection if needed
+                releaseInfoVoice(hard: true)   // stops preview only
                 return
             }
 
