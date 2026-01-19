@@ -1035,7 +1035,7 @@ private struct OverviewPage: View {
 
                         Button(action: onAdd) {
                             ActionTile(
-                                title: "Set Current",
+                                title: "Add to Current Set",
                                 systemImage: "arrow.turn.down.right",
                                 style: .standard(.blue)
                             )
@@ -1250,48 +1250,45 @@ private struct ActionTile: View {
     }
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
-        let isDestructive: Bool
-        let tint: Color
-
-        switch style {
-        case .standard(let accent):
-            isDestructive = false
-            tint = accent
-        case .destructive:
-            isDestructive = true
-            tint = .white
-        }
+        let shape = tileShape
+        let resolved: (isDestructive: Bool, tint: Color) = {
+            switch style {
+            case .standard(let accent):
+                return (false, accent)
+            case .destructive:
+                return (true, .white)
+            }
+        }()
 
         VStack(alignment: .leading, spacing: 8) {
             Image(systemName: systemImage)
                 .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(tint)
+                .foregroundStyle(resolved.tint)
+
             Text(title)
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(isDestructive ? .white : .primary)
+                .foregroundStyle(resolved.isDestructive ? .white : .primary)
+
             if let subtitle {
                 Text(subtitle)
                     .font(.caption)
-                    .foregroundStyle(isDestructive ? .white.opacity(0.85) : .secondary)
+                    .foregroundStyle(resolved.isDestructive ? .white.opacity(0.85) : .secondary)
                     .lineLimit(2)
             }
         }
         .frame(maxWidth: .infinity, minHeight: 70, alignment: .leading)
         .padding(12)
-        .background(
-            Group {
-                if isDestructive {
-                    tileShape.fill(Color.red)
-                } else {
-                    Color.clear
+        .background {
+                ZStack {
+                    if resolved.isDestructive {
+                        shape.fill(.red)
+                    }
+                    glassLayer
                 }
             }
-        )
-        .overlay(glassLayer)
         .overlay(
-            tileShape.stroke(
-                isDestructive ? Color.white.opacity(0.35) : Color.secondary.opacity(0.15),
+            shape.stroke(
+                resolved.isDestructive ? Color.white.opacity(0.35) : Color.secondary.opacity(0.15),
                 lineWidth: 1
             )
         )
@@ -1309,6 +1306,7 @@ private struct ActionTile: View {
         if #available(iOS 26.0, *) {
             Color.clear
                 .glassEffect(.regular, in: tileShape)
+                .opacity(isDestructive ? 0.35 : 1.0)
         } else if isDestructive {
             tileShape.fill(Color.white.opacity(0.12))
         } else {
