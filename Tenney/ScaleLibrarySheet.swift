@@ -1162,7 +1162,11 @@ private struct HearPage: View {
                     .buttonStyle(.borderedProminent)
                 }
                 .padding(14)
-                .glassEffect(.regular, in: .rect(cornerRadius: 18))
+                .background(hearBackground)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                )
 
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Degrees")
@@ -1203,6 +1207,17 @@ private struct HearPage: View {
             .padding(.bottom, 16)
         }
     }
+
+    @ViewBuilder
+    private var hearBackground: some View {
+        let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+        if #available(iOS 26.0, *) {
+            Color.clear
+                .glassEffect(.regular, in: shape)
+        } else {
+            shape.fill(.ultraThinMaterial)
+        }
+    }
 }
 
 private struct ActionTile: View {
@@ -1215,6 +1230,24 @@ private struct ActionTile: View {
     let systemImage: String
     let subtitle: String?
     let style: Style
+
+    private var isDestructive: Bool {
+        if case .destructive = style { return true }
+        return false
+    }
+
+    private var tint: Color {
+        switch style {
+        case .standard(let accent):
+            return accent
+        case .destructive:
+            return .white
+        }
+    }
+
+    private var tileShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: 14, style: .continuous)
+    }
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -1249,15 +1282,15 @@ private struct ActionTile: View {
         .background(
             Group {
                 if isDestructive {
-                    shape.fill(Color.red)
+                    tileShape.fill(Color.red)
                 } else {
                     Color.clear
                 }
             }
         )
-        .glassEffect(.regular, in: shape)
+        .overlay(glassLayer)
         .overlay(
-            shape.stroke(
+            tileShape.stroke(
                 isDestructive ? Color.white.opacity(0.35) : Color.secondary.opacity(0.15),
                 lineWidth: 1
             )
@@ -1269,6 +1302,18 @@ private struct ActionTile: View {
         self.systemImage = systemImage
         self.subtitle = subtitle
         self.style = style
+    }
+
+    @ViewBuilder
+    private var glassLayer: some View {
+        if #available(iOS 26.0, *) {
+            Color.clear
+                .glassEffect(.regular, in: tileShape)
+        } else if isDestructive {
+            tileShape.fill(Color.white.opacity(0.12))
+        } else {
+            tileShape.fill(.ultraThinMaterial)
+        }
     }
 }
 
