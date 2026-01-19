@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 struct CommunityInstallRecord: Codable, Hashable {
     var installedScaleIDs: [UUID]
