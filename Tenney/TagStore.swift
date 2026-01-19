@@ -50,7 +50,7 @@ final class TagStore: ObservableObject {
     func createTag(name: String) -> TagRef {
         let normalized = TagNameNormalizer.normalize(name)
         guard !normalized.isEmpty else {
-            let fallback = TagRef(id: TagID(), name: "UNTITLED", sfSymbolName: nil, color: .default)
+            let fallback = TagRef(id: TagID(), name: "UNTITLED", sfSymbolName: nil, color: .default, customHex: nil)
             tags[fallback.id] = fallback
             scheduleSave()
             return fallback
@@ -58,7 +58,7 @@ final class TagStore: ObservableObject {
         if let existing = lookupByName(normalized) {
             return existing
         }
-        let tag = TagRef(id: TagID(), name: normalized, sfSymbolName: nil, color: .default)
+        let tag = TagRef(id: TagID(), name: normalized, sfSymbolName: nil, color: .default, customHex: nil)
         tags[tag.id] = tag
         scheduleSave()
         return tag
@@ -66,7 +66,7 @@ final class TagStore: ObservableObject {
 
     func updateTag(_ tag: TagRef) {
         let normalized = TagNameNormalizer.normalize(tag.name)
-        tags[tag.id] = TagRef(id: tag.id, name: normalized, sfSymbolName: tag.sfSymbolName, color: tag.color)
+        tags[tag.id] = TagRef(id: tag.id, name: normalized, sfSymbolName: tag.sfSymbolName, color: tag.color, customHex: tag.customHex)
         scheduleSave()
     }
 
@@ -93,6 +93,14 @@ final class TagStore: ObservableObject {
     func setTagColor(id: TagID, color: TagColor) {
         guard var tag = tags[id] else { return }
         tag.color = color
+        tag.customHex = nil
+        tags[id] = tag
+        scheduleSave()
+    }
+
+    func setTagCustomHex(id: TagID, hex: String) {
+        guard var tag = tags[id] else { return }
+        tag.customHex = hex
         tags[id] = tag
         scheduleSave()
     }
@@ -116,7 +124,8 @@ final class TagStore: ObservableObject {
                 id: TagID(),
                 name: normalized,
                 sfSymbolName: parsed.symbol ?? "tag.fill",
-                color: .default
+                color: .default,
+                customHex: nil
             )
             tags[tag.id] = tag
             resolved.append(tag.id)

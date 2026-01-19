@@ -42,6 +42,8 @@ struct TagChip: View {
             }
             Text(tag.name)
                 .font(size.font)
+                .lineLimit(1)
+                .truncationMode(.tail)
             if showsRemove {
                 Button {
                     onRemove?()
@@ -60,7 +62,7 @@ struct TagChip: View {
         .background(tagBackground)
         .overlay(
             Capsule()
-                .stroke(tag.color.color.opacity(isSelected ? 0.8 : 0.45), lineWidth: isSelected ? 1.4 : 1)
+                .stroke(tag.resolvedColor.opacity(isSelected ? 0.8 : 0.45), lineWidth: isSelected ? 1.4 : 1)
         )
         .clipShape(Capsule())
     }
@@ -69,13 +71,13 @@ struct TagChip: View {
     private var tagBackground: some View {
         if #available(iOS 26.0, *) {
             Color.clear
-                .glassEffect(.regular.tint(tag.color.color.opacity(isSelected ? 0.5 : 0.28)), in: Capsule())
+                .glassEffect(.regular.tint(tag.resolvedColor.opacity(isSelected ? 0.5 : 0.28)), in: Capsule())
         } else {
             Color.clear
                 .background(.thinMaterial)
                 .overlay(
                     Capsule()
-                        .fill(tag.color.color.opacity(isSelected ? 0.22 : 0.14))
+                        .fill(tag.resolvedColor.opacity(isSelected ? 0.22 : 0.14))
                 )
         }
     }
