@@ -118,11 +118,12 @@ struct CommunityPacksPageList: View {
                         description: Text("Update Tenney to browse Community Packs.")
                     )
                 } else if case .failed(let message) = store.state, store.packs.isEmpty {
-                    ContentUnavailableView(
-                        "Community Packs unavailable",
-                        systemImage: "wifi.slash",
-                        description: Text(message)
-                    ) {
+                    VStack(spacing: 12) {
+                        ContentUnavailableView(
+                            "Community Packs unavailable",
+                            systemImage: "wifi.slash",
+                            description: Text(message)
+                        )
                         Button("Retry") {
                             Task {
                                 await store.refresh(force: true)
