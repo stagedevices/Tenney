@@ -1250,6 +1250,19 @@ private struct ActionTile: View {
     }
 
     var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        let isDestructive: Bool
+        let tint: Color
+
+        switch style {
+        case .standard(let accent):
+            isDestructive = false
+            tint = accent
+        case .destructive:
+            isDestructive = true
+            tint = .white
+        }
+
         VStack(alignment: .leading, spacing: 8) {
             Image(systemName: systemImage)
                 .font(.system(size: 18, weight: .semibold))
