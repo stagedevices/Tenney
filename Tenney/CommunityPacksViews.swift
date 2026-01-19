@@ -122,7 +122,13 @@ struct CommunityPacksPageList: View {
                         "Community Packs unavailable",
                         systemImage: "wifi.slash",
                         description: Text(message)
-                    )
+                    ) {
+                        Button("Retry") {
+                            Task {
+                                await store.refresh(force: true)
+                            }
+                        }
+                    }
                 } else if store.packs.isEmpty, case .loading = store.state {
                     ProgressView("Loading Community Packs…")
                         .padding(.top, 20)
