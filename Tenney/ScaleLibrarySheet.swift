@@ -23,11 +23,13 @@ struct ScaleLibrarySheet: View {
     @EnvironmentObject private var model: AppModel
     @ObservedObject private var library = ScaleLibraryStore.shared
     @ObservedObject private var tagStore = TagStore.shared
+    @StateObject private var community = CommunityPacksStore.shared
     @State private var showOnlyFavorites = false
     @Environment(\.colorScheme) private var scheme
     @State private var actionTarget: TenneyScale? = nil   // ← selected row for the action sheet
     @State private var showTagFilterSheet = false
     @State private var selectedTagIDs: Set<TagID> = []
+    @State private var communitySortKey: CommunityPackSortKey = .featured
 
     // simple sort/local filter
     private var filteredScales: [TenneyScale] {
@@ -77,13 +79,17 @@ struct ScaleLibrarySheet: View {
                 VStack(spacing: 0) {
                     
                     // card below the search bar
-                    LibraryControlsCard(
-                        sortKey: $library.sortKey,
-                        showOnlyFavorites: $showOnlyFavorites,
-                        showTagFilterSheet: $showTagFilterSheet,
-                        selectedTagRefs: selectedTagRefs,
-                        onRemoveTag: { selectedTagIDs.remove($0) }
-                    )
+                    if libraryPage == 2 {
+                        CommunityControlsCard(sortKey: $communitySortKey)
+                    } else {
+                        LibraryControlsCard(
+                            sortKey: $library.sortKey,
+                            showOnlyFavorites: $showOnlyFavorites,
+                            showTagFilterSheet: $showTagFilterSheet,
+                            selectedTagRefs: selectedTagRefs,
+                            onRemoveTag: { selectedTagIDs.remove($0) }
+                        )
+                    }
                     .padding(.horizontal, 12)
                     .padding(.top, 8)
                     .padding(.bottom, 10)
@@ -106,13 +112,16 @@ struct ScaleLibrarySheet: View {
                                 onChooseScale: { chosen in addToBuilder(chosen) }
                             )
                             .tag(1)
+
+                            CommunityPacksPageList(sortKey: $communitySortKey)
+                                .tag(2)
                         }
                         .tabViewStyle(.page(indexDisplayMode: .never))
                         .background(Color.clear)
                         .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
                     }
                     
-                    PagePips(page: $libraryPage, labels: ["My Scales", "Collections by Limit"])
+                    PagePips(page: $libraryPage, labels: ["My Scales", "Collections by Limit", "Community Packs"])
                         .padding(.bottom, 10)
                 }
             }
@@ -165,6 +174,16 @@ struct ScaleLibrarySheet: View {
                 showOnlyFavorites = false
             case .favorites:
                 showOnlyFavorites = true
+            }
+        }
+        .onAppear {
+            if libraryPage == 2 {
+                Task { await community.refresh(force: true) }
+            }
+        }
+        .onChange(of: libraryPage) { page in
+            if page == 2 {
+                Task { await community.refresh(force: true) }
             }
         }
 
@@ -425,6 +444,9 @@ private struct ScaleRow: View {
                 HStack(spacing: 8) {
                     Text("\(scale.detectedLimit)-limit").font(.caption).foregroundStyle(.secondary)
                     Text("Root \(Int(scale.referenceHz)) Hz").font(.caption).foregroundStyle(.secondary)
+                }
+                if let provenance = scale.provenance, provenance.kind == .communityPack {
+                    CommunityPackBadge(packName: provenance.packName)
                 }
                 if !tagRefs.isEmpty {
                     TagChipRow(tags: tagRefs, maxCount: 3)
