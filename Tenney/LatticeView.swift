@@ -1691,6 +1691,14 @@ struct LatticeView: View {
                 contextTarget = makeContextTarget(from: cand)
 #endif
                 
+                if cand.isPlane, let c = cand.coord, focusedPoint?.coord == c, store.selected.contains(c) {
+                    releaseInfoVoice(hard: true)
+                    focusedPoint = nil
+                    store.toggleSelection(c)
+                    selectionHapticTick &+= 1
+                    return
+                }
+
                 let (cn, cd) = canonicalPQ(cand.p, cand.q)
                 let raw = app.rootHz * (Double(cn) / Double(cd))
                 let freq = foldToAudible(raw, minHz: 20, maxHz: 5000)
