@@ -2382,90 +2382,398 @@ struct LatticeView: View {
     private struct SelectionTray: View {
         @ObservedObject var store: LatticeStore
         @ObservedObject var app: AppModel
-        // ADD inside SelectionTray (above var body)
-        private var trayRow: some View {
-            HStack(spacing: 10) {
-                HStack(spacing: 6) {
-                    Text("Selected")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    
-                    Text("\(store.selectedCount)")
-                        .font(.system(.callout, design: .monospaced).weight(.semibold))
-                        .contentTransition(.numericText())
-                    
-                    if store.additionsSinceBaseline > 0 {
-                        Text("Δ+\(store.additionsSinceBaseline)")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.red)
-                            .padding(.horizontal, 6).padding(.vertical, 2)
-                            .background(Color.red.opacity(0.12))
-                            .clipShape(Capsule())
-                            .transition(.opacity.combined(with: .scale))
-                    }
+
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+        // MARK: - Sizing (keep tray height stable)
+        private let ctl: CGFloat = 40          // uniform control size
+        private let corner: CGFloat = 12       // rounded-rect corner radius
+        private let trayPadV: CGFloat = 8      // reduce padding so net height stays ~same
+
+
+        private enum EmptyMode: String, CaseIterable, Identifiable {
+            case recents
+            case favorites
+            var id: String { rawValue }
+
+            var symbol: String {
+                switch self {
+                case .recents:   return "clock.arrow.circlepath"
+                case .favorites: return "star"
                 }
-                
-                Divider().opacity(0.2)
-                
-                Button { store.undo() } label: { Image(systemName: "arrow.uturn.left") }
-                    .buttonStyle(.plain)
-                
-                Button { store.redo() } label: { Image(systemName: "arrow.uturn.right") }
-                    .buttonStyle(.plain)
-                
-                Divider().opacity(0.2)
-                
-                Button("Clear") {
-                    withAnimation(.snappy) { store.clearSelection() }
-                }
-                .disabled(store.selectedCount == 0)
-                
-                Spacer(minLength: 8)
-                
-                Button {
-                    let refs = store.selectionRefs(pivot: store.pivot, axisShift: store.axisShift)
-                    let payload = ScaleBuilderPayload(
-                        rootHz: app.rootHz,
-                        primeLimit: app.primeLimit,
-                        refs: refs
-                    )
-                    store.beginStaging()
-                    app.builderPayload = payload
-                } label: {
-                    Text("Add")
-                        .fontWeight(.semibold)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.9)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(store.selectedCount == 0)
-                
-                Button("Library") {
-                    store.beginStaging()
-                    app.showScaleLibraryDetent = true
-                }
-                .buttonStyle(.bordered)
-                .lineLimit(1)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 12)
-            .font(.footnote)
-            .controlSize(.small)
+
+            var a11y: String {
+                switch self {
+                case .recents:   return "Recents"
+                case .favorites: return "Favorites"
+                }
+            }
+        }
+
+        @State private var emptyMode: EmptyMode = .recents
+        @State private var addDidCommit: Bool = false
+
+        private var isActive: Bool {
+            store.selectedCount > 0 || store.additionsSinceBaseline > 0
+        }
+
+        @ViewBuilder
+        private func glassCircleBG() -> some View {
+            if #available(iOS 26.0, *) {
+                Circle()
+                    .fill(.clear)
+                    .glassEffect(.regular, in: Circle())
+            } else {
+                Circle().fill(.ultraThinMaterial)
+            }
+        }
+
+        @ViewBuilder
+        private func glassRectBG(prominent: Bool = false) -> some View {
+            let shape = RoundedRectangle(cornerRadius: corner, style: .continuous)
+            if #available(iOS 26.0, *) {
+                // iOS 26 Glass only exposes variants like .regular here (no .prominent)
+                shape
+                    .fill(.clear)
+                    .glassEffect(.regular, in: shape)
+            } else {
+                shape.fill(prominent ? .thinMaterial : .ultraThinMaterial)
+            }
+        }
+
+        private func glassStrokeRect() -> some View {
+            RoundedRectangle(cornerRadius: corner, style: .continuous)
+                .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
+        }
+
+        private func glassStrokeCircle() -> some View {
+            Circle().stroke(Color.secondary.opacity(0.12), lineWidth: 1)
         }
         
-        var body: some View {
-            Group {
+        private struct GlassBlueRoundedRect: ViewModifier {
+            let corner: CGFloat
+            func body(content: Content) -> some View {
+                let rr = RoundedRectangle(cornerRadius: corner, style: .continuous)
                 if #available(iOS 26.0, *) {
-                    trayRow
-                        .frame(maxWidth: .infinity) // ensures rounded-rect container, not pill-fit
-                        .glassEffect(.regular, in: .rect(cornerRadius: 12))
+                    content.glassEffect(.regular.tint(.blue), in: rr)
                 } else {
-                    // Keep your existing pre-26 appearance (fallback)
-                    GlassCard {
-                        trayRow
+                    content
+                        .background(.ultraThinMaterial, in: rr)
+                        .background(rr.fill(Color.blue.opacity(0.22)))
+                        .overlay(rr.stroke(Color.blue.opacity(0.35), lineWidth: 1))
+                }
+            }
+        }
+
+        private struct GlassWhiteRoundedRect: ViewModifier {
+            let corner: CGFloat
+            func body(content: Content) -> some View {
+                let rr = RoundedRectangle(cornerRadius: corner, style: .continuous)
+                if #available(iOS 26.0, *) {
+                    content.glassEffect(.regular.tint(.white), in: rr)
+                } else {
+                    content
+                        .background(.ultraThinMaterial, in: rr)
+                        .background(rr.fill(Color.white.opacity(0.62)))
+                        .overlay(rr.stroke(Color.secondary.opacity(0.14), lineWidth: 1))
+                }
+            }
+        }
+        
+        private struct GlassBlackRoundedRect: ViewModifier {
+            let corner: CGFloat
+            func body(content: Content) -> some View {
+                let rr = RoundedRectangle(cornerRadius: corner, style: .continuous)
+                if #available(iOS 26.0, *) {
+                    content.glassEffect(.regular.tint(.black), in: rr)
+                } else {
+                    content
+                        .background(.ultraThinMaterial, in: rr)
+                        .background(rr.fill(Color.black.opacity(0.28)))
+                        .overlay(rr.stroke(Color.white.opacity(0.10), lineWidth: 1))
+                }
+            }
+        }
+
+
+        private var clearButton: some View {
+            Button {
+                withAnimation(.snappy) { store.clearSelection() }
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.footnote.weight(.bold))
+                    .foregroundStyle(.white)
+                    .frame(width: ctl, height: ctl)
+                    .modifier(GlassBlueRoundedRect(corner: corner))
+            }
+            .buttonStyle(.plain)
+            .disabled(store.selectedCount == 0)
+            .opacity(store.selectedCount == 0 ? 0.35 : 1)
+            .accessibilityLabel("Clear selection")
+            .contentShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
+        }
+
+        // MARK: - Row pieces
+
+        private var statusCluster: some View {
+            let hasDelta = store.additionsSinceBaseline > 0
+
+            return HStack(spacing: 8) {
+                Text("Selected")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+
+                Text("\(store.selectedCount)")
+                    .font(.system(.callout, design: .monospaced).weight(.semibold))
+                    .contentTransition(.numericText())
+
+                if hasDelta {
+                    Text("Δ+\(store.additionsSinceBaseline)")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.red)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(Color.red.opacity(0.12))
+                        )
+                        .transition(.opacity.combined(with: .scale))
+                }
+            }
+            .frame(height: ctl)
+            .padding(.horizontal, 12)
+        //    .frame(minWidth: 132, alignment: .center)
+            .background(glassRectBG())
+            .overlay(glassStrokeRect())
+        }
+
+
+        private var toolsCapsule: some View {
+            HStack(spacing: 8) {
+                toolCircle(
+                    systemName: "arrow.uturn.left",
+                    enabled: store.canUndo
+                ) { store.undo() }
+
+                toolCircle(
+                    systemName: "arrow.uturn.right",
+                    enabled: store.canRedo
+                ) { store.redo() }
+
+                clearButton
+
+            }
+            .frame(height: ctl)
+            .padding(.horizontal, 8)
+            .background(glassRectBG())
+            .overlay(glassStrokeRect())
+        }
+
+        private func toolCircle(systemName: String, enabled: Bool, showStroke: Bool = true, action: @escaping () -> Void) -> some View {
+            Button(action: action) {
+                Image(systemName: systemName)
+                    .symbolRenderingMode(.hierarchical)
+                    .font(.footnote.weight(.semibold))
+                    .frame(width: ctl, height: ctl)
+                    .background(glassCircleBG())
+                    .overlay {
+                        if showStroke { glassStrokeCircle() }
+                    }
+                    .opacity(enabled ? 1 : 0.35)
+            }
+            .buttonStyle(.plain)
+            .disabled(!enabled)
+            .contentShape(Circle())
+        }
+
+
+        private var addButton: some View {
+            Button {
+                let refs = store.selectionRefs(pivot: store.pivot, axisShift: store.axisShift)
+                let payload = ScaleBuilderPayload(
+                    rootHz: app.rootHz,
+                    primeLimit: app.primeLimit,
+                    refs: refs
+                )
+
+                // Trigger feedback *first* so it has a chance to render even if Builder presents immediately.
+                if !reduceMotion {
+                    withAnimation(.snappy(duration: 0.25)) { addDidCommit = true }
+                } else {
+                    addDidCommit = true
+                }
+
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
+                    if !reduceMotion {
+                        withAnimation(.snappy(duration: 0.22)) { addDidCommit = false }
+                    } else {
+                        addDidCommit = false
+                    }
+                }
+
+                store.beginStaging()
+                app.builderPayload = payload
+            } label: {
+                Label {
+                    Text("New")
+                        .fontWeight(.regular)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.9)
+                        .foregroundStyle(.black)
+                } icon: {
+                    if #available(iOS 17.0, *) {
+                        Image(systemName: addDidCommit ? "checkmark" : "plus")
+                            .symbolRenderingMode(addDidCommit ? .multicolor : .hierarchical)
+                            .font(.system(size: 16, weight: .semibold))   // <-- bump weight (or .heavy)
+                            .foregroundStyle(.black)
+                            .contentTransition(.symbolEffect(.replace.downUp.byLayer))
+                    } else {
+                        Image(systemName: addDidCommit ? "checkmark" : "plus")
+                            .symbolRenderingMode(addDidCommit ? .multicolor : .hierarchical)
+                            .font(.system(size: 16, weight: .semibold))   // <-- same here
+                            .foregroundStyle(.black)
                     }
                 }
             }
+            .buttonStyle(.plain)
+            .frame(height: ctl)
+            .padding(.horizontal, 12)
+            .modifier(GlassWhiteRoundedRect(corner: corner))
+            .contentShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
+            .disabled(store.selectedCount == 0)
+            .sensoryFeedback(.success, trigger: addDidCommit)
+            .accessibilityLabel("Add selected ratios")
+        }
+
+        private var libraryButton: some View {
+            Button {
+                store.beginStaging()
+                if !isActive {
+                    app.scaleLibraryLaunchMode = (emptyMode == .favorites ? .favorites : .recents)
+                }
+                app.showScaleLibraryDetent = true
+            } label: {
+                let rr = RoundedRectangle(cornerRadius: corner, style: .continuous)
+
+                ZStack {
+                    // Wide (empty) content stays in-tree and animates out
+                    HStack(spacing: 8) {
+                        Image(systemName: "tray.fill")
+                            .font(.footnote.weight(.bold))
+                        Text("Library")
+                            .fontWeight(.semibold)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.9)
+                    }
+                    .foregroundStyle(.black)
+                    .opacity(isActive ? 0 : 1)
+                    .scaleEffect(isActive ? 0.92 : 1.0)
+                    .allowsHitTesting(false)
+
+                    // Compact (active) content animates in
+                    Image(systemName: "tray.fill")
+                        .font(.footnote.weight(.bold))
+                        .foregroundStyle(.white)
+                        .opacity(isActive ? 1 : 0)
+                        .allowsHitTesting(false)
+                }
+                .frame(height: ctl)
+                .frame(width: isActive ? ctl : nil)              // <- truly compact when active
+                .padding(.horizontal, isActive ? 0 : 12)         // <- NO padding in icon-only state
+                .background(
+                    ZStack {
+                        Color.clear
+                            .modifier(GlassWhiteRoundedRect(corner: corner))
+                            .opacity(isActive ? 0 : 1)
+                        Color.clear
+                            .modifier(GlassBlackRoundedRect(corner: corner))
+                            .opacity(isActive ? 1 : 0)
+                    }
+                )
+                .contentShape(rr)
+                .animation(.snappy(duration: 0.28), value: isActive)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Library")
+        }
+
+
+        
+        private var emptyQuickToggle: some View {
+            HStack(spacing: 10) {
+                emptyModeCircle(.recents)
+                emptyModeCircle(.favorites)
+            }
+        }
+
+        private func emptyModeCircle(_ mode: EmptyMode) -> some View {
+            let isSelected = (emptyMode == mode)
+
+            return Button {
+                emptyMode = mode
+                store.beginStaging()
+                app.scaleLibraryLaunchMode = (mode == .favorites ? .favorites : .recents)
+                app.showScaleLibraryDetent = true
+            } label: {
+                Image(systemName: mode.symbol)
+                    .symbolRenderingMode(.hierarchical)
+                    .font(.footnote.weight(.semibold))
+                    .frame(width: ctl, height: ctl)
+                    .background(glassCircleBG())
+                    .overlay(glassStrokeCircle())
+                    .overlay(
+                        Circle()
+                            .stroke(isSelected ? Color.primary.opacity(0.28) : Color.clear, lineWidth: 1.5)
+                    )
+            }
+            .buttonStyle(.plain)
+            .contentShape(Circle())
+            .accessibilityLabel(mode.a11y)
+            .accessibilityAddTraits(isSelected ? .isSelected : [])
+        }
+
+
+        // MARK: - Main rows
+
+        private var activeRow: some View {
+            HStack(spacing: 10) {
+                statusCluster
+                toolsCapsule
+                addButton
+                libraryButton
+            }
+            .frame(maxWidth: .infinity, alignment: .center)
+        }
+
+
+        private var emptyRow: some View {
+            HStack(spacing: 10) {
+                emptyQuickToggle
+                Spacer(minLength: 0)
+                libraryButton
+            }
+            .frame(maxWidth: .infinity)
+        }
+
+        // MARK: - Body
+
+        var body: some View {
+            ZStack {
+                emptyRow
+                    .opacity(isActive ? 0 : 1)
+                    .offset(y: isActive ? 6 : 0)
+                    .allowsHitTesting(!isActive)
+
+                activeRow
+                    .opacity(isActive ? 1 : 0)
+                    .offset(y: isActive ? 0 : 6)
+                    .allowsHitTesting(isActive)
+            }
+            .padding(.horizontal, 0)
+            .padding(.vertical, trayPadV) // <- reduced to keep tray height stable while controls grow
+            .animation(.spring(response: 0.32, dampingFraction: 0.9), value: isActive)
+            .frame(maxWidth: .infinity)
+            .modifier(_SelectionTrayContainer())
             .fixedSize(horizontal: false, vertical: true)
             .background(
                 GeometryReader { proxy in
@@ -2473,9 +2781,30 @@ struct LatticeView: View {
                 }
             )
         }
-        
-        
+
     }
+
+    // MARK: - Container polish (heavier than AxisShiftHUD)
+
+    private struct _SelectionTrayContainer: ViewModifier {
+        func body(content: Content) -> some View {
+            Group {
+                if #available(iOS 26.0, *) {
+                    content
+                        .glassEffect(.regular, in: .rect(cornerRadius: 16))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .stroke(Color.secondary.opacity(0.10), lineWidth: 1)
+                        )
+                } else {
+                    GlassCard {
+                        content
+                    }
+                }
+            }
+        }
+    }
+
     
     private struct ShiftRibbonGlass: ViewModifier {
         func body(content: Content) -> some View {
@@ -3070,11 +3399,8 @@ struct LatticeView: View {
             Spacer()
             if !latticePreviewMode {
                 VStack(spacing: 8) {
-                    if store.selectedCount > 0 || store.additionsSinceBaseline > 0 {
-                        SelectionTray(store: store, app: app)
-                            .transition(.opacity.combined(with: .move(edge: .bottom)))
-                    }
-                    
+                    SelectionTray(store: store, app: app)
+
                     AxisShiftHUD(
                         store: store,
                         app: app,

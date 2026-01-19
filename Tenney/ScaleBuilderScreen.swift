@@ -41,27 +41,26 @@ struct ScaleBuilderScreen: View {
         )
     }
 
-    private var builderLissajousRatios: (x: (n: Int, d: Int)?, y: (n: Int, d: Int)?) {
-        // Prefer most-recent selection (selectedPad) first, then the rest in stable order.
-        var ids: [Int] = []
+    private typealias RatioTuple = (n: Int, d: Int)
 
-        // Prefer most-recent selection first (even if the latch update hasn't landed yet).
-        if let sel = selectedPad { ids.append(sel) }
+    /// Stable latched order for routing (does NOT reshuffle based on `selectedPad`).
+    private var builderPadOrderForRouting: [Int] {
+        var ordered = activePadOrder.filter { latched.contains($0) }
+        // Append any latched pads we somehow missed (stable, ascending).
+        for idx in latched.sorted() where !ordered.contains(idx) {
+            ordered.append(idx)
+        }
+        // Keep only valid indices.
+        ordered = ordered.filter { store.degrees.indices.contains($0) }
+        return ordered
+    }
 
-        // Then any latched pads, stable order.
-        reconcileActivePadOrderWithLatched()
-        ids.append(contentsOf: activePadOrder.filter { $0 != selectedPad })
+    /// Channel lists: X = 1st,3rd,5th...  Y = 2nd,4th,6th...
+    private var builderLissajousChannels: (x: [RatioTuple], y: [RatioTuple]) {
+        let ids = builderPadOrderForRouting
+        guard let first = ids.first else { return ([], []) }
 
-
-        // Keep only valid indices + de-dupe without reordering.
-        ids = ids.filter { store.degrees.indices.contains($0) }
-        var seen = Set<Int>()
-        ids = ids.filter { seen.insert($0).inserted }
-
-        guard let first = ids.first else { return (nil, nil) }
-
-
-        func tuple(for idx: Int) -> (n: Int, d: Int) {
+        func tuple(for idx: Int) -> RatioTuple {
             let base = store.degrees[idx]
             let off = padOctaveOffset[idx, default: 0]
             let baked = ratioWithPadOffsetBaked(base, offset: off)
@@ -69,11 +68,34 @@ struct ScaleBuilderScreen: View {
             return (n: cn, d: cd)
         }
 
-        let x = tuple(for: first)
-        let y: (n: Int, d: Int) = (ids.count >= 2) ? tuple(for: ids[1]) : x
-        return (x: x, y: y)
+        let tuples = ids.map(tuple(for:))
+        var xs: [RatioTuple] = []
+        var ys: [RatioTuple] = []
+        for (i, t) in tuples.enumerated() {
+            if i.isMultiple(of: 2) { xs.append(t) } else { ys.append(t) }
+        }
+        // 1-pad case: X and Y are the same.
+        if xs.isEmpty { xs = [tuple(for: first)] }
+        if ys.isEmpty { ys = [xs[0]] }
+        return (x: xs, y: ys)
     }
 
+    /// Render pairs (one canvas per pair). Extra X (or Y) repeats the last opposite channel.
+    private var builderLissajousPairs: [(x: RatioTuple, y: RatioTuple)] {
+        let ch = builderLissajousChannels
+        guard !ch.x.isEmpty else { return [] }
+        let count = max(ch.x.count, ch.y.count)
+        return (0..<count).map { i in
+            let x = ch.x[min(i, ch.x.count - 1)]
+            let y = ch.y[min(i, ch.y.count - 1)]
+            return (x: x, y: y)
+        }
+    }
+
+    private func ratioListLabel(_ list: [RatioTuple]) -> String {
+        guard !list.isEmpty else { return "—" }
+        return list.map { "\($0.n)/\($0.d)" }.joined(separator: " · ")
+    }
     
     private var scopeSignals: [ToneOutputEngine.ScopeSignal] {
         // stable pad order: by pad index
@@ -349,45 +371,57 @@ struct ScaleBuilderScreen: View {
             }
 
             
-            // Top-right controls: Export + Save (magic-replace)
+            // Top-right controls: Export + Save + Done
             HStack(spacing: 8) {
                 exportModeButton
-                
-                if showSavedToast {
-                    ZStack {
-                        // toast background (same size as button)
-                        Circle()
-                            .fill(.thinMaterial)
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundStyle(.green)
-                    }
-                    .frame(width: 44, height: 44)
-                    .matchedGeometryEffect(id: "saveSlot", in: saveSlot)
-                    .transition(.scale.combined(with: .opacity))
-                    .accessibilityHidden(true)
-                } else {
-                    ZStack {
-                        // glass button background
-                        Circle()
-                            .modifier(GlassBlueCircle())
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundStyle(.white)
-                    }
-                    .frame(width: 44, height: 44)
-                    .contentShape(Circle())
-                    .onTapGesture { performSave() }
-                    .matchedGeometryEffect(id: "saveSlot", in: saveSlot)
-                    .accessibilityLabel("Save scale to Library")
-                    .accessibilityAddTraits(.isButton)
-                }
+                saveButton
+                doneButton
             }
             .padding(.horizontal, 20)
             .padding(.top, 20) // extra breathing room from the detent edge
+
         }
         
     }
+    
+    private var saveButton: some View {
+            Button { performSave() } label: {
+                let name = showSavedToast ? "checkmark" : "tray.and.arrow.down"
+                Group {
+                    if #available(iOS 17.0, *) {
+                        Image(systemName: name)
+                            .symbolRenderingMode(.hierarchical)
+                            .contentTransition(.symbolEffect(.replace.downUp))
+                    } else {
+                        Image(systemName: name)
+                            .symbolRenderingMode(.hierarchical)
+                    }
+                }
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(showSavedToast ? .green : .primary)
+                .frame(width: 44, height: 44)
+                .modifier(GlassWhiteCircle())
+            }
+            .buttonStyle(.plain)
+            .contentShape(Circle())
+            .accessibilityLabel("Save scale to Library")
+        }
+
+    private var doneButton: some View {
+        Button {
+            dismiss()
+        } label: {
+            Image(systemName: "checkmark")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 44, height: 44)
+                .modifier(GlassBlueCircle())
+        }
+        .buttonStyle(.plain)
+        .contentShape(Circle())
+        .accessibilityLabel("Done")
+    }
+
         // MARK: - Header
         
         private var header: some View {
@@ -453,24 +487,63 @@ struct ScaleBuilderScreen: View {
                         dark: effectiveIsDark
                     )
 
-                    let xy = builderLissajousRatios
+                    let pairs = builderLissajousPairs
+                    let ch = builderLissajousChannels
 
                     LissajousPreviewFrame(contentPadding: 0, showsFill: false) {
-                        LissajousCanvasPreview(
-                            e3: theme.e3,
-                            e5: theme.e5,
-                            samples: oscEffectiveValues.liveSamples,
-                            gridDivs: lissaGridDivs,
-                            showGrid: lissaShowGrid,
-                            showAxes: lissaShowAxes,
-                            strokeWidth: lissaRibbonWidth,
-                            dotMode: lissaDotMode,
-                            dotSize: oscEffectiveValues.dotSize,
-                            globalAlpha: oscEffectiveValues.alpha,
-                            idleMode: .empty,
-                            xRatio: xy.x,
-                            yRatio: xy.y
-                        )
+                        if pairs.isEmpty {
+                            LissajousCanvasPreview(
+                                e3: theme.e3,
+                                e5: theme.e5,
+                                samples: oscEffectiveValues.liveSamples,
+                                gridDivs: lissaGridDivs,
+                                showGrid: lissaShowGrid,
+                                showAxes: lissaShowAxes,
+                                strokeWidth: lissaRibbonWidth,
+                                dotMode: lissaDotMode,
+                                dotSize: oscEffectiveValues.dotSize,
+                                globalAlpha: oscEffectiveValues.alpha,
+                                idleMode: .empty,
+                                xRatio: nil,
+                                yRatio: nil
+                            )
+                        } else {
+                            ZStack {
+                                ForEach(Array(pairs.enumerated()), id: \.offset) { i, pair in
+                                    LissajousCanvasPreview(
+                                        e3: theme.e3,
+                                        e5: theme.e5,
+                                        samples: oscEffectiveValues.liveSamples,
+                                        gridDivs: lissaGridDivs,
+                                        showGrid: (i == 0) ? lissaShowGrid : false,
+                                        showAxes: (i == 0) ? lissaShowAxes : false,
+                                        strokeWidth: lissaRibbonWidth,
+                                        dotMode: lissaDotMode,
+                                        dotSize: oscEffectiveValues.dotSize,
+                                        globalAlpha: oscEffectiveValues.alpha / Double(max(1, pairs.count)),
+                                        idleMode: .empty,
+                                        xRatio: pair.x,
+                                        yRatio: pair.y
+                                    )
+                                    .allowsHitTesting(false)
+                                    .accessibilityHidden(i != 0)
+                                }
+                            }
+                        }
+                    }
+                    .overlay(alignment: .topLeading) {
+                        if !pairs.isEmpty {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("X: \(ratioListLabel(ch.x))")
+                                Text("Y: \(ratioListLabel(ch.y))")
+                            }
+                            .font(.caption.monospacedDigit().weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(8)
+                            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .padding(10)
+                            .accessibilityHidden(true)
+                        }
                     }
                     .frame(maxWidth: .infinity, minHeight: 180)
                     .accessibilityIdentifier("LissajousCard")
@@ -920,10 +993,8 @@ struct ScaleBuilderScreen: View {
             let root = store.payload.rootHz
             if latched.contains(idx) {
                 // Turn OFF
-                if let id = voiceForIndex[idx] {
-                    ToneOutputEngine.shared.release(id: id, seconds: 0.35)
-                    voiceForIndex[idx] = nil
-                }
+                ToneOutputEngine.shared.stop(ownerKey: "builder:pad:\(idx)", releaseSeconds: 0.35)
+                voiceForIndex[idx] = nil
                 latched.remove(idx)
                 notePadOff(idx)
                 padOctaveOffset[idx] = 0
@@ -953,8 +1024,8 @@ struct ScaleBuilderScreen: View {
         }
         
         private func stopAllPadVoices() {
-            for id in voiceForIndex.values {
-                ToneOutputEngine.shared.release(id: id, seconds: 0.03)
+            for idx in voiceForIndex.keys {
+                ToneOutputEngine.shared.stop(ownerKey: "builder:pad:\(idx)", releaseSeconds: 0.03)
             }
             voiceForIndex.removeAll()
             latched.removeAll()

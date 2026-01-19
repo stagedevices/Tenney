@@ -364,6 +364,7 @@ final class ToneOutputEngine {
         guard let id = ownerVoiceID(for: ownerKey) else { return }
         release(id: id, seconds: releaseSeconds, callsite: callsite, line: line)
         clearOwnerVoiceID(for: ownerKey)
+        metaRemove(id)
     }
 
     func stopAll(callsite: StaticString = #fileID, line: Int = #line) {
@@ -397,18 +398,22 @@ final class ToneOutputEngine {
         case 0:
             return ([], [])
         case 1:
-            // Special circle mode: still “one source”, but we treat as (same voice, quadrature)
+            // keep contract: x == y for a single source
             return ([ids[0]], [ids[0]])
-        case 2:
-            return ([ids[1]], [ids[0]])
         default:
-            // newest half to X, older half to Y (both newest-first)
-            let k = ids.count / 2
-            let x = Array(ids.suffix(k).reversed())
-            let y = Array(ids.dropLast(k).reversed())
+            // interleave: positions 0,2,4,... -> X ; positions 1,3,5,... -> Y
+            var x: [Int] = []
+            var y: [Int] = []
+            x.reserveCapacity((ids.count + 1) / 2)
+            y.reserveCapacity(ids.count / 2)
+
+            for (i, id) in ids.enumerated() {
+                if (i & 1) == 0 { x.append(id) } else { y.append(id) }
+            }
             return (x, y)
         }
     }
+
 
     public struct ScopeSignal: Hashable {
         public let voiceID: Int

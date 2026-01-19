@@ -20,7 +20,7 @@ import UIKit
         switch self {
         case .lattice: return "hexagon"
         case .tuner: return "gauge"
-        case .library: return "books.vertical"
+        case .library: return "tray.fill"
         case .learn: return "graduationcap"
         case .preferences: return "gearshape"
         }

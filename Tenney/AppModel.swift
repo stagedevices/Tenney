@@ -103,7 +103,13 @@ final class AppModel: ObservableObject {
     }
     // Library detent presentation
     @Published var showScaleLibraryDetent: Bool = false
-    
+    enum ScaleLibraryLaunchMode: Equatable {
+        case recents
+        case favorites
+    }
+
+    @Published var scaleLibraryLaunchMode: ScaleLibraryLaunchMode? = nil
+
     // Settings deep-link (Mac Catalyst)
     @Published var openSettingsToTunerRail: Bool = false
     private let audio = AudioEngineService()

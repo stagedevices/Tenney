@@ -112,7 +112,7 @@ struct TagChipRow: View {
 struct TagIconPicker: View {
     @Binding var selection: String?
     @State private var searchText = ""
-
+    let chipTint: Color
     private var filteredIcons: [String] {
         if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return TagIconPicker.iconCatalog
@@ -143,17 +143,24 @@ struct TagIconPicker: View {
                 .buttonStyle(.plain)
 
                 ForEach(filteredIcons, id: \.self) { symbol in
-                    Button {
-                        selection = symbol
-                    } label: {
-                        Image(systemName: symbol)
-                            .font(.headline)
-                            .frame(width: 34, height: 34)
-                            .padding(8)
-                            .background(iconBackground(isSelected: selection == symbol))
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
+                    let isSelected = (symbol == selection)
+
+                       Button {
+                           selection = symbol
+                       } label: {
+                           ZStack {
+                               RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                   .fill(isSelected ? chipTint.opacity(0.18) : Color.secondary.opacity(0.10))
+                               RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                   .stroke(isSelected ? chipTint.opacity(0.65) : Color.secondary.opacity(0.18), lineWidth: 1)
+
+                               Image(systemName: symbol)
+                                   .foregroundStyle(isSelected ? chipTint : .primary)
+                           }
+                           .frame(height: 34)
+                           .padding(.horizontal, 6)
+                       }
+                       .buttonStyle(.plain)
                 }
             }
         }

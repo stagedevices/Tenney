@@ -16,6 +16,9 @@ import AppKit
 
 
 struct ScaleLibrarySheet: View {
+    @State private var libraryPage: Int = 0
+    @State private var didApplyLaunchMode = false
+
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var model: AppModel
     @ObservedObject private var library = ScaleLibraryStore.shared
@@ -68,127 +71,49 @@ struct ScaleLibrarySheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                if library.scales.isEmpty {
-                    Section {
-                        ContentUnavailableView("No saved scales yet",
-                                               systemImage: "music.quarternote.3",
-                                               description: Text("Save a scale from the Builder, or start by browsing limits."))
-                    }
-                } else {
-                    // Quick controls
-                    Section {
-                        VStack(alignment: .leading, spacing: 10) {
-                            HStack(spacing: 10) {
-                                Picker("", selection: $library.sortKey) {
-                                    Text("Recent").tag(ScaleLibraryStore.SortKey.recent)
-                                    Text("A–Z").tag(ScaleLibraryStore.SortKey.alpha)
-                                    Text("Size").tag(ScaleLibraryStore.SortKey.size)
-                                    Text("Limit").tag(ScaleLibraryStore.SortKey.limit)
-                                }
-                                .pickerStyle(.segmented)
-                                .frame(maxWidth: 280)
-
-                                Toggle(isOn: $showOnlyFavorites) {
-                                    Image(systemName: showOnlyFavorites ? "star.fill" : "star")
-                                }
-                                .toggleStyle(.button)
-                                .tint(.yellow)
-                                .accessibilityLabel("Show only favorites")
-                            }
-
-                            HStack(spacing: 10) {
-                                Button {
-                                    showTagFilterSheet = true
-                                } label: {
-                                    Label("Filter", systemImage: "line.3.horizontal.decrease.circle")
-                                        .font(.caption.weight(.semibold))
-                                }
-                                .buttonStyle(.bordered)
-
-                                if selectedTagRefs.isEmpty {
-                                    Text("All tags")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                } else {
-                                    ScrollView(.horizontal, showsIndicators: false) {
-                                        HStack(spacing: 6) {
-                                            ForEach(selectedTagRefs, id: \TagRef.id) { (tag: TagRef) in
-                                                Button {
-                                                    selectedTagIDs.remove(tag.id)
-                                                } label: {
-                                                    TagChip(tag: tag, size: .small)
-                                                }
-                                                .buttonStyle(.plain)
-                                            }
-                                        }
-                                        .padding(.vertical, 2)
-                                    }
-                                }
-                            }
+            ZStack {
+                libraryGlassBackground
+                    .ignoresSafeArea()
+                VStack(spacing: 0) {
+                    
+                    // card below the search bar
+                    LibraryControlsCard(
+                        sortKey: $library.sortKey,
+                        showOnlyFavorites: $showOnlyFavorites,
+                        showTagFilterSheet: $showTagFilterSheet,
+                        selectedTagRefs: selectedTagRefs,
+                        onRemoveTag: { selectedTagIDs.remove($0) }
+                    )
+                    .padding(.horizontal, 12)
+                    .padding(.top, 8)
+                    .padding(.bottom, 10)
+                    
+                    GeometryReader { proxy in
+                        TabView(selection: $libraryPage) {
+                            
+                            MyScalesPageList(
+                                filteredScales: filteredScales,
+                                onPickScale: { actionTarget = $0 },
+                                openInBuilder: openInBuilder,
+                                addToBuilder: addToBuilder,
+                                playScalePreview: playScalePreview
+                            )
+                            .tag(0)
+                            
+                            CollectionsByLimitPageList(
+                                limits: limits,
+                                countForLimit: { count(for: $0) },
+                                onChooseScale: { chosen in addToBuilder(chosen) }
+                            )
+                            .tag(1)
                         }
+                        .tabViewStyle(.page(indexDisplayMode: .never))
+                        .background(Color.clear)
+                        .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
                     }
-
-                    // Browse by limit
-                    Section("Collections by Limit") {
-                        ForEach(limits, id:\.self) { p in
-                            NavigationLink {
-                                ScaleLimitBrowserView(limit: p) { chosen in
-                                        addToBuilder(chosen)
-                                    }
-                            } label: {
-                                HStack {
-                                    Text("\(p)-limit")
-                                    Spacer()
-                                    if count(for: p) > 0 {
-                                        Text("\(count(for: p))")
-                                            .font(.caption2.monospacedDigit())
-                                            .padding(.horizontal, 6).padding(.vertical, 2)
-                                            .background(Color.secondary.opacity(0.15))
-                                            .clipShape(Capsule())
-                                    }
-                                
-                                }
-                            }
-                        }
-                    }
-
-                    // All scales (filtered/sorted)
-                    Section("My Scales (\(filteredScales.count))") {
-                        ForEach(filteredScales) { s in
-                                                    // Primary tap: open the Library action sheet for this scale
-                                                    Button {
-                                                        actionTarget = s
-                                                    } label: {
-                                                        ScaleRow(scale: s, tagRefs: tagStore.tags(for: s.tagIDs), disclosure: true) // show chevron on the right
-                                                    }
-                                                    .buttonStyle(.plain)
-                                                    // Trailing swipe: Open / Add / Play (plus Delete)
-                                                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                                        Button("Open") { openInBuilder(s) }.tint(.accentColor)
-                                                        Button("Add")  { addToBuilder(s) }.tint(.blue)
-                                                        Button("Play") { playScalePreview(s) }.tint(.gray)
-                                                        Button(role: .destructive) {
-                                                            library.deleteScale(id: s.id)
-                                                        } label: { Label("Delete", systemImage: "trash") }
-                                                    }
-                                                    // Leading swipe: Favorite toggle
-                                                    .swipeActions(edge: .leading, allowsFullSwipe: false) {
-                                                        Button {
-                                                            var t = s; t.favorite.toggle(); library.updateScale(t)
-                                                        } label: {
-                                                            Label(s.favorite ? "Unfavorite" : "Favorite",
-                                                                  systemImage: s.favorite ? "star.slash" : "star")
-                                                        }.tint(.yellow)
-                                                    }
-                                                    // Context menu: ensure three actions, with Open first
-                                                    .contextMenu {
-                                                        Button("Open in Builder") { openInBuilder(s) }
-                                                        Button("Add to Builder") { addToBuilder(s) }
-                                                        Button("Play Scale") { playScalePreview(s) }
-                                                    }
-                                                }
-                    }
+                    
+                    PagePips(page: $libraryPage, labels: ["My Scales", "Collections by Limit"])
+                        .padding(.bottom, 10)
                 }
             }
             .listStyle(.insetGrouped)
@@ -222,8 +147,259 @@ struct ScaleLibrarySheet: View {
                 .presentationDetents([.medium, .large])
             }
         }
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .presentationBackground(.clear)
+        .onAppear {
+            guard !didApplyLaunchMode else { return }
+            didApplyLaunchMode = true
+
+            guard let mode = model.scaleLibraryLaunchMode else { return }
+            // consume it so it’s one-shot
+            model.scaleLibraryLaunchMode = nil
+
+            libraryPage = 0
+            library.sortKey = .recent
+
+            switch mode {
+            case .recents:
+                showOnlyFavorites = false
+            case .favorites:
+                showOnlyFavorites = true
+            }
+        }
+
+    }
+    @ViewBuilder
+    private var libraryGlassBackground: some View {
+        let shape = Rectangle()
+        if #available(iOS 26.0, *) {
+            Color.clear.glassEffect(.regular, in: shape)
+        } else {
+            shape.fill(.ultraThinMaterial)
+        }
+    }
+
+}
+
+private struct LibraryControlsCard: View {
+    @Binding var sortKey: ScaleLibraryStore.SortKey
+    @Binding var showOnlyFavorites: Bool
+    @Binding var showTagFilterSheet: Bool
+    let selectedTagRefs: [TagRef]
+    let onRemoveTag: (TagID) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+
+            // A) Sort “pills” (replaces segmented picker)
+            LibrarySortPills(selection: $sortKey)
+
+            // B) Filter + star row (star moved here, right side)
+            HStack(spacing: 10) {
+                Button {
+                    showTagFilterSheet = true
+                } label: {
+                    Label("Filter", systemImage: "line.3.horizontal.decrease.circle")
+                        .font(.caption.weight(.semibold))
+                }
+                .buttonStyle(.bordered)
+
+                Spacer()
+
+                Button {
+                    showOnlyFavorites.toggle()
+                    #if canImport(UIKit)
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    #endif
+                } label: {
+                    ZStack {
+                        favoriteCircleBackground
+                        Image(systemName: showOnlyFavorites ? "star.fill" : "star")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(showOnlyFavorites ? .yellow : .secondary)
+                    }
+                    .frame(width: 44, height: 44)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(showOnlyFavorites ? "Show all scales" : "Show favorites only")
+            }
+
+            // C) Selected tag chips row (same logic as before)
+            if selectedTagRefs.isEmpty {
+                Text("All tags")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(selectedTagRefs, id: \TagRef.id) { tag in
+                            Button { onRemoveTag(tag.id) } label: {
+                                TagChip(tag: tag, size: .small)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(cardBackground)
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
+        )
+    }
+
+    @ViewBuilder private var cardBackground: some View {
+        let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+        if #available(iOS 26.0, *) {
+            Color.clear.glassEffect(.regular, in: shape)
+        } else {
+            shape.fill(.ultraThinMaterial)
+        }
+    }
+
+    @ViewBuilder private var favoriteCircleBackground: some View {
+        let shape = Circle()
+        if #available(iOS 26.0, *) {
+            Color.clear.glassEffect(.regular, in: shape)
+        } else {
+            shape.fill(.thinMaterial)
+        }
     }
 }
+
+
+private struct MyScalesPageList: View {
+    @ObservedObject private var library = ScaleLibraryStore.shared
+    @ObservedObject private var tagStore = TagStore.shared
+
+    let filteredScales: [TenneyScale]
+    let onPickScale: (TenneyScale) -> Void
+    let openInBuilder: (TenneyScale) -> Void
+    let addToBuilder: (TenneyScale) -> Void
+    let playScalePreview: (TenneyScale) -> Void
+
+    var body: some View {
+        if #available(iOS 16.0, *) {
+            listBody
+                .scrollContentBackground(.hidden)
+                .background(Color.clear)
+        } else {
+            listBody
+        }
+    }
+
+    private var listBody: some View {
+        List {
+            if library.scales.isEmpty {
+                Section {
+                    ContentUnavailableView(
+                        "No saved scales yet",
+                        systemImage: "music.quarternote.3",
+                        description: Text("Save a scale from the Builder, or start by browsing limits.")
+                    )
+                }
+            } else if filteredScales.isEmpty {
+                Section {
+                    ContentUnavailableView(
+                        "No matching scales",
+                        systemImage: "magnifyingglass",
+                        description: Text("Try clearing filters or adjusting your search.")
+                    )
+                }
+            } else {
+                Section("My Scales (\(filteredScales.count))") {
+                    ForEach(filteredScales) { s in
+                        Button { onPickScale(s) } label: {
+                            ScaleRow(scale: s, tagRefs: tagStore.tags(for: s.tagIDs), disclosure: true)
+                        }
+                        .buttonStyle(.plain)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button("Open") { openInBuilder(s) }.tint(.accentColor)
+                            Button("Add")  { addToBuilder(s) }.tint(.blue)
+                            Button("Play") { playScalePreview(s) }.tint(.gray)
+                            Button(role: .destructive) {
+                                library.deleteScale(id: s.id)
+                            } label: { Label("Delete", systemImage: "trash") }
+                        }
+                        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                            Button {
+                                var t = s; t.favorite.toggle(); library.updateScale(t)
+                            } label: {
+                                Label(
+                                    s.favorite ? "Unfavorite" : "Favorite",
+                                    systemImage: s.favorite ? "star.slash" : "star"
+                                )
+                            }
+                            .tint(.yellow)
+                        }
+                        .contextMenu {
+                            Button("Open in Builder") { openInBuilder(s) }
+                            Button("Add to Builder") { addToBuilder(s) }
+                            Button("Play Scale") { playScalePreview(s) }
+                        }
+                    }
+                }
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .background(Color.clear)
+
+        .listStyle(.insetGrouped)
+    }
+}
+
+private struct CollectionsByLimitPageList: View {
+    let limits: [Int]
+    let countForLimit: (Int) -> Int
+    let onChooseScale: (TenneyScale) -> Void
+
+    var body: some View {
+        if #available(iOS 16.0, *) {
+            listBody
+                .scrollContentBackground(.hidden)
+                .background(Color.clear)
+        } else {
+            listBody
+        }
+    }
+
+    private var listBody: some View {
+        List {
+            Section("Collections by Limit") {
+                ForEach(limits, id: \.self) { p in
+                    NavigationLink {
+                        ScaleLimitBrowserView(limit: p) { chosen in
+                            onChooseScale(chosen)
+                        }
+                    } label: {
+                        HStack {
+                            Text("\(p)-limit")
+                            Spacer()
+                            let c = countForLimit(p)
+                            if c > 0 {
+                                Text("\(c)")
+                                    .font(.caption2.monospacedDigit())
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.secondary.opacity(0.15))
+                                    .clipShape(Capsule())
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .background(Color.clear)
+
+        .listStyle(.insetGrouped)
+    }
+}
+
 
 // MARK: - Row
 private struct ScaleRow: View {
@@ -342,6 +518,8 @@ private extension ScaleLibrarySheet {
 }
 // MARK: - Per-scale Action Sheet (Open • Add • Play)
 private struct ScaleActionsSheet: View {
+    @State private var isDronePlaying: Bool = false
+
     let scale: TenneyScale
     let onOpen: () -> Void
     let onAdd:  () -> Void
@@ -356,6 +534,8 @@ private struct ScaleActionsSheet: View {
     @AppStorage(SettingsKeys.safeAmp) private var safeAmp: Double = 0.18
     @State private var playback = ScaleSheetPlayback()
     @State private var page: Int = 0
+    @State private var tagsDetent: PresentationDetent = .medium
+    @State private var tagsEditorPresented: Bool = false
 
     @State private var playbackMode: ScalePlaybackMode = .arp
     @State private var focusedDegreeID: String? = nil
@@ -363,12 +543,89 @@ private struct ScaleActionsSheet: View {
     @State private var exportErrorMessage: String? = nil
     @State private var exportURLs: [URL] = []
     @State private var isPresentingShareSheet = false
-    @State private var showRenameSheet = false
     @State private var showTagsSheet = false
     @State private var showDeleteConfirm = false
-    @State private var renameText = ""
     @State private var copyMessage: String? = nil
+    
+    @AppStorage(SettingsKeys.lissaDotSize) private var lissaDotSize: Double = 4
+    @AppStorage(SettingsKeys.lissaGridDivs) private var lissaGridDivs: Int = 3
+    @AppStorage(SettingsKeys.lissaShowGrid) private var lissaShowGrid: Bool = true
+    @AppStorage(SettingsKeys.lissaShowAxes) private var lissaShowAxes: Bool = true
+    @AppStorage(SettingsKeys.lissaStrokeWidth) private var lissaRibbonWidth: Double = 2
+    @AppStorage(SettingsKeys.lissaDotMode) private var lissaDotMode: Bool = false
+    @AppStorage(SettingsKeys.lissaLiveSamples) private var lissaLiveSamples: Int = 768
+    @AppStorage(SettingsKeys.lissaGlobalAlpha) private var lissaGlobalAlpha: Double = 1.0
+    @AppStorage(SettingsKeys.latticeThemeID) private var latticeThemeID: String = LatticeThemeID.classicBO.rawValue
+    @AppStorage(SettingsKeys.latticeThemeStyle) private var themeStyleRaw: String = ThemeStyleChoice.system.rawValue
 
+    @Environment(\.colorScheme) private var systemScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    private var effectiveIsDark: Bool {
+        (themeStyleRaw == "dark") || (themeStyleRaw == "system" && systemScheme == .dark)
+    }
+
+    private var theme: LatticeTheme {
+        ThemeRegistry.theme(LatticeThemeID(rawValue: latticeThemeID) ?? .classicBO, dark: effectiveIsDark)
+    }
+
+    private var oscEffectiveValues: LissajousPreviewConfigBuilder.EffectiveValues {
+        LissajousPreviewConfigBuilder.effectiveValues(
+            liveSamples: lissaLiveSamples,
+            globalAlpha: lissaGlobalAlpha,
+            dotSize: lissaDotSize,
+            persistenceEnabled: true,
+            halfLife: 0.6,
+            reduceMotion: reduceMotion,
+            reduceTransparency: reduceTransparency
+        )
+    }
+
+
+    private func isRootDegree(_ r: RatioRef) -> Bool {
+        let (p, q) = RatioMath.canonicalPQUnit(r.p, r.q)
+        return p == 1 && q == 1 && r.octave == 0
+    }
+
+    private func isRoot(_ r: RatioRef) -> Bool {
+        r.p == 1 && r.q == 1 && r.octave == 0
+    }
+
+    private func ensureDroneFocus() {
+        if let id = focusedDegreeID,
+           let current = degreesSorted.first(where: { $0.id == id }),
+           !isRoot(current) {
+            return
+        }
+        focusedDegreeID = degreesSorted.first(where: { !isRoot($0) })?.id
+    }
+
+    private func toggleDrone() {
+        guard soundOn else { return }
+
+        ensureDroneFocus()
+
+        let rootHz = RatioMath.foldToAudible(currentScale.referenceHz)
+        guard
+            let id = focusedDegreeID,
+            let focus = degreesSorted.first(where: { $0.id == id })
+        else { return }
+
+        let focusHz = RatioMath.hz(rootHz: currentScale.referenceHz, p: focus.p, q: focus.q, octave: focus.octave, fold: true)
+        isDronePlaying = playback.toggleDrone(rootHz: rootHz, focusHz: focusHz, safeAmp: safeAmp)
+    }
+
+
+    private func commitScaleRename(_ newName: String) {
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != currentScale.name else { return }
+        var updated = currentScale
+        updated.name = trimmed
+        updated.lastPlayed = Date()
+        library.updateScale(updated)
+    }
+    
     private var currentScale: TenneyScale {
         library.scales[scale.id] ?? scale
     }
@@ -463,75 +720,79 @@ private struct ScaleActionsSheet: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            Picker("", selection: $page) {
-                Text("Overview").tag(0)
-                Text("Hear").tag(1)
-            }
-            .pickerStyle(.segmented)
-            .padding(.horizontal, 16)
-            .padding(.top, 10)
 
             GeometryReader { proxy in
-                TabView(selection: $page) {
-                    OverviewPage(
-                        title: currentScale.name,
-                        headerSummary: headerSummary,
-                        referenceSummary: referenceSummary,
-                        tags: tagRefs,
-                        onOpen: {
-                            onOpen()
-                            dismiss()
-                        },
-                        onAdd: {
-                            onAdd()
-                            dismiss()
-                        },
-                        onExport: { showExportSheet = true },
-                        onCopyRatios: { copyRatios() },
-                        onCopyJSON: { copyJSON() },
-                        onCopySCL: { copySCL() },
-                        onRename: {
-                            renameText = currentScale.name
-                            showRenameSheet = true
-                        },
-                        onTags: {
-                            showTagsSheet = true
-                        },
-                        onDelete: { showDeleteConfirm = true }
-                    )
-                    .tag(0)
+                Group {
+                    if #available(iOS 18.0, *) {
+                        TabView(selection: $page) {
+                            OverviewPage(
+                                title: currentScale.name,
+                                headerSummary: headerSummary,
+                                referenceSummary: referenceSummary,
+                                tags: tagRefs,
+                                onOpen: { onOpen(); dismiss() },
+                                onAdd: { onAdd(); dismiss() },
+                                onExport: { showExportSheet = true },
+                                onCopyRatios: { copyRatios() },
+                                onCopyJSON: { copyJSON() },
+                                onCopySCL: { copySCL() },
+                                onCommitTitle: { commitScaleRename($0) },
+                                onTags: { showTagsSheet = true },
+                                onDelete: { showDeleteConfirm = true }
+                            )
+                            .tag(0)
 
-                    HearPage(
-                        playbackMode: $playbackMode,
-                        focusedDegreeID: focusedDegreeID,
-                        focusedDegreeLabel: focusedDegreeLabel(),
-                        degrees: degreesSorted,
-                        rootHz: currentScale.referenceHz,
-                        onSelectDegree: { selectDegree(id: $0) },
-                        onPlay: { playScale() }
-                    )
-                    .tag(1)
+                            HearPage(
+                                lissaE3: theme.e3,
+                                lissaE5: theme.e5,
+                                lissaSamples: oscEffectiveValues.liveSamples,
+                                lissaGridDivs: lissaGridDivs,
+                                lissaShowGrid: lissaShowGrid,
+                                lissaShowAxes: lissaShowAxes,
+                                lissaRibbonWidth: lissaRibbonWidth,
+                                lissaDotMode: lissaDotMode,
+                                lissaDotSize: oscEffectiveValues.dotSize,
+                                lissaGlobalAlpha: oscEffectiveValues.alpha,
+                                playbackMode: $playbackMode,
+                                focusedDegreeID: focusedDegreeID,
+                                focusedDegreeLabel: focusedDegreeLabel(),
+                                degrees: degreesSorted,
+                                rootHz: currentScale.referenceHz,
+                                onSelectDegree: { selectDegree(id: $0) },
+                                isDronePlaying: isDronePlaying,
+                                onPlay: { playScale() },
+                                onToggleDrone: { toggleDrone() }
+                            )
+                            .tag(1)
+                        }
+                    }
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
                 .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
             }
             .frame(maxHeight: .infinity)
         }
+        .padding(.top, 16)
         .overlay(alignment: .bottom) {
-            if let copyMessage {
-                Text(copyMessage)
-                    .font(.caption.weight(.semibold))
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(.ultraThinMaterial, in: Capsule())
-                    .overlay(
-                        Capsule()
-                            .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
-                    )
-                    .padding(.bottom, 12)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            VStack(spacing: 10) {
+                if let copyMessage {
+                    Text(copyMessage)
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .overlay(
+                            Capsule()
+                                .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+                        )
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+
+                PagePips(page: $page, labels: ["Overview", "Hear"])
             }
+            .padding(.bottom, 10)
         }
+
         .sheet(isPresented: $showExportSheet) {
             ScrollView {
                 ScaleExportSheet(
@@ -554,45 +815,41 @@ private struct ScaleActionsSheet: View {
         .sheet(isPresented: $isPresentingShareSheet) {
             ActivityView(activityItems: exportURLs)
         }
-        .sheet(isPresented: $showRenameSheet) {
-            NavigationStack {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("Rename Scale")
-                        .font(.headline)
-                    TextField("Scale name", text: $renameText)
-                        .textFieldStyle(.roundedBorder)
-                    Spacer()
-                }
-                .padding(16)
-                .navigationTitle("Rename")
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancel") { showRenameSheet = false }
-                    }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Save") {
-                            applyRename()
-                            showRenameSheet = false
-                        }
-                        .disabled(renameText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    }
-                }
-            }
-            .presentationDetents([.medium])
-        }
+
         .sheet(isPresented: $showTagsSheet) {
             NavigationStack {
-                TagEditorView(scale: currentScale)
-                    .navigationTitle("Tags")
-                    .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
-                            GlassDismissButton(title: "Save") {
-                                showTagsSheet = false
-                            }
-                        }
+                VStack(spacing: 0) {
+                    TagsModalHeader(title: "Tags") {
+                        showTagsSheet = false
                     }
+
+                    TagEditorView(
+                        scale: currentScale,
+                        detent: $tagsDetent,
+                        editorPresented: $tagsEditorPresented
+                    )
+                }
+                .toolbar(.hidden, for: .navigationBar)
             }
-            .presentationDetents([.medium, .large])
+
+            .presentationDetents([.medium, .large], selection: $tagsDetent)
+            .presentationDragIndicator(tagsEditorPresented ? .hidden : .hidden)
+            .interactiveDismissDisabled(tagsEditorPresented)
+        }
+        .onChange(of: playbackMode) { newMode in
+            if newMode == .drone {
+                ensureDroneFocus()
+            } else if isDronePlaying {
+                playback.stop()
+                isDronePlaying = false
+            }
+        }
+
+        .onChange(of: showTagsSheet) { presented in
+            if presented {
+                tagsDetent = .medium
+                tagsEditorPresented = false
+            }
         }
         .alert("Delete scale?", isPresented: $showDeleteConfirm) {
             Button("Delete", role: .destructive) {
@@ -605,9 +862,56 @@ private struct ScaleActionsSheet: View {
         }
         .onDisappear {
             playback.stop()
+            isDronePlaying = false
+
         }
     }
 
+    private struct TagsModalHeader: View {
+        let title: String
+        let onDone: () -> Void
+
+        var body: some View {
+            VStack(spacing: 0) {
+                HStack(spacing: 12) {
+                    Text(title)
+                        .font(.title2.weight(.semibold))
+
+                    Spacer()
+
+                    Button(action: onDone) {
+                        ZStack {
+                            Circle()
+                                .modifier(GlassBlueCircle())
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 18, weight: .bold))
+                                .foregroundStyle(.white)
+                        }
+                        .frame(width: 44, height: 44) // TRUE 44×44, not nav-bar-clamped
+                    }
+                    .buttonStyle(.plain)
+                    .contentShape(Rectangle())
+                    .accessibilityLabel("Save")
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 10)
+
+            }
+        }
+
+        @ViewBuilder
+        private var headerBackground: some View {
+            let shape = Rectangle()
+            if #available(iOS 26.0, *) {
+                Color.clear.glassEffect(.regular, in: shape)
+            } else {
+                Rectangle().fill(.ultraThinMaterial)
+            }
+        }
+    }
+
+    
     private func playScale() {
         guard soundOn else { return }
         let focus = degreesSorted.first { $0.id == focusedDegreeID }
@@ -642,6 +946,11 @@ private struct ScaleActionsSheet: View {
     private func selectDegree(id: String) {
         guard focusedDegreeID != id else { return }
         focusedDegreeID = id
+        if playbackMode == .drone, isDronePlaying {
+            toggleDrone()      // stop
+            toggleDrone()      // start with new focus
+        }
+
 #if canImport(UIKit)
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
 #endif
@@ -701,15 +1010,6 @@ private struct ScaleActionsSheet: View {
                 copyMessage = nil
             }
         }
-    }
-
-    private func applyRename() {
-        let trimmed = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        var updated = currentScale
-        updated.name = trimmed
-        updated.lastPlayed = Date()
-        library.updateScale(updated)
     }
 
     private func toggleFormat(_ format: ExportFormat) {
@@ -865,6 +1165,57 @@ private struct ScaleActionsSheet: View {
 
 }
 
+private struct PagePips: View {
+    @Binding var page: Int
+    let labels: [String]
+
+    var body: some View {
+        let count = labels.count
+        if count <= 1 { EmptyView() }
+        else {
+            HStack(spacing: 8) {
+                ForEach(0..<count, id: \.self) { i in
+                    Button {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.9)) {
+                            page = i
+                        }
+                    } label: {
+                        Circle()
+                            .fill(i == page
+                                  ? Color.primary.opacity(0.85)
+                                  : Color.secondary.opacity(0.35))
+                            .frame(width: i == page ? 7 : 6, height: i == page ? 7 : 6)
+                            .contentShape(Rectangle())
+                            .padding(.vertical, 2)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(labels[i])
+                    .accessibilityAddTraits(i == page ? [.isSelected] : [])
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(pipsBackground)
+            .overlay(
+                Capsule()
+                    .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var pipsBackground: some View {
+        let shape = Capsule()
+        if #available(iOS 26.0, *) {
+            Color.clear
+                .glassEffect(.regular, in: shape)
+        } else {
+            shape.fill(.ultraThinMaterial)
+        }
+    }
+}
+
+
 private enum ScalePlaybackMode: String, CaseIterable, Identifiable {
     case arp
     case chord
@@ -883,6 +1234,7 @@ private enum ScalePlaybackMode: String, CaseIterable, Identifiable {
 private final class ScaleSheetPlayback {
     private var activeVoiceIDs: [Int] = []
     private var token = UUID()
+    private var droneActive = false
 
     func play(mode: ScalePlaybackMode, scale: TenneyScale, degrees: [RatioRef], focus: RatioRef?, safeAmp: Double) {
         stop()
@@ -946,18 +1298,51 @@ private final class ScaleSheetPlayback {
     }
 
     func stop() {
+        droneActive = false
         token = UUID()
         for id in activeVoiceIDs {
             ToneOutputEngine.shared.release(id: id, seconds: 0.0)
         }
         activeVoiceIDs.removeAll()
     }
+    
+    func toggleDrone(rootHz: Double, focusHz: Double, safeAmp: Double) -> Bool {
+        if droneActive {
+            stop()
+            droneActive = false
+            return false
+        }
+
+        stop()
+        droneActive = true
+
+        let amp = Float(safeAmp)
+        func startTone(_ freq: Double) -> Int {
+            let ownerKey = "scaleLibrary:drone:\(UUID().uuidString)"
+            return ToneOutputEngine.shared.sustain(
+                freq: freq,
+                amp: amp,
+                owner: .other,
+                ownerKey: ownerKey,
+                attackMs: 6,
+                releaseMs: 120
+            )
+        }
+
+        let a = startTone(rootHz)
+        let b = startTone(focusHz)
+        activeVoiceIDs = [a, b]
+        return true
+    }
+
 }
 
 private struct TagEditorView: View {
     @ObservedObject private var library = ScaleLibraryStore.shared
     @ObservedObject private var tagStore = TagStore.shared
     let scale: TenneyScale
+    @Binding var detent: PresentationDetent
+    @Binding var editorPresented: Bool
 
     @State private var searchText = ""
     @State private var addText = ""
@@ -1002,28 +1387,37 @@ private struct TagEditorView: View {
         return tagStore.allTags.filter { $0.name.localizedCaseInsensitiveContains(query) }
     }
 
-    private var isEditorPresented: Bool {
-        editingTagID != nil
-    }
+    private var editorActive: Bool { editingTagID != nil }
+
 
     var body: some View {
-        ScrollView {
-            TagsBrowseView(
-                attachedTags: attachedTags,
-                suggestedTags: searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? suggestedTags : [],
-                allTags: filteredTags,
-                chipColumns: chipColumns,
-                isTagAttached: { currentScale.tagIDs.contains($0.id) },
-                onToggleTag: toggle,
-                onEditTag: { editingTagID = $0.id },
-                addText: $addText,
-                onAddTag: addTag,
-                searchText: $searchText
-            )
-            .padding(16)
-            .padding(.bottom, isEditorPresented ? 260 : 0)
-        }
-        .overlay(alignment: .bottom) {
+        ZStack(alignment: .bottom) {
+            ScrollView {
+                TagsBrowseView(
+                    attachedTags: attachedTags,
+                    suggestedTags: searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? suggestedTags : [],
+                    allTags: filteredTags,
+                    chipColumns: chipColumns,
+                    isTagAttached: { currentScale.tagIDs.contains($0.id) },
+                    onToggleTag: toggle,
+                    onEditTag: { editingTagID = $0.id },
+                    addText: $addText,
+                    onAddTag: addTag,
+                    searchText: $searchText
+                )
+                .padding(.top, 12)
+                .padding(.horizontal, 16)
+                .padding(.bottom, editorActive ? 260 : 0)
+            }
+            .disabled(editorActive)
+
+            if editorActive {
+                Color.black.opacity(0.38)
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+                    .onTapGesture { editingTagID = nil } // keeps it “modal-y”
+            }
+
             if let editingTagID {
                 TagEditorDrawer(
                     tagID: editingTagID,
@@ -1033,12 +1427,14 @@ private struct TagEditorView: View {
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .animation(.spring(response: 0.45, dampingFraction: 0.88), value: isEditorPresented)
-        .onChange(of: editingTagID) { _ in
-            if isCreatingNewTag {
-                isCreatingNewTag = false
-            }
+        .animation(.spring(response: 0.45, dampingFraction: 0.88), value: editorActive)
+        .onChange(of: editingTagID) { newValue in
+            let active = (newValue != nil)
+            editorPresented = active
+            if active { detent = .large }
+            if isCreatingNewTag { isCreatingNewTag = false }
         }
+
     }
 
     private func toggle(_ tag: TagRef) {
@@ -1068,6 +1464,8 @@ private struct TagEditorView: View {
         addText = ""
         isCreatingNewTag = true
         editingTagID = newTag.id
+        editorPresented = true
+        detent = .large
     }
 
     private func updateScaleTags(_ ids: Set<TagID>) {
@@ -1239,18 +1637,39 @@ private struct TagEditorDrawer: View {
         Group {
             if let tag {
                 VStack(alignment: .leading, spacing: 16) {
-                    Capsule()
-                        .fill(Color.secondary.opacity(0.35))
-                        .frame(width: 36, height: 5)
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 8)
-
                     HStack {
-                        TagChip(tag: tag, size: .regular)
+                        Text("Tag Editor")
+                            .font(.footnote.weight(.semibold))
+                            .textCase(.uppercase)
+                            .foregroundStyle(.secondary)
                         Spacer()
-                        Button("Done") { onDone() }
-                            .buttonStyle(.bordered)
                     }
+                    .padding(.top, 12)
+
+
+                    let tagTint = colorFromHex(tag.resolvedHex)
+
+                    HStack(alignment: .center, spacing: 12) {
+                        TagChip(tag: tag, size: .regular)
+                            .scaleEffect(1.22, anchor: .leading)
+
+                        Spacer()
+
+                        Button {
+                            onDone()
+                        } label: {
+                            Text("Done")
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(glassCapsuleBackground)
+                                .overlay(
+                                    Capsule().stroke(Color.secondary.opacity(0.22), lineWidth: 1)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+
 
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Icon")
@@ -1258,10 +1677,13 @@ private struct TagEditorDrawer: View {
                             .textCase(.uppercase)
                             .foregroundStyle(.secondary)
 
-                        TagIconPicker(selection: Binding<String?>(
-                            get: { tag.sfSymbolName },
-                            set: { tagStore.setTagIcon(id: tag.id, sfSymbolName: $0) }
-                        ))
+                        TagIconPicker(
+                            selection: Binding<String?>(
+                                get: { tag.sfSymbolName },
+                                set: { tagStore.setTagIcon(id: tag.id, sfSymbolName: $0) }
+                            ),
+                            chipTint: tagTint
+                        )
                     }
 
                     VStack(alignment: .leading, spacing: 10) {
@@ -1279,9 +1701,15 @@ private struct TagEditorDrawer: View {
                                 applyRandomHex(to: tag)
                             } label: {
                                 Label("Random Hex", systemImage: "die.face.5.fill")
+                                    .font(.caption.weight(.semibold))
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .background(glassCapsuleBackground)
+                                    .overlay(
+                                        Capsule().stroke(Color.secondary.opacity(0.22), lineWidth: 1)
+                                    )
                             }
-                            .buttonStyle(.bordered)
-                            .buttonBorderShape(.capsule)
+                            .buttonStyle(.plain)
 
                             Text(tag.resolvedHex)
                                 .font(.caption.monospaced())
@@ -1345,6 +1773,27 @@ private struct TagEditorDrawer: View {
                 .background(.ultraThinMaterial)
         }
     }
+    
+    private func colorFromHex(_ hex: String) -> Color {
+        var s = hex.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        if s.hasPrefix("#") { s.removeFirst() }
+        guard s.count == 6, let v = UInt32(s, radix: 16) else { return .accentColor }
+        let r = Double((v >> 16) & 0xFF) / 255.0
+        let g = Double((v >> 8)  & 0xFF) / 255.0
+        let b = Double(v & 0xFF) / 255.0
+        return Color(.sRGB, red: r, green: g, blue: b, opacity: 1.0)
+    }
+
+    @ViewBuilder
+    private var glassCapsuleBackground: some View {
+        if #available(iOS 26.0, *) {
+            Color.clear
+                .glassEffect(.regular, in: Capsule())
+        } else {
+            Capsule().fill(.ultraThinMaterial)
+        }
+    }
+
 
     private func applyRandomHex(to tag: TagRef) {
         let hex = String(format: "#%06X", UInt32.random(in: 0...0xFFFFFF))
@@ -1431,6 +1880,10 @@ private struct TagFilterSheet: View {
 }
 
 private struct OverviewPage: View {
+    @State private var isEditingTitle = false
+    @State private var titleDraft = ""
+    @FocusState private var titleFocused: Bool
+
     let title: String
     let headerSummary: String
     let referenceSummary: String
@@ -1441,18 +1894,70 @@ private struct OverviewPage: View {
     let onCopyRatios: () -> Void
     let onCopyJSON: () -> Void
     let onCopySCL: () -> Void
-    let onRename: () -> Void
+    let onCommitTitle: (String) -> Void
     let onTags: () -> Void
     let onDelete: () -> Void
 
+    private func beginTitleEdit(current: String) {
+        titleDraft = current
+        isEditingTitle = true
+        DispatchQueue.main.async { titleFocused = true }
+    }
+
+    private func commitTitle() {
+        let trimmed = titleDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            titleDraft = title
+            isEditingTitle = false
+            return
+        }
+        onCommitTitle(trimmed)
+        isEditingTitle = false
+    }
+
+    
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text(title)
-                        .font(.largeTitle.weight(.semibold))
-                        .lineLimit(2)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        if isEditingTitle {
+                            TextField("Scale name", text: $titleDraft)
+                                .font(.largeTitle.weight(.semibold))
+                                .textFieldStyle(.plain)
+                                .focused($titleFocused)
+                                .submitLabel(.done)
+                                .onSubmit { commitTitle() }
+                        } else {
+                            Text(title)
+                                .font(.largeTitle.weight(.semibold))
+                                .lineLimit(2)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
+                                .onTapGesture { beginTitleEdit(current: title) } // tap title = rename
+                        }
+
+                        Button {
+                            if isEditingTitle { commitTitle() }
+                            else { beginTitleEdit(current: title) }
+                        } label: {
+                            Image(systemName: isEditingTitle ? "checkmark" : "pencil")
+                                .font(.system(size: 15, weight: .semibold))
+                                .padding(8)
+                                .background(.thinMaterial, in: Circle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .onAppear {
+                        if titleDraft.isEmpty { titleDraft = title }
+                    }
+                    .onChange(of: title) { newValue in
+                        if !isEditingTitle { titleDraft = newValue }
+                    }
+                    .onChange(of: titleFocused) { focused in
+                        if !focused && isEditingTitle { commitTitle() } // tap-away commits
+                    }
+
                     Text(headerSummary)
                         .font(.callout)
                         .foregroundStyle(.secondary)
@@ -1538,9 +2043,11 @@ private struct OverviewPage: View {
                             )
                         }
 
-                        Button(action: onRename) {
+                        Button {
+                            beginTitleEdit(current: title)
+                        } label: {
                             ActionTile(
-                                title: "Rename…",
+                                title: "Rename",
                                 systemImage: "pencil",
                                 style: .standard(.secondary)
                             )
@@ -1555,17 +2062,16 @@ private struct OverviewPage: View {
                             )
                         }
                         .buttonStyle(.plain)
-
-                        Button(action: onDelete) {
-                            ActionTile(
-                                title: "Delete",
-                                systemImage: "trash",
-                                style: .destructive
-                            )
-                        }
-                        .buttonStyle(.plain)
-                        .gridCellColumns(2)
                     }
+                    Button(action: onDelete) {
+                        ActionTile(
+                            title: "Delete",
+                            systemImage: "trash",
+                            style: .destructive
+                        )
+                    }
+                    .buttonStyle(.plain)
+
                 }
             }
             .padding(.horizontal, 16)
@@ -1577,13 +2083,26 @@ private struct OverviewPage: View {
 }
 
 private struct HearPage: View {
+    let lissaE3: Color
+    let lissaE5: Color
+    let lissaSamples: Int
+    let lissaGridDivs: Int
+    let lissaShowGrid: Bool
+    let lissaShowAxes: Bool
+    let lissaRibbonWidth: Double
+    let lissaDotMode: Bool
+    let lissaDotSize: Double
+    let lissaGlobalAlpha: Double
+
     @Binding var playbackMode: ScalePlaybackMode
     let focusedDegreeID: String?
     let focusedDegreeLabel: String?
     let degrees: [RatioRef]
     let rootHz: Double
     let onSelectDegree: (String) -> Void
+    let isDronePlaying: Bool
     let onPlay: () -> Void
+    let onToggleDrone: () -> Void
 
     var body: some View {
         ScrollView {
@@ -1594,24 +2113,52 @@ private struct HearPage: View {
                         .textCase(.uppercase)
                         .foregroundStyle(.secondary)
 
-                    Picker("Playback Mode", selection: $playbackMode) {
-                        ForEach(ScalePlaybackMode.allCases) { mode in
-                            Text(mode.title).tag(mode)
+                    PlaybackModePills(selection: $playbackMode)
+
+
+                    if playbackMode == .drone {
+                        if let focusedDegreeLabel {
+                            Text("Drone focus: \(focusedDegreeLabel)")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
                         }
-                    }
-                    .pickerStyle(.segmented)
 
-                    if playbackMode == .drone, let focusedDegreeLabel {
-                        Text("Drone focus: \(focusedDegreeLabel)")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
+                        if let xy = droneXYRatios {
+                            LissajousPreviewFrame(contentPadding: 0, showsFill: false) {
+                                LissajousCanvasPreview(
+                                    e3: lissaE3,
+                                    e5: lissaE5,
+                                    samples: lissaSamples,
+                                    gridDivs: lissaGridDivs,
+                                    showGrid: lissaShowGrid,
+                                    showAxes: lissaShowAxes,
+                                    strokeWidth: lissaRibbonWidth,
+                                    dotMode: lissaDotMode,
+                                    dotSize: lissaDotSize,
+                                    globalAlpha: lissaGlobalAlpha,
+                                    idleMode: .empty,
+                                    xRatio: xy.x,
+                                    yRatio: xy.y
+                                )
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 180)
+                            .accessibilityIdentifier("LissajousCard")
+                        }
+
+                        Button(action: onToggleDrone) {
+                            Label(isDronePlaying ? "Stop" : "Play",
+                                  systemImage: isDronePlaying ? "stop.fill" : "play.fill")
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                        }
+                        .buttonStyle(.borderedProminent)
+                    } else {
+                        Button(action: onPlay) {
+                            Label("Play", systemImage: "play.fill")
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                        }
+                        .buttonStyle(.borderedProminent)
                     }
 
-                    Button(action: onPlay) {
-                        Label("Play", systemImage: "play.fill")
-                            .frame(maxWidth: .infinity, minHeight: 44)
-                    }
-                    .buttonStyle(.borderedProminent)
                 }
                 .padding(14)
                 .background(hearBackground)
@@ -1625,20 +2172,6 @@ private struct HearPage: View {
                         .font(.footnote.weight(.semibold))
                         .textCase(.uppercase)
                         .foregroundStyle(.secondary)
-
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 72), spacing: 8)], spacing: 8) {
-                        ForEach(degrees, id: \.id) { ratio in
-                            Button {
-                                onSelectDegree(ratio.id)
-                            } label: {
-                                RatioChip(
-                                    ratio: ratio,
-                                    isSelected: focusedDegreeID == ratio.id
-                                )
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
 
                     VStack(spacing: 8) {
                         ForEach(degrees, id: \.id) { ratio in
@@ -1659,6 +2192,37 @@ private struct HearPage: View {
             .padding(.bottom, 16)
         }
     }
+    
+    private var droneXYRatios: (x: (n: Int, d: Int), y: (n: Int, d: Int))? {
+        guard playbackMode == .drone,
+              let id = focusedDegreeID,
+              let yRatioRef = degrees.first(where: { $0.id == id }),
+              let xRatioRef = degrees.first(where: { $0.p == 1 && $0.q == 1 && $0.octave == 0 }) ?? degrees.first
+        else { return nil }
+
+        return (x: ndTuple(for: xRatioRef), y: ndTuple(for: yRatioRef))
+    }
+
+    private func ndTuple(for r: RatioRef) -> (n: Int, d: Int) {
+        // Keep it stable + avoid huge integers: clamp octave contribution.
+        let (p, q) = RatioMath.canonicalPQUnit(r.p, r.q)
+        let oct = max(-12, min(12, r.octave))
+
+        if oct >= 0 {
+            return (n: p * (1 << oct), d: q)
+        } else {
+            return (n: p, d: q * (1 << (-oct)))
+        }
+    }
+
+    
+    private var droneFocusHz: Double? {
+        guard playbackMode == .drone,
+              let id = focusedDegreeID,
+              let ratio = degrees.first(where: { $0.id == id }) else { return nil }
+        return RatioMath.hz(rootHz: rootHz, p: ratio.p, q: ratio.q, octave: ratio.octave, fold: true)
+    }
+
 
     @ViewBuilder
     private var hearBackground: some View {
@@ -1669,6 +2233,165 @@ private struct HearPage: View {
         } else {
             shape.fill(.ultraThinMaterial)
         }
+    }
+}
+
+private struct LibrarySortPills: View {
+    @Binding var selection: ScaleLibraryStore.SortKey
+
+    var body: some View {
+        HStack(spacing: 8) {
+            pill(.recent, title: "Recent", icon: "clock")
+            pill(.alpha,  title: "A–Z",    icon: "textformat")
+            pill(.size,   title: "Size",   icon: "number")
+            pill(.limit,  title: "Limit",  icon: "dial.min")
+        }
+        .padding(4)
+        .background {
+            let shape = Capsule()
+            if #available(iOS 26.0, *) { Color.clear.glassEffect(.regular, in: shape) }
+            else { shape.fill(.thinMaterial) }
+        }
+        .overlay(Capsule().stroke(Color.secondary.opacity(0.18), lineWidth: 1))
+    }
+
+    private func pill(_ mode: ScaleLibraryStore.SortKey, title: String, icon: String) -> some View {
+        let isSelected = (selection == mode)
+
+        return Button {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.9)) {
+                selection = mode
+            }
+            #if canImport(UIKit)
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            #endif
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .semibold))
+                if isSelected {
+                    Text(title)
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(1)
+                }
+            }
+            .foregroundStyle(isSelected ? Color.accentColor : .primary)
+            .padding(.horizontal, isSelected ? 14 : 10)
+            .padding(.vertical, 8)
+            .frame(minHeight: 34)
+            .frame(maxWidth: isSelected ? .infinity : nil)
+            .layoutPriority(isSelected ? 1 : 0)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(
+            Capsule().fill(isSelected ? Color.accentColor.opacity(0.18) : Color.clear)
+        )
+        .overlay(
+            Capsule().stroke(isSelected ? Color.accentColor.opacity(0.65) : Color.clear, lineWidth: 1)
+        )
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+    }
+
+}
+
+
+private struct PlaybackModePills: View {
+    @Binding var selection: ScalePlaybackMode
+
+    var body: some View {
+        HStack(spacing: 8) {
+            pill(.arp,   title: "Arp",   icon: "metronome")
+            pill(.chord, title: "Chord", icon: "pianokeys")
+            pill(.drone, title: "Drone", icon: "dot.radiowaves.left.and.right")
+        }
+        .padding(4)
+        .background(.thinMaterial, in: Capsule())
+        .overlay(Capsule().stroke(Color.secondary.opacity(0.18), lineWidth: 1))
+    }
+
+    private func pill(_ mode: ScalePlaybackMode, title: String, icon: String) -> some View {
+        let isSelected = (selection == mode)
+
+        return Button {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.9)) {
+                selection = mode
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .semibold))
+                if isSelected {
+                    Text(title)
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(1)
+                }
+            }
+            .foregroundStyle(isSelected ? Color.accentColor : .primary)
+            .padding(.horizontal, isSelected ? 14 : 10)
+            .padding(.vertical, 8)
+            .frame(minHeight: 34)
+            .frame(maxWidth: isSelected ? .infinity : nil)
+            .layoutPriority(isSelected ? 1 : 0)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(
+            Capsule()
+                .fill(isSelected ? Color.accentColor.opacity(0.18) : Color.clear)
+        )
+        .overlay(
+            Capsule()
+                .stroke(isSelected ? Color.accentColor.opacity(0.65) : Color.clear, lineWidth: 1)
+        )
+    }
+}
+
+private struct DroneScopeView: View {
+    let rootHz: Double   // x = 1/1 (root)
+    let focusHz: Double  // y = focused degree
+
+    var body: some View {
+        TimelineView(.animation) { timeline in
+            let t = timeline.date.timeIntervalSinceReferenceDate
+            Canvas { ctx, size in
+                let midX = size.width * 0.5
+                let midY = size.height * 0.5
+                let ampX = size.width  * 0.42
+                let ampY = size.height * 0.38
+
+                // Fold to keep the drawing stable + visually readable
+                let fx = fold(rootHz)
+                let fy = fold(focusHz)
+
+                var path = Path()
+                let steps = 220
+                for i in 0...steps {
+                    let u = Double(i) / Double(steps)
+                    let tt = t + u * 0.55
+
+                    let x = sin(2.0 * .pi * fx * tt)
+                    let y = sin(2.0 * .pi * fy * tt)
+
+                    let px = midX + CGFloat(x) * ampX
+                    let py = midY - CGFloat(y) * ampY
+
+                    if i == 0 { path.move(to: CGPoint(x: px, y: py)) }
+                    else      { path.addLine(to: CGPoint(x: px, y: py)) }
+                }
+
+                ctx.stroke(path, with: .color(Color.primary.opacity(0.75)), lineWidth: 1.2)
+            }
+        }
+    }
+
+    private func fold(_ f: Double) -> Double {
+        guard f.isFinite && f > 0 else { return 1 }
+        var x = f
+        while x < 55  { x *= 2 }
+        while x > 880 { x *= 0.5 }
+        return x
     }
 }
 

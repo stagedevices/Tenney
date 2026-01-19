@@ -12,6 +12,9 @@ import UIKit
 
 @MainActor
 final class LatticeStore: ObservableObject {
+    @Published private(set) var canUndo: Bool = false
+    @Published private(set) var canRedo: Bool = false
+
     private static var didBootSelectionClearThisProcess = false
     
     
@@ -1280,6 +1283,15 @@ final class LatticeStore: ObservableObject {
             voiceForCoord.removeAll()
             voiceForGhost.removeAll()
             pausedPlane.removeAll()
+    }
+    private func refreshUndoRedoAvailability() {
+        // Option A: if you’re using UndoManager:
+        // canUndo = undoManager?.canUndo ?? false
+        // canRedo = undoManager?.canRedo ?? false
+
+        // Option B: if you have stacks:
+         canUndo = !undoStack.isEmpty
+         canRedo = !redoStack.isEmpty
     }
 
 }
