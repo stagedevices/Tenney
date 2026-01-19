@@ -79,16 +79,18 @@ struct ScaleLibrarySheet: View {
                 VStack(spacing: 0) {
                     
                     // card below the search bar
-                    if libraryPage == 2 {
-                        CommunityControlsCard(sortKey: $communitySortKey)
-                    } else {
-                        LibraryControlsCard(
-                            sortKey: $library.sortKey,
-                            showOnlyFavorites: $showOnlyFavorites,
-                            showTagFilterSheet: $showTagFilterSheet,
-                            selectedTagRefs: selectedTagRefs,
-                            onRemoveTag: { selectedTagIDs.remove($0) }
-                        )
+                    Group {
+                        if libraryPage == 2 {
+                            CommunityControlsCard(sortKey: $communitySortKey)
+                        } else {
+                            LibraryControlsCard(
+                                sortKey: $library.sortKey,
+                                showOnlyFavorites: $showOnlyFavorites,
+                                showTagFilterSheet: $showTagFilterSheet,
+                                selectedTagRefs: selectedTagRefs,
+                                onRemoveTag: { selectedTagIDs.remove($0) }
+                            )
+                        }
                     }
                     .padding(.horizontal, 12)
                     .padding(.top, 8)

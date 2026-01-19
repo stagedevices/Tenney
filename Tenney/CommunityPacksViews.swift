@@ -470,7 +470,7 @@ private struct CommunityPackDetailView: View {
             library.updateScale(scale)
         }
 
-        let installedIDs = library.scales.values.compactMap { scale in
+        let installedIDs: [UUID] = library.scales.values.compactMap { scale in
             guard scale.provenance?.packID == pack.packID else { return nil }
             return scale.id
         }

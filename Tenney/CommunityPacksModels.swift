@@ -146,7 +146,7 @@ struct CommunityScaleBuilderEnvelope: Decodable {
     }
 }
 
-struct CommunityPackScaleViewModel: Identifiable, Hashable {
+struct CommunityPackScaleViewModel: Identifiable {
     let id: String
     let title: String
     let payload: ScaleBuilderPayload
@@ -154,7 +154,7 @@ struct CommunityPackScaleViewModel: Identifiable, Hashable {
     let size: Int
 }
 
-struct CommunityPackViewModel: Identifiable, Hashable {
+struct CommunityPackViewModel: Identifiable {
     let id: String
     let packID: String
     let title: String

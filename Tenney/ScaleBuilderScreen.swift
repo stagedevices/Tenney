@@ -28,6 +28,40 @@ struct ScaleBuilderScreen: View {
     private var effectiveIsDark: Bool {
         (themeStyleRaw == "dark") || (themeStyleRaw == "system" && systemScheme == .dark)
     }
+    
+    private struct GlassRedCircle: ViewModifier {
+        func body(content: Content) -> some View {
+            if #available(iOS 26.0, macOS 15.0, *) {
+                content
+                    .background(
+                        Color.clear
+                            .glassEffect(.regular.tint(.red), in: Circle())
+                    )
+            } else {
+                content
+                    .background(.ultraThinMaterial, in: Circle())
+                    .overlay(Circle().fill(Color.red.opacity(0.22)))
+                    .overlay(Circle().stroke(Color.white.opacity(0.16), lineWidth: 1))
+            }
+        }
+    }
+    private func finishBuilder() {
+        // 1) De-load the current scale if loaded
+        if store.payload.existing != nil {
+            store.payload.existing = nil
+        }
+        app.builderPayload = nil
+
+        // 2) Deselect nodes + 3) reset delta flag (handled by Lattice via NotificationCenter)
+        NotificationCenter.default.post(
+            name: .tenneyBuilderDidFinish,
+            object: nil,
+            userInfo: ["clearSelection": true, "resetDelta": true]
+        )
+
+        // 4) Dismiss
+        dismiss()
+    }
 
     private var oscEffectiveValues: LissajousPreviewConfigBuilder.EffectiveValues {
         LissajousPreviewConfigBuilder.effectiveValues(
@@ -409,13 +443,13 @@ struct ScaleBuilderScreen: View {
 
     private var doneButton: some View {
         Button {
-            dismiss()
+            finishBuilder()
         } label: {
             Image(systemName: "xmark")
                 .font(.system(size: 18, weight: .bold))
                 .foregroundStyle(.white)
                 .frame(width: 44, height: 44)
-                .modifier(GlassBlueCircle())
+                .modifier(GlassRedCircle())
         }
         .buttonStyle(.plain)
         .contentShape(Circle())

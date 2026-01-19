@@ -2569,6 +2569,8 @@ struct LatticeView: View {
                 }
             }
         }
+        
+
 
         
         private var clearButton: some View {
@@ -3646,6 +3648,20 @@ struct LatticeView: View {
                 .onChange(of: latticePreviewMode) { isPreview in
                     if isPreview { bottomHUDHeight = 0 }
                 }
+                .onReceive(NotificationCenter.default.publisher(for: .tenneyBuilderDidFinish)) { note in
+                    let u = note.userInfo
+
+                    if (u?["clearSelection"] as? Bool) == true {
+                        withAnimation(.snappy) { store.clearSelection() }
+                    }
+
+                    if (u?["resetDelta"] as? Bool) == true {
+                        // Canonical “baseline reset” you already have (used when starting builder/staging).
+                        // This is the safest no-regression primitive if it exists.
+                        store.beginStaging()
+                    }
+                }
+
                 .onChange(of: store.selected) { newValue in
                     if let fp = focusedPoint, let c = fp.coord, !newValue.contains(c) {
                         releaseInfoVoice()

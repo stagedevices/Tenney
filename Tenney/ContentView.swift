@@ -671,6 +671,7 @@ private struct LiquidGlassCard: ViewModifier {
 
 
 extension Notification.Name {
+    static let tenneyBuilderDidFinish = Notification.Name("tenney.builder.didFinish")
         static let tenneyStepPadOctave = Notification.Name("tenney.stepPadOctave")
     static let tenneyOpenLibraryInBuilder = Notification.Name("tenney.open.library.in.builder")
 }
