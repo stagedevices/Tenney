@@ -9,7 +9,7 @@ struct TenneyScale: Identifiable, Codable, Hashable, Sendable {
     var degrees: [RatioRef]
 
     // Library metadata
-    var tags: [String]
+    var tagIDs: [TagID]
     var favorite: Bool
     var lastPlayed: Date?
 
@@ -38,7 +38,7 @@ struct TenneyScale: Identifiable, Codable, Hashable, Sendable {
         name: String,
         descriptionText: String = "",
         degrees: [RatioRef],
-        tags: [String] = [],
+        tagIDs: [TagID] = [],
         favorite: Bool = false,
         lastPlayed: Date? = nil,
         referenceHz: Double = 440.0,
@@ -52,7 +52,7 @@ struct TenneyScale: Identifiable, Codable, Hashable, Sendable {
         self.name = name
         self.descriptionText = descriptionText
         self.degrees = degrees
-        self.tags = tags
+        self.tagIDs = tagIDs
         self.favorite = favorite
         self.lastPlayed = lastPlayed
         self.referenceHz = referenceHz
@@ -108,10 +108,10 @@ struct TenneyScale: Identifiable, Codable, Hashable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         // current
-        case id, name, descriptionText, degrees, tags, favorite, lastPlayed, referenceHz, rootLabel, periodRatio, detectedLimit, maxTenneyHeight, author
+        case id, name, descriptionText, degrees, tagIDs, favorite, lastPlayed, referenceHz, rootLabel, periodRatio, detectedLimit, maxTenneyHeight, author
 
         // legacy
-        case rootHz, tones, notes, rootLabelLegacy
+        case rootHz, tones, notes, rootLabelLegacy, tags
     }
 
     init(from decoder: Decoder) throws {
@@ -136,7 +136,12 @@ struct TenneyScale: Identifiable, Codable, Hashable, Sendable {
             degrees = []
         }
 
-        tags = try c.decodeIfPresent([String].self, forKey: .tags) ?? []
+        if let ids = try c.decodeIfPresent([TagID].self, forKey: .tagIDs) {
+            tagIDs = ids
+        } else {
+            let legacy = try c.decodeIfPresent([String].self, forKey: .tags) ?? []
+            tagIDs = TagStore.shared.migrateLegacyTags(legacy)
+        }
         favorite = try c.decodeIfPresent(Bool.self, forKey: .favorite) ?? false
         lastPlayed = try c.decodeIfPresent(Date.self, forKey: .lastPlayed)
 
@@ -162,7 +167,7 @@ struct TenneyScale: Identifiable, Codable, Hashable, Sendable {
           try c.encode(name, forKey: .name)
           try c.encode(descriptionText, forKey: .descriptionText)
           try c.encode(degrees, forKey: .degrees)
-          try c.encode(tags, forKey: .tags)
+          try c.encode(tagIDs, forKey: .tagIDs)
           try c.encode(favorite, forKey: .favorite)
           try c.encodeIfPresent(lastPlayed, forKey: .lastPlayed)
           try c.encode(referenceHz, forKey: .referenceHz)
@@ -223,7 +228,7 @@ extension TenneyScale {
             name: name,
             descriptionText: (notes ?? ""),
             degrees: refs,
-            tags: [],
+            tagIDs: [],
             favorite: false,
             lastPlayed: nil,
             referenceHz: rootHz,

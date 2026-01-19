@@ -19,19 +19,29 @@ struct ScaleLibrarySheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var model: AppModel
     @ObservedObject private var library = ScaleLibraryStore.shared
+    @ObservedObject private var tagStore = TagStore.shared
     @State private var showOnlyFavorites = false
     @Environment(\.colorScheme) private var scheme
     @State private var actionTarget: TenneyScale? = nil   // ← selected row for the action sheet
+    @State private var showTagFilterSheet = false
+    @State private var selectedTagIDs: Set<TagID> = []
 
     // simple sort/local filter
     private var filteredScales: [TenneyScale] {
         var items = Array(library.scales.values)
+        if !selectedTagIDs.isEmpty {
+            items = items.filter { scale in
+                let scaleTagIDs = Set(scale.tagIDs)
+                return selectedTagIDs.allSatisfy { scaleTagIDs.contains($0) }
+            }
+        }
         if showOnlyFavorites { items = items.filter { $0.favorite } }
         let q = library.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !q.isEmpty {
             items = items.filter {
                 $0.name.localizedCaseInsensitiveContains(q) ||
-                (!$0.descriptionText.isEmpty && $0.descriptionText.localizedCaseInsensitiveContains(q))
+                (!$0.descriptionText.isEmpty && $0.descriptionText.localizedCaseInsensitiveContains(q)) ||
+                scaleTagsMatchQuery(scale: $0, query: q)
             }
         }
         switch library.sortKey {
@@ -45,6 +55,10 @@ struct ScaleLibrarySheet: View {
             items.sort { $0.detectedLimit < $1.detectedLimit }
         }
         return items
+    }
+
+    private var selectedTagRefs: [TagRef] {
+        tagStore.tags(for: Array(selectedTagIDs)).sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
     private let limits = [3,5,7,11,13,17,19]
@@ -64,22 +78,54 @@ struct ScaleLibrarySheet: View {
                 } else {
                     // Quick controls
                     Section {
-                        HStack(spacing: 10) {
-                            Picker("", selection: $library.sortKey) {
-                                Text("Recent").tag(ScaleLibraryStore.SortKey.recent)
-                                Text("A–Z").tag(ScaleLibraryStore.SortKey.alpha)
-                                Text("Size").tag(ScaleLibraryStore.SortKey.size)
-                                Text("Limit").tag(ScaleLibraryStore.SortKey.limit)
-                            }
-                            .pickerStyle(.segmented)
-                            .frame(maxWidth: 280)
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack(spacing: 10) {
+                                Picker("", selection: $library.sortKey) {
+                                    Text("Recent").tag(ScaleLibraryStore.SortKey.recent)
+                                    Text("A–Z").tag(ScaleLibraryStore.SortKey.alpha)
+                                    Text("Size").tag(ScaleLibraryStore.SortKey.size)
+                                    Text("Limit").tag(ScaleLibraryStore.SortKey.limit)
+                                }
+                                .pickerStyle(.segmented)
+                                .frame(maxWidth: 280)
 
-                            Toggle(isOn: $showOnlyFavorites) {
-                                Image(systemName: showOnlyFavorites ? "star.fill" : "star")
+                                Toggle(isOn: $showOnlyFavorites) {
+                                    Image(systemName: showOnlyFavorites ? "star.fill" : "star")
+                                }
+                                .toggleStyle(.button)
+                                .tint(.yellow)
+                                .accessibilityLabel("Show only favorites")
                             }
-                            .toggleStyle(.button)
-                            .tint(.yellow)
-                            .accessibilityLabel("Show only favorites")
+
+                            HStack(spacing: 10) {
+                                Button {
+                                    showTagFilterSheet = true
+                                } label: {
+                                    Label("Filter", systemImage: "line.3.horizontal.decrease.circle")
+                                        .font(.caption.weight(.semibold))
+                                }
+                                .buttonStyle(.bordered)
+
+                                if selectedTagRefs.isEmpty {
+                                    Text("All tags")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                } else {
+                                    ScrollView(.horizontal, showsIndicators: false) {
+                                        HStack(spacing: 6) {
+                                            ForEach(selectedTagRefs) { tag in
+                                                Button {
+                                                    selectedTagIDs.remove(tag.id)
+                                                } label: {
+                                                    TagChip(tag: tag, size: .small)
+                                                }
+                                                .buttonStyle(.plain)
+                                            }
+                                        }
+                                        .padding(.vertical, 2)
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -114,7 +160,7 @@ struct ScaleLibrarySheet: View {
                                                     Button {
                                                         actionTarget = s
                                                     } label: {
-                                                        ScaleRow(scale: s, disclosure: true) // show chevron on the right
+                                                        ScaleRow(scale: s, tagRefs: tagStore.tags(for: s.tagIDs), disclosure: true) // show chevron on the right
                                                     }
                                                     .buttonStyle(.plain)
                                                     // Trailing swipe: Open / Add / Play (plus Delete)
@@ -163,6 +209,18 @@ struct ScaleLibrarySheet: View {
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
             }
+            .sheet(isPresented: $showTagFilterSheet) {
+                NavigationStack {
+                    TagFilterSheet(selectedTagIDs: $selectedTagIDs)
+                        .navigationTitle("Filter Tags")
+                        .toolbar {
+                            ToolbarItem(placement: .confirmationAction) {
+                                Button("Done") { showTagFilterSheet = false }
+                            }
+                        }
+                }
+                .presentationDetents([.medium, .large])
+            }
         }
     }
 }
@@ -170,6 +228,7 @@ struct ScaleLibrarySheet: View {
 // MARK: - Row
 private struct ScaleRow: View {
     let scale: TenneyScale
+    let tagRefs: [TagRef]
     var disclosure: Bool = false
     var body: some View {
         HStack(spacing: 12) {
@@ -186,10 +245,13 @@ private struct ScaleRow: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 // Bolded name aligns with “Open in Builder” as the primary action
-                        Text(scale.name).font(.headline.weight(.semibold))
+                Text(scale.name).font(.headline.weight(.semibold))
                 HStack(spacing: 8) {
                     Text("\(scale.detectedLimit)-limit").font(.caption).foregroundStyle(.secondary)
                     Text("Root \(Int(scale.referenceHz)) Hz").font(.caption).foregroundStyle(.secondary)
+                }
+                if !tagRefs.isEmpty {
+                    TagChipRow(tags: tagRefs, maxCount: 3)
                 }
             }
             Spacer()
@@ -197,9 +259,9 @@ private struct ScaleRow: View {
                 Image(systemName: "star.fill").foregroundStyle(.yellow)
             }
             if disclosure {
-                            Image(systemName: "chevron.right")
-                                .foregroundStyle(.tertiary)
-                        }
+                Image(systemName: "chevron.right")
+                    .foregroundStyle(.tertiary)
+            }
         }
         .contentShape(Rectangle())
     }
@@ -271,6 +333,12 @@ private extension ScaleLibrarySheet {
         guard f.isFinite && f > 0 else { return f }
         var x = f; while x < minHz { x *= 2 }; while x > maxHz { x *= 0.5 }; return x
     }
+
+    func scaleTagsMatchQuery(scale: TenneyScale, query: String) -> Bool {
+        tagStore.tags(for: scale.tagIDs).contains { tag in
+            tag.name.localizedCaseInsensitiveContains(query)
+        }
+    }
 }
 // MARK: - Per-scale Action Sheet (Open • Add • Play)
 private struct ScaleActionsSheet: View {
@@ -279,6 +347,7 @@ private struct ScaleActionsSheet: View {
     let onAdd:  () -> Void
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var library = ScaleLibraryStore.shared
+    @ObservedObject private var tagStore = TagStore.shared
     @AppStorage(SettingsKeys.staffA4Hz) private var staffA4Hz: Double = 440
     @AppStorage(SettingsKeys.builderExportFormats) private var exportFormatsRaw: Int = ExportFormat.default.rawValue
     @AppStorage(SettingsKeys.builderExportRootMode) private var exportA4ModeRaw: String = ExportA4Mode.appDefault.rawValue
@@ -298,9 +367,6 @@ private struct ScaleActionsSheet: View {
     @State private var showTagsSheet = false
     @State private var showDeleteConfirm = false
     @State private var renameText = ""
-    @State private var tagsDraft: [String] = []
-    @State private var newTagText = ""
-    @State private var folderDraft = ""
     @State private var copyMessage: String? = nil
 
     private var currentScale: TenneyScale {
@@ -342,13 +408,9 @@ private struct ScaleActionsSheet: View {
         }.map(\.element)
     }
 
-    private var folderName: String? {
-        currentScale.tags.first { isFolderTag($0) }
-            .map { String($0.dropFirst(folderPrefix.count)).trimmingCharacters(in: .whitespacesAndNewlines) }
-    }
-
-    private var visibleTags: [String] {
-        currentScale.tags.filter { !isFolderTag($0) }
+    private var tagRefs: [TagRef] {
+        tagStore.tags(for: currentScale.tagIDs)
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
     private var headerSummary: String {
@@ -415,8 +477,7 @@ private struct ScaleActionsSheet: View {
                         title: currentScale.name,
                         headerSummary: headerSummary,
                         referenceSummary: referenceSummary,
-                        folderName: folderName,
-                        tags: visibleTags,
+                        tags: tagRefs,
                         onOpen: {
                             onOpen()
                             dismiss()
@@ -434,9 +495,6 @@ private struct ScaleActionsSheet: View {
                             showRenameSheet = true
                         },
                         onTags: {
-                            tagsDraft = visibleTags
-                            folderDraft = folderName ?? ""
-                            newTagText = ""
                             showTagsSheet = true
                         },
                         onDelete: { showDeleteConfirm = true }
@@ -524,63 +582,15 @@ private struct ScaleActionsSheet: View {
         }
         .sheet(isPresented: $showTagsSheet) {
             NavigationStack {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("Folder")
-                        .font(.footnote.weight(.semibold))
-                        .textCase(.uppercase)
-                        .foregroundStyle(.secondary)
-                    TextField("Folder name", text: $folderDraft)
-                        .textFieldStyle(.roundedBorder)
-
-                    Text("Tags")
-                        .font(.footnote.weight(.semibold))
-                        .textCase(.uppercase)
-                        .foregroundStyle(.secondary)
-
-                    if tagsDraft.isEmpty {
-                        Text("No tags yet")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 88), spacing: 8)], spacing: 8) {
-                            ForEach(tagsDraft, id: \.self) { tag in
-                                RemovableChip(text: tag) {
-                                    tagsDraft.removeAll { $0 == tag }
-                                }
+                TagEditorView(scale: currentScale)
+                    .navigationTitle("Tags")
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            GlassDismissButton(title: "Save") {
+                                showTagsSheet = false
                             }
                         }
                     }
-
-                    HStack(spacing: 8) {
-                        TextField("Add tag", text: $newTagText)
-                            .textFieldStyle(.roundedBorder)
-                        Button("Add") {
-                            let trimmed = newTagText.trimmingCharacters(in: .whitespacesAndNewlines)
-                            guard !trimmed.isEmpty else { return }
-                            if !tagsDraft.contains(trimmed) {
-                                tagsDraft.append(trimmed)
-                            }
-                            newTagText = ""
-                        }
-                        .buttonStyle(.bordered)
-                        .disabled(newTagText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    }
-
-                    Spacer()
-                }
-                .padding(16)
-                .navigationTitle("Tags & Folder")
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancel") { showTagsSheet = false }
-                    }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Save") {
-                            applyTags()
-                            showTagsSheet = false
-                        }
-                    }
-                }
             }
             .presentationDetents([.medium, .large])
         }
@@ -698,19 +708,6 @@ private struct ScaleActionsSheet: View {
         guard !trimmed.isEmpty else { return }
         var updated = currentScale
         updated.name = trimmed
-        updated.lastPlayed = Date()
-        library.updateScale(updated)
-    }
-
-    private func applyTags() {
-        var updated = currentScale
-        var tags = tagsDraft
-        tags.removeAll { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-        let folder = folderDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !folder.isEmpty {
-            tags.append("\(folderPrefix)\(folder)")
-        }
-        updated.tags = Array(Set(tags)).sorted()
         updated.lastPlayed = Date()
         library.updateScale(updated)
     }
@@ -866,12 +863,6 @@ private struct ScaleActionsSheet: View {
         return n.isEmpty ? "Untitled Scale" : n
     }
 
-    private var folderPrefix: String { "folder:" }
-
-    private func isFolderTag(_ tag: String) -> Bool {
-        tag.lowercased().hasPrefix(folderPrefix)
-    }
-
 }
 
 private enum ScalePlaybackMode: String, CaseIterable, Identifiable {
@@ -963,12 +954,332 @@ private final class ScaleSheetPlayback {
     }
 }
 
+private struct TagEditorView: View {
+    @ObservedObject private var library = ScaleLibraryStore.shared
+    @ObservedObject private var tagStore = TagStore.shared
+    let scale: TenneyScale
+
+    @State private var selectedTagID: TagID?
+    @State private var tagSearchText = ""
+    @State private var renameText = ""
+
+    private var currentScale: TenneyScale {
+        library.scales[scale.id] ?? scale
+    }
+
+    private var attachedTags: [TagRef] {
+        tagStore.tags(for: currentScale.tagIDs)
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    private var suggestedTags: [TagRef] {
+        var counts: [TagID: Int] = [:]
+        for scale in library.scales.values {
+            for id in scale.tagIDs {
+                counts[id, default: 0] += 1
+            }
+        }
+        let exclude = Set(currentScale.tagIDs)
+        let sorted = counts
+            .filter { !exclude.contains($0.key) }
+            .sorted {
+                if $0.value == $1.value {
+                    return tagStore.tag(for: $0.key)?.name ?? "" < tagStore.tag(for: $1.key)?.name ?? ""
+                }
+                return $0.value > $1.value
+            }
+            .compactMap { tagStore.tag(for: $0.key) }
+        return Array(sorted.prefix(12))
+    }
+
+    private var filteredTags: [TagRef] {
+        let query = tagSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if query.isEmpty {
+            return tagStore.allTags
+        }
+        return tagStore.allTags.filter { $0.name.localizedCaseInsensitiveContains(query) }
+    }
+
+    private var selectedTag: TagRef? {
+        selectedTagID.flatMap { tagStore.tag(for: $0) }
+    }
+
+    private var canCreateTag: Bool {
+        let trimmed = tagSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        return tagStore.lookupByName(trimmed) == nil
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Attached")
+                        .font(.footnote.weight(.semibold))
+                        .textCase(.uppercase)
+                        .foregroundStyle(.secondary)
+
+                    if attachedTags.isEmpty {
+                        Text("No tags yet")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 88), spacing: 8)], spacing: 8) {
+                            ForEach(attachedTags) { tag in
+                                TagChip(
+                                    tag: tag,
+                                    size: .regular,
+                                    isSelected: selectedTagID == tag.id,
+                                    showsRemove: selectedTagID == tag.id
+                                ) {
+                                    removeTag(tag)
+                                }
+                                .onTapGesture {
+                                    selectedTagID = tag.id
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if let selectedTag {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Icon")
+                            .font(.footnote.weight(.semibold))
+                            .textCase(.uppercase)
+                            .foregroundStyle(.secondary)
+
+                        TagIconPicker(selection: Binding(
+                            get: { selectedTag.sfSymbolName },
+                            set: { tagStore.setTagIcon(id: selectedTag.id, sfSymbolName: $0) }
+                        ))
+
+                        Text("Color")
+                            .font(.footnote.weight(.semibold))
+                            .textCase(.uppercase)
+                            .foregroundStyle(.secondary)
+
+                        TagColorPalette(selection: selectedTag.color) { color in
+                            tagStore.setTagColor(id: selectedTag.id, color: color)
+                        }
+
+                        Text("Rename tag")
+                            .font(.footnote.weight(.semibold))
+                            .textCase(.uppercase)
+                            .foregroundStyle(.secondary)
+
+                        HStack(spacing: 8) {
+                            TextField("Tag name", text: $renameText)
+                                .textFieldStyle(.roundedBorder)
+                                .onSubmit {
+                                    commitRename(for: selectedTag)
+                                }
+                            Button("Rename") {
+                                commitRename(for: selectedTag)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(renameText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        }
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Suggested")
+                        .font(.footnote.weight(.semibold))
+                        .textCase(.uppercase)
+                        .foregroundStyle(.secondary)
+
+                    if suggestedTags.isEmpty {
+                        Text("No suggestions yet")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 88), spacing: 8)], spacing: 8) {
+                            ForEach(suggestedTags) { tag in
+                                Button {
+                                    toggle(tag)
+                                } label: {
+                                    TagChip(tag: tag, size: .regular)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("All tags")
+                        .font(.footnote.weight(.semibold))
+                        .textCase(.uppercase)
+                        .foregroundStyle(.secondary)
+
+                    TextField("Search tags", text: $tagSearchText)
+                        .textFieldStyle(.roundedBorder)
+
+                    if canCreateTag {
+                        Button {
+                            createTag()
+                        } label: {
+                            Label("Create \"\(TagNameNormalizer.normalize(tagSearchText))\"", systemImage: "plus.circle.fill")
+                                .font(.caption.weight(.semibold))
+                        }
+                        .buttonStyle(.bordered)
+                    }
+
+                    LazyVStack(alignment: .leading, spacing: 6) {
+                        ForEach(filteredTags) { tag in
+                            Button {
+                                toggle(tag)
+                            } label: {
+                                HStack {
+                                    TagChip(tag: tag, size: .small, isSelected: currentScale.tagIDs.contains(tag.id))
+                                    Spacer()
+                                    if currentScale.tagIDs.contains(tag.id) {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundStyle(.accentColor)
+                                    }
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+            .padding(16)
+        }
+        .onChange(of: selectedTagID) { _ in
+            if let selectedTag {
+                renameText = selectedTag.name
+            } else {
+                renameText = ""
+            }
+        }
+        .onAppear {
+            if let first = attachedTags.first {
+                selectedTagID = first.id
+                renameText = first.name
+            }
+        }
+    }
+
+    private func toggle(_ tag: TagRef) {
+        var ids = Set(currentScale.tagIDs)
+        if ids.contains(tag.id) {
+            ids.remove(tag.id)
+            if selectedTagID == tag.id {
+                selectedTagID = nil
+            }
+        } else {
+            ids.insert(tag.id)
+            selectedTagID = tag.id
+        }
+        updateScaleTags(ids)
+    }
+
+    private func removeTag(_ tag: TagRef) {
+        var ids = Set(currentScale.tagIDs)
+        ids.remove(tag.id)
+        if selectedTagID == tag.id {
+            selectedTagID = nil
+        }
+        updateScaleTags(ids)
+    }
+
+    private func createTag() {
+        let newTag = tagStore.createTag(name: tagSearchText)
+        var ids = Set(currentScale.tagIDs)
+        ids.insert(newTag.id)
+        selectedTagID = newTag.id
+        updateScaleTags(ids)
+        tagSearchText = ""
+    }
+
+    private func commitRename(for tag: TagRef) {
+        tagStore.renameTag(id: tag.id, newName: renameText)
+        if let updated = tagStore.tag(for: tag.id) {
+            renameText = updated.name
+        } else if let merged = tagStore.lookupByName(renameText) {
+            selectedTagID = merged.id
+            renameText = merged.name
+        }
+    }
+
+    private func updateScaleTags(_ ids: Set<TagID>) {
+        var updated = currentScale
+        updated.tagIDs = tagStore.sortedTagIDs(ids)
+        updated.lastPlayed = Date()
+        library.updateScale(updated)
+    }
+}
+
+private struct TagFilterSheet: View {
+    @ObservedObject private var tagStore = TagStore.shared
+    @Binding var selectedTagIDs: Set<TagID>
+    @State private var searchText = ""
+
+    private var filteredTags: [TagRef] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if query.isEmpty {
+            return tagStore.allTags
+        }
+        return tagStore.allTags.filter { $0.name.localizedCaseInsensitiveContains(query) }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            TextField("Search tags", text: $searchText)
+                .textFieldStyle(.roundedBorder)
+
+            if filteredTags.isEmpty {
+                Text("No tags found")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 8) {
+                        ForEach(filteredTags) { tag in
+                            Button {
+                                toggle(tag)
+                            } label: {
+                                HStack {
+                                    TagChip(tag: tag, size: .regular, isSelected: selectedTagIDs.contains(tag.id))
+                                    Spacer()
+                                    if selectedTagIDs.contains(tag.id) {
+                                        Image(systemName: "checkmark")
+                                            .foregroundStyle(.accentColor)
+                                    }
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+
+            if !selectedTagIDs.isEmpty {
+                Button("Clear filters") {
+                    selectedTagIDs.removeAll()
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .padding(16)
+    }
+
+    private func toggle(_ tag: TagRef) {
+        if selectedTagIDs.contains(tag.id) {
+            selectedTagIDs.remove(tag.id)
+        } else {
+            selectedTagIDs.insert(tag.id)
+        }
+    }
+}
+
 private struct OverviewPage: View {
     let title: String
     let headerSummary: String
     let referenceSummary: String
-    let folderName: String?
-    let tags: [String]
+    let tags: [TagRef]
     let onOpen: () -> Void
     let onAdd: () -> Void
     let onExport: () -> Void
@@ -996,17 +1307,14 @@ private struct OverviewPage: View {
                         .foregroundStyle(.tertiary)
                         .monospacedDigit()
 
-                    if !tags.isEmpty || (folderName?.isEmpty == false) {
+                    if !tags.isEmpty {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 88), spacing: 8)], spacing: 8) {
-                            if let folderName, !folderName.isEmpty {
-                                tagChip(text: folderName, systemImage: "folder.fill")
-                            }
-                            ForEach(tags, id: \.self) { tag in
-                                tagChip(text: tag, systemImage: "tag.fill")
+                            ForEach(tags) { tag in
+                                TagChip(tag: tag, size: .regular)
                             }
                         }
                     } else {
-                        Text("No tags or folders yet")
+                        Text("No tags yet")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
@@ -1111,17 +1419,6 @@ private struct OverviewPage: View {
         }
     }
 
-    private func tagChip(text: String, systemImage: String) -> some View {
-        Label(text, systemImage: systemImage)
-            .font(.caption)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(.thinMaterial, in: Capsule())
-            .overlay(
-                Capsule()
-                    .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
-            )
-    }
 }
 
 private struct HearPage: View {
