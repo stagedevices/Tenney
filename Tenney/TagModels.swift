@@ -9,6 +9,7 @@ struct TagRef: Identifiable, Codable, Hashable, Sendable {
     var name: String
     var sfSymbolName: String?
     var color: TagColor
+    var customHex: String?
 }
 
 enum TagColor: String, Codable, CaseIterable, Identifiable {
@@ -44,7 +45,35 @@ enum TagColor: String, Codable, CaseIterable, Identifiable {
         rawValue.uppercased()
     }
 
+    var hexValue: String {
+        switch self {
+        case .slate: return "#6B7280"
+        case .blue: return "#3B82F6"
+        case .indigo: return "#6366F1"
+        case .purple: return "#A855F7"
+        case .pink: return "#EC4899"
+        case .red: return "#EF4444"
+        case .orange: return "#F97316"
+        case .yellow: return "#EAB308"
+        case .green: return "#22C55E"
+        case .teal: return "#14B8A6"
+        }
+    }
+
     static var `default`: TagColor { .slate }
+}
+
+extension TagRef {
+    var resolvedColor: Color {
+        if let customHex {
+            return Color(hex: customHex)
+        }
+        return color.color
+    }
+
+    var resolvedHex: String {
+        customHex ?? color.hexValue
+    }
 }
 
 enum TagNameNormalizer {
