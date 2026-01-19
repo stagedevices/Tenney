@@ -204,40 +204,81 @@ final class LatticeStore: ObservableObject {
     private var undoStack: [Action] = []
     private var redoStack: [Action] = []
 
+    private func refreshUndoRedoAvailability() {
+        canUndo = !undoStack.isEmpty
+        canRedo = !redoStack.isEmpty
+    }
+
+    // Called for new user actions (must clear redo)
+    private func pushUndoUserAction(_ a: Action) {
+        undoStack.append(a)
+        redoStack.removeAll()
+        refreshUndoRedoAvailability()
+    }
+
+    // Called when undo() produces a redo action (does NOT clear redo)
+    private func pushRedoFromUndo(_ a: Action) {
+        redoStack.append(a)
+        refreshUndoRedoAvailability()
+    }
+
+    // Called when redo() produces an undo action (does NOT clear redo)
+    private func pushUndoFromRedo(_ a: Action) {
+        undoStack.append(a)
+        refreshUndoRedoAvailability()
+    }
+
+    private func popUndo() -> Action? {
+        let a = undoStack.popLast()
+        refreshUndoRedoAvailability()
+        return a
+    }
+
+    private func popRedo() -> Action? {
+        let a = redoStack.popLast()
+        refreshUndoRedoAvailability()
+        return a
+    }
+
+    private func clearUndoRedoHistory() {
+        undoStack.removeAll()
+        redoStack.removeAll()
+        refreshUndoRedoAvailability()
+    }
+
     func undo() {
-        guard let a = undoStack.popLast() else { return }
+        guard let a = popUndo() else { return }
         switch a {
         case .shift(let p, let d):
             setAxisShift(p, axisShift[p, default: 0] - d)
-            redoStack.append(.shift(p: p, delta: d))
+            pushRedoFromUndo(.shift(p: p, delta: d))
         case .toggle(let c):
             toggleSelection(c, pushUndo: false)
-            redoStack.append(.toggle(c: c))
+            pushRedoFromUndo(.toggle(c: c))
         case .toggleGhost(let g):
             toggleOverlay(prime: g.p, e3: g.e3, e5: g.e5, eP: g.eP, pushUndo: false)
-            redoStack.append(.toggleGhost(g: g))
+            pushRedoFromUndo(.toggleGhost(g: g))
         }
     }
 
     func redo() {
-        guard let a = redoStack.popLast() else { return }
+        guard let a = popRedo() else { return }
         switch a {
         case .shift(let p, let d):
             setAxisShift(p, axisShift[p, default: 0] + d)
-            undoStack.append(.shift(p: p, delta: d))
+            pushUndoFromRedo(.shift(p: p, delta: d))
         case .toggle(let c):
             toggleSelection(c, pushUndo: false)
-            undoStack.append(.toggle(c: c))
+            pushUndoFromRedo(.toggle(c: c))
         case .toggleGhost(let g):
             toggleOverlay(prime: g.p, e3: g.e3, e5: g.e5, eP: g.eP, pushUndo: false)
-            undoStack.append(.toggleGhost(g: g))
+            pushUndoFromRedo(.toggleGhost(g: g))
         }
     }
 
     func shift(prime p: Int, delta: Int) {
         setAxisShift(p, axisShift[p, default: 0] + delta)
-        undoStack.append(.shift(p: p, delta: delta))
-        redoStack.removeAll()
+        pushUndoUserAction(.shift(p: p, delta: delta))
     }
     
     private func setAxisShift(_ p: Int, _ newValue: Int) {
@@ -722,7 +763,7 @@ final class LatticeStore: ObservableObject {
                 LearnEventBus.shared.send(.latticeNodeAuditioned(ratioStringPlane(c)))
             }
         }
-        if pushUndo { undoStack.append(.toggle(c: c)); redoStack.removeAll() }
+        if pushUndo { pushUndoUserAction(.toggle(c: c)) }
         syncAuditionVoicesToSelection(reason: .selectionChange)
 #if DEBUG
         debugLogSelectionState(reason: "toggle selection \(c)")
@@ -830,7 +871,7 @@ final class LatticeStore: ObservableObject {
                 LearnEventBus.shared.send(.latticeNodeAuditioned(ratioStringGhost(g)))
             }
         }
-        if pushUndo { undoStack.append(.toggleGhost(g: g)); redoStack.removeAll() }
+        if pushUndo { pushUndoUserAction(.toggleGhost(g: g)) }
         syncAuditionVoicesToSelection(reason: .selectionChange)
 #if DEBUG
         debugLogSelectionState(reason: "toggle ghost \(ratioStringGhost(g))")
@@ -898,6 +939,7 @@ final class LatticeStore: ObservableObject {
         lastTriggerAtGhost.removeAll()
         octaveOffsetByCoord.removeAll()
         octaveOffsetByGhost.removeAll()
+        clearUndoRedoHistory()
     }
 
     var selectedCount: Int { selectionOrder.count + selectionOrderGhosts.count }
@@ -1284,16 +1326,6 @@ final class LatticeStore: ObservableObject {
             voiceForGhost.removeAll()
             pausedPlane.removeAll()
     }
-    private func refreshUndoRedoAvailability() {
-        // Option A: if you’re using UndoManager:
-        // canUndo = undoManager?.canUndo ?? false
-        // canRedo = undoManager?.canRedo ?? false
-
-        // Option B: if you have stacks:
-         canUndo = !undoStack.isEmpty
-         canRedo = !redoStack.isEmpty
-    }
-
 }
 extension LatticeStore {
     /// Exactly two **plane** nodes selected, in order; ignores overlay selections.
