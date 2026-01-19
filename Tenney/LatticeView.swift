@@ -2432,13 +2432,23 @@ struct LatticeView: View {
     
     
     
-    // MARK: - Selection Tray (v0.2)
+    // MARK: - Selection Tray (v0.3)
     private struct SelectionTray: View {
         @ObservedObject var store: LatticeStore
         @ObservedObject var app: AppModel
 
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
         @Namespace private var addNS
+        
+        private var hasDelta: Bool { store.additionsSinceBaseline > 0 }
+
+        // “open sheet” = ScaleBuilder is currently presented (you already set this in ScaleBuilderScreen)
+        private var isAddingToOpenSheet: Bool { app.builderPresented }
+
+        // Only show the word when (a) not compact by selectionCount, and (b) no delta flag
+        private var addShowsWord: Bool { !addIsCompact && !hasDelta }
+
+        private var addWord: String { isAddingToOpenSheet ? "Add" : "New" }
 
         private var addIsCompact: Bool {
             store.selectedCount > 1
@@ -2686,14 +2696,14 @@ struct LatticeView: View {
 
             return HStack(spacing: 8) {
                 addIcon
-                Text("New")
+                Text(addWord)
                     .fontWeight(.regular)
                     .foregroundStyle(.black)
                     .lineLimit(1)
                     .allowsTightening(true)
                     .minimumScaleFactor(0.9)
                     .truncationMode(.tail)
-                    .fixedSize(horizontal: true, vertical: false)   // prevents ellipsis; ViewThatFits will pick compact instead
+                    .fixedSize(horizontal: true, vertical: false)
                     .layoutPriority(1)
             }
             .frame(height: ctl)
@@ -2749,16 +2759,16 @@ struct LatticeView: View {
                 app.builderPayload = payload
             } label: {
                 Group {
-                    if addIsCompact {
-                        addCompactPill
-                    } else {
+                    if addShowsWord {
                         ViewThatFits(in: .horizontal) {
                             addFullPill
                             addCompactPill
                         }
+                    } else {
+                        addCompactPill
                     }
                 }
-                .animation(.snappy(duration: 0.28), value: addIsCompact)
+                .animation(.snappy(duration: 0.28), value: addShowsWord)
             }
             .buttonStyle(.plain)
             .disabled(store.selectedCount == 0)
