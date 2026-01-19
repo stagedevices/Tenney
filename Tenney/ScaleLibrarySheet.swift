@@ -286,6 +286,7 @@ private struct ScaleActionsSheet: View {
     @AppStorage("Tenney.SoundOn") private var soundOn: Bool = true
     @AppStorage(SettingsKeys.safeAmp) private var safeAmp: Double = 0.18
     @State private var playback = ScaleSheetPlayback()
+    @State private var page: Int = 0
 
     @State private var playbackMode: ScalePlaybackMode = .arp
     @State private var focusedDegreeID: String? = nil
@@ -301,18 +302,6 @@ private struct ScaleActionsSheet: View {
     @State private var newTagText = ""
     @State private var folderDraft = ""
     @State private var copyMessage: String? = nil
-
-    private static let relativeFormatter: RelativeDateTimeFormatter = {
-        let f = RelativeDateTimeFormatter()
-        f.unitsStyle = .abbreviated
-        return f
-    }()
-    private static let absoluteFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateStyle = .medium
-        f.timeStyle = .short
-        return f
-    }()
 
     private var currentScale: TenneyScale {
         library.scales[scale.id] ?? scale
@@ -370,16 +359,7 @@ private struct ScaleActionsSheet: View {
 
     private var referenceSummary: String {
         let hzInt = Int(round(staffA4Hz))
-        return "Reference: A4 = \(hzInt) Hz"
-    }
-
-    private var lastEditedSummary: String {
-        guard let last = currentScale.lastPlayed else {
-            return "Last edited: Never"
-        }
-        let relative = Self.relativeFormatter.localizedString(for: last, relativeTo: Date())
-        let absolute = Self.absoluteFormatter.string(from: last)
-        return "Last edited \(relative) • \(absolute)"
+        return "A4 = \(hzInt) Hz"
     }
 
     private var exportSummaryText: String {
@@ -420,193 +400,64 @@ private struct ScaleActionsSheet: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                glassCard {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text(currentScale.name)
-                            .font(.title3.weight(.semibold))
-                        Text(headerSummary)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text(referenceSummary)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        HStack(spacing: 6) {
-                            Image(systemName: "clock")
-                                .foregroundStyle(.secondary)
-                            Text(lastEditedSummary)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
+        VStack(spacing: 12) {
+            Picker("", selection: $page) {
+                Text("Overview").tag(0)
+                Text("Hear").tag(1)
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 16)
+            .padding(.top, 10)
 
-                        if !visibleTags.isEmpty || (folderName?.isEmpty == false) {
-                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 88), spacing: 8)], spacing: 8) {
-                                if let folderName, !folderName.isEmpty {
-                                    chip(text: folderName, systemImage: "folder.fill")
-                                }
-                                ForEach(visibleTags, id: \.self) { tag in
-                                    chip(text: tag, systemImage: "tag.fill")
-                                }
-                            }
-                        } else {
-                            Text("No tags or folders yet")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-
-                Button {
-                    onOpen()
-                    dismiss()
-                } label: {
-                    Label("Open in Builder", systemImage: "square.stack.3d.up.fill")
-                        .font(.headline.weight(.semibold))
-                        .frame(maxWidth: .infinity, minHeight: 48)
-                }
-                .buttonStyle(.borderedProminent)
-
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Actions")
-                        .font(.footnote.weight(.semibold))
-                        .textCase(.uppercase)
-                        .foregroundStyle(.secondary)
-
-                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                        ActionTileButton(
-                            title: "Set as Current",
-                            systemImage: "arrow.turn.down.right",
-                            tint: .blue
-                        ) {
+            GeometryReader { proxy in
+                TabView(selection: $page) {
+                    OverviewPage(
+                        title: currentScale.name,
+                        headerSummary: headerSummary,
+                        referenceSummary: referenceSummary,
+                        folderName: folderName,
+                        tags: visibleTags,
+                        onOpen: {
+                            onOpen()
+                            dismiss()
+                        },
+                        onAdd: {
                             onAdd()
                             dismiss()
-                        }
-
-                        ActionTileButton(
-                            title: "Export…",
-                            systemImage: "square.and.arrow.up",
-                            tint: .accentColor
-                        ) {
-                            showExportSheet = true
-                        }
-
-                        Menu {
-                            Button {
-                                copyRatios()
-                            } label: {
-                                Label("Copy ratios", systemImage: "list.number")
-                            }
-                            Button {
-                                copyJSON()
-                            } label: {
-                                Label("Copy as JSON", systemImage: "curlybraces")
-                            }
-                            Button {
-                                copySCL()
-                            } label: {
-                                Label("Copy .scl text", systemImage: "doc.plaintext")
-                            }
-                        } label: {
-                            ActionTileLabel(
-                                title: "Copy…",
-                                systemImage: "doc.on.doc",
-                                tint: .secondary
-                            )
-                        }
-
-                        ActionTileButton(
-                            title: "Rename…",
-                            systemImage: "pencil",
-                            tint: .secondary
-                        ) {
+                        },
+                        onExport: { showExportSheet = true },
+                        onCopyRatios: { copyRatios() },
+                        onCopyJSON: { copyJSON() },
+                        onCopySCL: { copySCL() },
+                        onRename: {
                             renameText = currentScale.name
                             showRenameSheet = true
-                        }
-
-                        ActionTileButton(
-                            title: "Edit Tags…",
-                            systemImage: "tag",
-                            tint: .secondary
-                        ) {
+                        },
+                        onTags: {
                             tagsDraft = visibleTags
                             folderDraft = folderName ?? ""
                             newTagText = ""
                             showTagsSheet = true
-                        }
-                    }
+                        },
+                        onDelete: { showDeleteConfirm = true }
+                    )
+                    .tag(0)
 
-                    Button(role: .destructive) {
-                        showDeleteConfirm = true
-                    } label: {
-                        Label("Delete Scale", systemImage: "trash")
-                            .frame(maxWidth: .infinity, minHeight: 44)
-                    }
-                    .buttonStyle(.bordered)
+                    HearPage(
+                        playbackMode: $playbackMode,
+                        focusedDegreeID: focusedDegreeID,
+                        focusedDegreeLabel: focusedDegreeLabel(),
+                        degrees: degreesSorted,
+                        rootHz: currentScale.referenceHz,
+                        onSelectDegree: { selectDegree(id: $0) },
+                        onPlay: { playScale() }
+                    )
+                    .tag(1)
                 }
-
-                glassCard {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Label("Hear", systemImage: "speaker.wave.2.fill")
-                            .font(.headline)
-                        Picker("Playback Mode", selection: $playbackMode) {
-                            ForEach(ScalePlaybackMode.allCases) { mode in
-                                Text(mode.title).tag(mode)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-
-                        if let focused = focusedDegreeLabel() {
-                            Text("Drone focus: \(focused)")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        Button {
-                            playScale()
-                        } label: {
-                            Label("Play", systemImage: "play.fill")
-                                .frame(maxWidth: .infinity, minHeight: 44)
-                        }
-                        .buttonStyle(.borderedProminent)
-                    }
-                }
-
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Degrees")
-                        .font(.footnote.weight(.semibold))
-                        .textCase(.uppercase)
-                        .foregroundStyle(.secondary)
-
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 72), spacing: 8)], spacing: 8) {
-                        ForEach(degreesSorted, id: \.id) { ratio in
-                            Button {
-                                focusedDegreeID = ratio.id
-                            } label: {
-                                RatioChip(
-                                    ratio: ratio,
-                                    isSelected: focusedDegreeID == ratio.id
-                                )
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-
-                    VStack(spacing: 8) {
-                        ForEach(degreesSorted, id: \.id) { ratio in
-                            DegreeRow(
-                                ratio: ratio,
-                                rootHz: currentScale.referenceHz,
-                                isSelected: focusedDegreeID == ratio.id
-                            )
-                            .onTapGesture {
-                                focusedDegreeID = ratio.id
-                            }
-                        }
-                    }
-                }
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
             }
-            .padding(16)
+            .frame(maxHeight: .infinity)
         }
         .overlay(alignment: .bottom) {
             if let copyMessage {
@@ -776,6 +627,14 @@ private struct ScaleActionsSheet: View {
     private func ratioDisplay(_ ratio: RatioRef) -> (label: String, octave: Int) {
         let (p, q) = RatioMath.canonicalPQUnit(ratio.p, ratio.q)
         return ("\(p)/\(q)", ratio.octave)
+    }
+
+    private func selectDegree(id: String) {
+        guard focusedDegreeID != id else { return }
+        focusedDegreeID = id
+#if canImport(UIKit)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+#endif
     }
 
     private func copyRatios() {
@@ -1013,28 +872,6 @@ private struct ScaleActionsSheet: View {
         tag.lowercased().hasPrefix(folderPrefix)
     }
 
-    private func chip(text: String, systemImage: String) -> some View {
-        Label(text, systemImage: systemImage)
-            .font(.caption)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(.thinMaterial, in: Capsule())
-            .overlay(
-                Capsule()
-                    .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
-            )
-    }
-
-    @ViewBuilder
-    private func glassCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        content()
-            .padding(14)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(Color.secondary.opacity(0.15), lineWidth: 1)
-            )
-    }
 }
 
 private enum ScalePlaybackMode: String, CaseIterable, Identifiable {
@@ -1126,41 +963,312 @@ private final class ScaleSheetPlayback {
     }
 }
 
-private struct ActionTileButton: View {
+private struct OverviewPage: View {
     let title: String
-    let systemImage: String
-    let tint: Color
-    let action: () -> Void
+    let headerSummary: String
+    let referenceSummary: String
+    let folderName: String?
+    let tags: [String]
+    let onOpen: () -> Void
+    let onAdd: () -> Void
+    let onExport: () -> Void
+    let onCopyRatios: () -> Void
+    let onCopyJSON: () -> Void
+    let onCopySCL: () -> Void
+    let onRename: () -> Void
+    let onTags: () -> Void
+    let onDelete: () -> Void
 
     var body: some View {
-        Button(action: action) {
-            ActionTileLabel(title: title, systemImage: systemImage, tint: tint)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(title)
+                        .font(.largeTitle.weight(.semibold))
+                        .lineLimit(2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text(headerSummary)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                    Text(referenceSummary)
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .monospacedDigit()
+
+                    if !tags.isEmpty || (folderName?.isEmpty == false) {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 88), spacing: 8)], spacing: 8) {
+                            if let folderName, !folderName.isEmpty {
+                                tagChip(text: folderName, systemImage: "folder.fill")
+                            }
+                            ForEach(tags, id: \.self) { tag in
+                                tagChip(text: tag, systemImage: "tag.fill")
+                            }
+                        }
+                    } else {
+                        Text("No tags or folders yet")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Rectangle()
+                        .fill(Color.secondary.opacity(0.18))
+                        .frame(height: 1)
+                        .padding(.top, 6)
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Actions")
+                        .font(.footnote.weight(.semibold))
+                        .textCase(.uppercase)
+                        .foregroundStyle(.secondary)
+
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                        Button(action: onOpen) {
+                            ActionTile(
+                                title: "Open",
+                                systemImage: "square.stack.3d.up.fill",
+                                style: .standard(.accentColor)
+                            )
+                        }
+                        .buttonStyle(.plain)
+
+                        Button(action: onAdd) {
+                            ActionTile(
+                                title: "Set Current",
+                                systemImage: "arrow.turn.down.right",
+                                style: .standard(.blue)
+                            )
+                        }
+                        .buttonStyle(.plain)
+
+                        Button(action: onExport) {
+                            ActionTile(
+                                title: "Export…",
+                                systemImage: "square.and.arrow.up",
+                                style: .standard(.accentColor)
+                            )
+                        }
+                        .buttonStyle(.plain)
+
+                        Menu {
+                            Button {
+                                onCopyRatios()
+                            } label: {
+                                Label("Copy ratios", systemImage: "list.number")
+                            }
+                            Button {
+                                onCopyJSON()
+                            } label: {
+                                Label("Copy as JSON", systemImage: "curlybraces")
+                            }
+                            Button {
+                                onCopySCL()
+                            } label: {
+                                Label("Copy .scl text", systemImage: "doc.plaintext")
+                            }
+                        } label: {
+                            ActionTile(
+                                title: "Copy…",
+                                systemImage: "doc.on.doc",
+                                style: .standard(.secondary)
+                            )
+                        }
+
+                        Button(action: onRename) {
+                            ActionTile(
+                                title: "Rename…",
+                                systemImage: "pencil",
+                                style: .standard(.secondary)
+                            )
+                        }
+                        .buttonStyle(.plain)
+
+                        Button(action: onTags) {
+                            ActionTile(
+                                title: "Tags…",
+                                systemImage: "tag",
+                                style: .standard(.secondary)
+                            )
+                        }
+                        .buttonStyle(.plain)
+
+                        Button(action: onDelete) {
+                            ActionTile(
+                                title: "Delete",
+                                systemImage: "trash",
+                                style: .destructive
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .gridCellColumns(2)
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 10)
+            .padding(.bottom, 16)
         }
-        .buttonStyle(.plain)
+    }
+
+    private func tagChip(text: String, systemImage: String) -> some View {
+        Label(text, systemImage: systemImage)
+            .font(.caption)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(.thinMaterial, in: Capsule())
+            .overlay(
+                Capsule()
+                    .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+            )
     }
 }
 
-private struct ActionTileLabel: View {
-    let title: String
-    let systemImage: String
-    let tint: Color
+private struct HearPage: View {
+    @Binding var playbackMode: ScalePlaybackMode
+    let focusedDegreeID: String?
+    let focusedDegreeLabel: String?
+    let degrees: [RatioRef]
+    let rootHz: Double
+    let onSelectDegree: (String) -> Void
+    let onPlay: () -> Void
 
     var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Label("Hear", systemImage: "speaker.wave.2.fill")
+                        .font(.footnote.weight(.semibold))
+                        .textCase(.uppercase)
+                        .foregroundStyle(.secondary)
+
+                    Picker("Playback Mode", selection: $playbackMode) {
+                        ForEach(ScalePlaybackMode.allCases) { mode in
+                            Text(mode.title).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    if playbackMode == .drone, let focusedDegreeLabel {
+                        Text("Drone focus: \(focusedDegreeLabel)")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Button(action: onPlay) {
+                        Label("Play", systemImage: "play.fill")
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+                .padding(14)
+                .glassEffect(.regular, in: .rect(cornerRadius: 18))
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Degrees")
+                        .font(.footnote.weight(.semibold))
+                        .textCase(.uppercase)
+                        .foregroundStyle(.secondary)
+
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 72), spacing: 8)], spacing: 8) {
+                        ForEach(degrees, id: \.id) { ratio in
+                            Button {
+                                onSelectDegree(ratio.id)
+                            } label: {
+                                RatioChip(
+                                    ratio: ratio,
+                                    isSelected: focusedDegreeID == ratio.id
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+
+                    VStack(spacing: 8) {
+                        ForEach(degrees, id: \.id) { ratio in
+                            DegreeRow(
+                                ratio: ratio,
+                                rootHz: rootHz,
+                                isSelected: focusedDegreeID == ratio.id
+                            )
+                            .onTapGesture {
+                                onSelectDegree(ratio.id)
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 10)
+            .padding(.bottom, 16)
+        }
+    }
+}
+
+private struct ActionTile: View {
+    enum Style {
+        case standard(Color)
+        case destructive
+    }
+
+    let title: String
+    let systemImage: String
+    let subtitle: String?
+    let style: Style
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        let isDestructive: Bool
+        let tint: Color
+
+        switch style {
+        case .standard(let accent):
+            isDestructive = false
+            tint = accent
+        case .destructive:
+            isDestructive = true
+            tint = .white
+        }
+
         VStack(alignment: .leading, spacing: 8) {
             Image(systemName: systemImage)
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(tint)
             Text(title)
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.primary)
+                .foregroundStyle(isDestructive ? .white : .primary)
+            if let subtitle {
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(isDestructive ? .white.opacity(0.85) : .secondary)
+                    .lineLimit(2)
+            }
         }
         .frame(maxWidth: .infinity, minHeight: 70, alignment: .leading)
         .padding(12)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Color.secondary.opacity(0.15), lineWidth: 1)
+        .background(
+            Group {
+                if isDestructive {
+                    shape.fill(Color.red)
+                } else {
+                    Color.clear
+                }
+            }
         )
+        .glassEffect(.regular, in: shape)
+        .overlay(
+            shape.stroke(
+                isDestructive ? Color.white.opacity(0.35) : Color.secondary.opacity(0.15),
+                lineWidth: 1
+            )
+        )
+    }
+
+    init(title: String, systemImage: String, subtitle: String? = nil, style: Style) {
+        self.title = title
+        self.systemImage = systemImage
+        self.subtitle = subtitle
+        self.style = style
     }
 }
 
