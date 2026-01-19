@@ -1,6 +1,6 @@
 import Foundation
 import SwiftUI
-
+import Combine
 
 final class TagStore: ObservableObject {
     static let shared = TagStore()
@@ -128,8 +128,8 @@ final class TagStore: ObservableObject {
     }
 
     func sortedTagIDs(_ ids: Set<TagID>) -> [TagID] {
-        let tags = ids.compactMap { tags[$0] }
-        let sorted = tags.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        let resolved = ids.compactMap { tags[$0] }
+                let sorted = resolved.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         return sorted.map { $0.id }
     }
 

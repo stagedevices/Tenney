@@ -113,7 +113,7 @@ struct ScaleLibrarySheet: View {
                                 } else {
                                     ScrollView(.horizontal, showsIndicators: false) {
                                         HStack(spacing: 6) {
-                                            ForEach(selectedTagRefs) { tag in
+                                            ForEach(selectedTagRefs, id: \TagRef.id) { (tag: TagRef) in
                                                 Button {
                                                     selectedTagIDs.remove(tag.id)
                                                 } label: {
@@ -962,7 +962,7 @@ private struct TagEditorView: View {
     @State private var selectedTagID: TagID?
     @State private var tagSearchText = ""
     @State private var renameText = ""
-
+    private let chipColumns: [GridItem] = [GridItem(.adaptive(minimum: 88), spacing: 8)]
     private var currentScale: TenneyScale {
         library.scales[scale.id] ?? scale
     }
@@ -972,6 +972,138 @@ private struct TagEditorView: View {
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
+    
+    @ViewBuilder private var attachedSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Attached")
+                .font(.footnote.weight(.semibold))
+                .textCase(.uppercase)
+                .foregroundStyle(.secondary)
+
+            if attachedTags.isEmpty {
+                Text("No tags yet")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                LazyVGrid(columns: chipColumns, spacing: 8) {
+                    ForEach(attachedTags, id: \.id) { (tag: TagRef) in
+                        TagChip(
+                            tag: tag,
+                            size: .regular,
+                            isSelected: selectedTagID == tag.id,
+                            showsRemove: selectedTagID == tag.id
+                        ) {
+                            removeTag(tag)
+                        }
+                        .onTapGesture { selectedTagID = tag.id }
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private var selectedInspectorSection: some View {
+        if let selectedTag {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Icon")
+                    .font(.footnote.weight(.semibold))
+                    .textCase(.uppercase)
+                    .foregroundStyle(.secondary)
+
+                // IMPORTANT: explicit Binding<String?> avoids inference blowups
+                TagIconPicker(selection: Binding<String?>(
+                    get: { selectedTag.sfSymbolName },
+                    set: { tagStore.setTagIcon(id: selectedTag.id, sfSymbolName: $0) }
+                ))
+
+                Text("Color")
+                    .font(.footnote.weight(.semibold))
+                    .textCase(.uppercase)
+                    .foregroundStyle(.secondary)
+
+                TagColorPalette(selection: selectedTag.color) { color in
+                    tagStore.setTagColor(id: selectedTag.id, color: color)
+                }
+
+                Text("Rename tag")
+                    .font(.footnote.weight(.semibold))
+                    .textCase(.uppercase)
+                    .foregroundStyle(.secondary)
+
+                HStack(spacing: 8) {
+                    TextField("Tag name", text: $renameText)
+                        .textFieldStyle(.roundedBorder)
+                        .onSubmit { commitRename(for: selectedTag) }
+
+                    Button("Rename") { commitRename(for: selectedTag) }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(renameText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private var suggestedSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Suggested")
+                .font(.footnote.weight(.semibold))
+                .textCase(.uppercase)
+                .foregroundStyle(.secondary)
+
+            if suggestedTags.isEmpty {
+                Text("No suggestions yet")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                LazyVGrid(columns: chipColumns, spacing: 8) {
+                    ForEach(suggestedTags, id: \.id) { (tag: TagRef) in
+                        Button { toggle(tag) } label: {
+                            TagChip(tag: tag, size: .regular)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private var allTagsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("All tags")
+                .font(.footnote.weight(.semibold))
+                .textCase(.uppercase)
+                .foregroundStyle(.secondary)
+
+            TextField("Search tags", text: $tagSearchText)
+                .textFieldStyle(.roundedBorder)
+
+            if canCreateTag {
+                Button { createTag() } label: {
+                    Label("Create \"\(TagNameNormalizer.normalize(tagSearchText))\"", systemImage: "plus.circle.fill")
+                        .font(.caption.weight(.semibold))
+                }
+                .buttonStyle(.bordered)
+            }
+
+            LazyVStack(alignment: .leading, spacing: 6) {
+                ForEach(filteredTags, id: \.id) { (tag: TagRef) in
+                    Button { toggle(tag) } label: {
+                        HStack {
+                            TagChip(tag: tag, size: .small, isSelected: currentScale.tagIDs.contains(tag.id))
+                            Spacer()
+                            if currentScale.tagIDs.contains(tag.id) {
+                                Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(Color.accentColor)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    
     private var suggestedTags: [TagRef] {
         var counts: [TagID: Int] = [:]
         for scale in library.scales.values {
@@ -1011,156 +1143,25 @@ private struct TagEditorView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Attached")
-                        .font(.footnote.weight(.semibold))
-                        .textCase(.uppercase)
-                        .foregroundStyle(.secondary)
-
-                    if attachedTags.isEmpty {
-                        Text("No tags yet")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 88), spacing: 8)], spacing: 8) {
-                            ForEach(attachedTags) { tag in
-                                TagChip(
-                                    tag: tag,
-                                    size: .regular,
-                                    isSelected: selectedTagID == tag.id,
-                                    showsRemove: selectedTagID == tag.id
-                                ) {
-                                    removeTag(tag)
-                                }
-                                .onTapGesture {
-                                    selectedTagID = tag.id
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if let selectedTag {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Icon")
-                            .font(.footnote.weight(.semibold))
-                            .textCase(.uppercase)
-                            .foregroundStyle(.secondary)
-
-                        TagIconPicker(selection: Binding(
-                            get: { selectedTag.sfSymbolName },
-                            set: { tagStore.setTagIcon(id: selectedTag.id, sfSymbolName: $0) }
-                        ))
-
-                        Text("Color")
-                            .font(.footnote.weight(.semibold))
-                            .textCase(.uppercase)
-                            .foregroundStyle(.secondary)
-
-                        TagColorPalette(selection: selectedTag.color) { color in
-                            tagStore.setTagColor(id: selectedTag.id, color: color)
-                        }
-
-                        Text("Rename tag")
-                            .font(.footnote.weight(.semibold))
-                            .textCase(.uppercase)
-                            .foregroundStyle(.secondary)
-
-                        HStack(spacing: 8) {
-                            TextField("Tag name", text: $renameText)
-                                .textFieldStyle(.roundedBorder)
-                                .onSubmit {
-                                    commitRename(for: selectedTag)
-                                }
-                            Button("Rename") {
-                                commitRename(for: selectedTag)
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .disabled(renameText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                        }
-                    }
-                }
-
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Suggested")
-                        .font(.footnote.weight(.semibold))
-                        .textCase(.uppercase)
-                        .foregroundStyle(.secondary)
-
-                    if suggestedTags.isEmpty {
-                        Text("No suggestions yet")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 88), spacing: 8)], spacing: 8) {
-                            ForEach(suggestedTags) { tag in
-                                Button {
-                                    toggle(tag)
-                                } label: {
-                                    TagChip(tag: tag, size: .regular)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
-                }
-
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("All tags")
-                        .font(.footnote.weight(.semibold))
-                        .textCase(.uppercase)
-                        .foregroundStyle(.secondary)
-
-                    TextField("Search tags", text: $tagSearchText)
-                        .textFieldStyle(.roundedBorder)
-
-                    if canCreateTag {
-                        Button {
-                            createTag()
-                        } label: {
-                            Label("Create \"\(TagNameNormalizer.normalize(tagSearchText))\"", systemImage: "plus.circle.fill")
-                                .font(.caption.weight(.semibold))
-                        }
-                        .buttonStyle(.bordered)
-                    }
-
-                    LazyVStack(alignment: .leading, spacing: 6) {
-                        ForEach(filteredTags) { tag in
-                            Button {
-                                toggle(tag)
-                            } label: {
-                                HStack {
-                                    TagChip(tag: tag, size: .small, isSelected: currentScale.tagIDs.contains(tag.id))
-                                    Spacer()
-                                    if currentScale.tagIDs.contains(tag.id) {
-                                        Image(systemName: "checkmark.circle.fill")
-                                            .foregroundStyle(.accentColor)
-                                    }
-                                }
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
-            }
-            .padding(16)
-        }
-        .onChange(of: selectedTagID) { _ in
-            if let selectedTag {
-                renameText = selectedTag.name
-            } else {
-                renameText = ""
-            }
-        }
-        .onAppear {
-            if let first = attachedTags.first {
-                selectedTagID = first.id
-                renameText = first.name
-            }
-        }
-    }
+         ScrollView {
+             VStack(alignment: .leading, spacing: 18) {
+                 attachedSection
+                 selectedInspectorSection
+                 suggestedSection
+                 allTagsSection
+             }
+             .padding(16)
+         }
+         .onChange(of: selectedTagID) { _ in
+             renameText = selectedTag?.name ?? ""
+         }
+         .onAppear {
+             if let first = attachedTags.first {
+                 selectedTagID = first.id
+                 renameText = first.name
+             }
+         }
+     }
 
     private func toggle(_ tag: TagRef) {
         var ids = Set(currentScale.tagIDs)
@@ -1237,7 +1238,7 @@ private struct TagFilterSheet: View {
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 8) {
-                        ForEach(filteredTags) { tag in
+                        ForEach(filteredTags, id: \.id) { (tag: TagRef) in
                             Button {
                                 toggle(tag)
                             } label: {
@@ -1246,7 +1247,7 @@ private struct TagFilterSheet: View {
                                     Spacer()
                                     if selectedTagIDs.contains(tag.id) {
                                         Image(systemName: "checkmark")
-                                            .foregroundStyle(.accentColor)
+                                            .foregroundStyle(Color.accentColor)
                                     }
                                 }
                             }
@@ -1309,7 +1310,7 @@ private struct OverviewPage: View {
 
                     if !tags.isEmpty {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 88), spacing: 8)], spacing: 8) {
-                            ForEach(tags) { tag in
+                            ForEach(tags, id: \TagRef.id) { (tag: TagRef) in
                                 TagChip(tag: tag, size: .regular)
                             }
                         }
