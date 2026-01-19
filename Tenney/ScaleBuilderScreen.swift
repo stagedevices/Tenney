@@ -411,7 +411,7 @@ struct ScaleBuilderScreen: View {
         Button {
             dismiss()
         } label: {
-            Image(systemName: "checkmark")
+            Image(systemName: "xmark")
                 .font(.system(size: 18, weight: .bold))
                 .foregroundStyle(.white)
                 .frame(width: 44, height: 44)
@@ -468,7 +468,8 @@ struct ScaleBuilderScreen: View {
                         app.builderStagingBaseCount = store.degrees.count
                         dismiss()
                     } label: {
-                        Text("Add from Lattice")
+                        Image(systemName: "plus")
+                        Text("Add More")
                             .fontWeight(.semibold)
                     }
                     .buttonStyle(.borderedProminent)

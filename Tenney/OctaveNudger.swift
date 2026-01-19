@@ -49,7 +49,7 @@ struct OctaveNudger: View {
         .modifier(GlassPill(enabled: enabled))
         .disabled(!enabled)
         .simultaneousGesture(LongPressGesture(minimumDuration: 0.35).onEnded { _ in onRepeatStart() })
-        .highPriorityGesture(DragGesture(minimumDistance: 0).onEnded { _ in onRepeatEnd() })
+        .highPriorityGesture(DragGesture(minimumDistance: 0).onEnded { _ in onRepeatEnd() }, including: .gesture)
         .onDisappear { onRepeatEnd() }
         .accessibilityLabel(system == "chevron.up" ? "Octave up" : "Octave down")
         .accessibilityHint("Hold to auto-repeat")

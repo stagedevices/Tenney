@@ -48,7 +48,7 @@ enum LatticeGridMode: String, CaseIterable, Identifiable {
 struct LatticeView: View {
     @AppStorage(SettingsKeys.latticeSoundEnabled)
     private var latticeSoundEnabled: Bool = true
-
+    @State private var infoSwitchSeq: UInt64 = 0
     @inline(__always)
     private var latticeAudioAllowed: Bool { latticeSoundEnabled }
 
@@ -66,6 +66,17 @@ struct LatticeView: View {
     let previewGridMode: LatticeGridMode?
     let previewConnectionMode: LatticeConnectionMode?
 
+    @Environment(\.horizontalSizeClass) private var hSizeClass
+    
+        private var infoCardMaxWidth: CGFloat {
+            hSizeClass == .compact ? 260 : 320
+        }
+    
+        // Keep the translucent card from overlapping the 13–31 row (and stealing taps).
+        private var infoCardTopPad: CGFloat {
+            app.primeLimit >= 13 ? 104 : 72
+        }
+    
     
     @AppStorage(SettingsKeys.latticeConnectionMode)
     private var latticeConnectionModeRaw: String = LatticeConnectionMode.chain.rawValue
@@ -1683,7 +1694,12 @@ struct LatticeView: View {
                 let (cn, cd) = canonicalPQ(cand.p, cand.q)
                 let raw = app.rootHz * (Double(cn) / Double(cd))
                 let freq = foldToAudible(raw, minHz: 20, maxHz: 5000)
-                releaseInfoVoice()
+                let willDeselectPausedPlane: Bool = {
+                    guard cand.isPlane, let c = cand.coord else { return false }
+                    return (pausedForInfoCoord == c) && store.selected.contains(c)
+                }()
+
+                releaseInfoVoice(hard: true, resumeSelection: !willDeselectPausedPlane)
 
                 focusedPoint = (
                     pos: cand.pos,
@@ -1817,29 +1833,37 @@ struct LatticeView: View {
     }
 #endif
     
-    // ⬇️ REPLACE your releaseInfoVoice(...) with:
-    private func releaseInfoVoice(hard: Bool = true) {
+    //
+    private func releaseInfoVoice(hard: Bool = true, resumeSelection: Bool = true) {
+        infoSwitchSeq &+= 1
         if let id = infoVoiceID {
             ToneOutputEngine.shared.release(id: id, seconds: hard ? 0.0 : 0.05)
             infoVoiceID = nil
         }
         // Resume the selection sustain for the focused coord if still selected
         if let c = pausedForInfoCoord {
-            store.resumeSelectionVoiceIfNeeded(for: c)
             pausedForInfoCoord = nil
+
+            guard resumeSelection else { return }
+
+            DispatchQueue.main.async {
+                // If the tap cycle deselected the node, this will now be false.
+                if store.selected.contains(c) {
+                    store.resumeSelectionVoiceIfNeeded(for: c)
+                }
+            }
         }
     }
     
     private func switchInfoTone(toHz hz: Double, newOffset: Int) {
-        // ✅ If lattice sound is disabled, do not start/stack preview voices.
-        guard latticeAudioAllowed else {
-            if let id = infoVoiceID {
-                ToneOutputEngine.shared.release(id: id, seconds: 0.0)
-                infoVoiceID = nil
-            }
+        // Always update the UI state immediately.
             infoOctaveOffset = newOffset
-            return
-        }
+        
+            // If audio is disabled, never leave anything paused.
+            guard latticeAudioAllowed else {
+                releaseInfoVoice(hard: true)   // stops preview + resumes selection if needed
+                return
+            }
 
         // Pause ONLY the focused node’s selection sustain so we don’t hear both
         if let c = focusedPoint?.coord, pausedForInfoCoord == nil {
@@ -1847,18 +1871,35 @@ struct LatticeView: View {
             pausedForInfoCoord = c
         }
 
-        // Stop any previous preview instantly, then start the new one
-        if let id = infoVoiceID { ToneOutputEngine.shared.release(id: id, seconds: 0.0) }
-        guard (UserDefaults.standard.object(forKey: SettingsKeys.latticeSoundEnabled) as? Bool ?? true) else { return }
-        infoVoiceID = ToneOutputEngine.shared.sustain(
-            freq: hz,
-            amp: 0.22,
-            owner: .other,
-            ownerKey: "lattice:info",
-            attackMs: nil,
-            releaseMs: nil
-        )
-        infoOctaveOffset = newOffset
+        // Bump token to invalidate any queued start from a previous tap.
+        infoSwitchSeq &+= 1
+        let seq = infoSwitchSeq
+
+        @inline(__always)
+        func startPreviewIfCurrent() {
+            guard seq == infoSwitchSeq else { return }   // stale start; ignore
+            let key = "lattice:info:\(seq)"              // avoid ownerKey collisions during release windows
+            let newID: ToneOutputEngine.VoiceID = ToneOutputEngine.shared.sustain(
+                freq: hz,
+                amp: 0.22,
+                owner: .other,
+                ownerKey: key,
+                attackMs: nil,
+                releaseMs: nil
+            )
+            infoVoiceID = newID
+        }
+
+        if let id = infoVoiceID {
+            // Give the engine a breath to retire the old voice before re-arming.
+            ToneOutputEngine.shared.release(id: id, seconds: 0.02)
+            infoVoiceID = nil
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
+                startPreviewIfCurrent()
+            }
+        } else {
+            startPreviewIfCurrent()
+        }
     }
 
     
@@ -2384,8 +2425,15 @@ struct LatticeView: View {
         @ObservedObject var app: AppModel
 
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
+        @Namespace private var addNS
+
+        private var addIsCompact: Bool {
+            store.selectedCount > 1
+        }
+
         // MARK: - Sizing (keep tray height stable)
         private let ctl: CGFloat = 40          // uniform control size
+        private let addCompactSide: CGFloat = 40   // square-ish compact width for "+"
         private let corner: CGFloat = 12       // rounded-rect corner radius
         private let trayPadV: CGFloat = 8      // reduce padding so net height stays ~same
 
@@ -2495,7 +2543,21 @@ struct LatticeView: View {
             }
         }
 
+        private struct GlassWhiteCircle: ViewModifier {
+            func body(content: Content) -> some View {
+                let c = Circle()
+                if #available(iOS 26.0, *) {
+                    content
+                        .glassEffect(.regular.tint(.white), in: c)
+                } else {
+                    content
+                        .background(.ultraThinMaterial, in: c)
+                        .background(c.fill(Color.white.opacity(0.28)))
+                }
+            }
+        }
 
+        
         private var clearButton: some View {
             Button {
                 withAnimation(.snappy) { store.clearSelection() }
@@ -2586,6 +2648,63 @@ struct LatticeView: View {
             .contentShape(Circle())
         }
 
+        private var addIcon: some View {
+            Group {
+                if #available(iOS 17.0, *) {
+                    Image(systemName: addDidCommit ? "checkmark" : "plus")
+                        .symbolRenderingMode(addDidCommit ? .multicolor : .hierarchical)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.black)
+                        .contentTransition(.symbolEffect(.replace.downUp.byLayer))
+                } else {
+                    Image(systemName: addDidCommit ? "checkmark" : "plus")
+                        .symbolRenderingMode(addDidCommit ? .multicolor : .hierarchical)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.black)
+                }
+            }
+            .matchedGeometryEffect(id: "add-icon", in: addNS)
+        }
+
+        private var addFullPill: some View {
+            let rr = RoundedRectangle(cornerRadius: corner, style: .continuous)
+
+            return HStack(spacing: 8) {
+                addIcon
+                Text("New")
+                    .fontWeight(.regular)
+                    .foregroundStyle(.black)
+                    .lineLimit(1)
+                    .allowsTightening(true)
+                    .minimumScaleFactor(0.9)
+                    .truncationMode(.tail)
+                    .fixedSize(horizontal: true, vertical: false)   // prevents ellipsis; ViewThatFits will pick compact instead
+                    .layoutPriority(1)
+            }
+            .frame(height: ctl)
+            .padding(.horizontal, 12)
+            .background(
+                Color.clear
+                    .matchedGeometryEffect(id: "add-bg", in: addNS)
+                    .modifier(GlassWhiteRoundedRect(corner: corner))
+            )
+            .contentShape(rr)
+        }
+
+        private var addCompactPill: some View {
+            let rr = RoundedRectangle(cornerRadius: corner, style: .continuous)
+
+            return addIcon
+                .frame(width: addCompactSide, height: ctl)
+                .background(
+                    Color.clear
+                        .matchedGeometryEffect(id: "add-bg", in: addNS)
+                        .modifier(GlassWhiteRoundedRect(corner: corner))
+                )
+                .contentShape(rr)
+        }
+
+        
 
         private var addButton: some View {
             Button {
@@ -2614,32 +2733,19 @@ struct LatticeView: View {
                 store.beginStaging()
                 app.builderPayload = payload
             } label: {
-                Label {
-                    Text("New")
-                        .fontWeight(.regular)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.9)
-                        .foregroundStyle(.black)
-                } icon: {
-                    if #available(iOS 17.0, *) {
-                        Image(systemName: addDidCommit ? "checkmark" : "plus")
-                            .symbolRenderingMode(addDidCommit ? .multicolor : .hierarchical)
-                            .font(.system(size: 16, weight: .semibold))   // <-- bump weight (or .heavy)
-                            .foregroundStyle(.black)
-                            .contentTransition(.symbolEffect(.replace.downUp.byLayer))
+                Group {
+                    if addIsCompact {
+                        addCompactPill
                     } else {
-                        Image(systemName: addDidCommit ? "checkmark" : "plus")
-                            .symbolRenderingMode(addDidCommit ? .multicolor : .hierarchical)
-                            .font(.system(size: 16, weight: .semibold))   // <-- same here
-                            .foregroundStyle(.black)
+                        ViewThatFits(in: .horizontal) {
+                            addFullPill
+                            addCompactPill
+                        }
                     }
                 }
+                .animation(.snappy(duration: 0.28), value: addIsCompact)
             }
             .buttonStyle(.plain)
-            .frame(height: ctl)
-            .padding(.horizontal, 12)
-            .modifier(GlassWhiteRoundedRect(corner: corner))
-            .contentShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
             .disabled(store.selectedCount == 0)
             .sensoryFeedback(.success, trigger: addDidCommit)
             .accessibilityLabel("Add selected ratios")
@@ -2718,14 +2824,16 @@ struct LatticeView: View {
                 Image(systemName: mode.symbol)
                     .symbolRenderingMode(.hierarchical)
                     .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.black)
                     .frame(width: ctl, height: ctl)
-                    .background(glassCircleBG())
-                    .overlay(glassStrokeCircle())
+                    .modifier(GlassWhiteCircle())
+                    .overlay(Circle().stroke(Color.black.opacity(0.10), lineWidth: 1)) // subtle base stroke
                     .overlay(
                         Circle()
-                            .stroke(isSelected ? Color.primary.opacity(0.28) : Color.clear, lineWidth: 1.5)
+                            .stroke(isSelected ? Color.gray.opacity(0.28) : Color.clear, lineWidth: 1.5)
                     )
             }
+            .padding(.leading, mode == .recents ? 8 : 0)   // <- more horizontal padding for the Recents circle
             .buttonStyle(.plain)
             .contentShape(Circle())
             .accessibilityLabel(mode.a11y)
@@ -3345,11 +3453,12 @@ struct LatticeView: View {
             Color.clear
                 .frame(height: activeHeight)
                 .contentShape(Rectangle())
-                .simultaneousGesture(pan)
-                .simultaneousGesture(pinch)
-                .simultaneousGesture(tap)
-                .simultaneousGesture(press)
-                .simultaneousGesture(brush)
+                .simultaneousGesture(pan, including: .gesture)
+                .simultaneousGesture(pinch, including: .gesture)
+                .simultaneousGesture(tap, including: .gesture)
+                .simultaneousGesture(press, including: .gesture)
+                .simultaneousGesture(brush, including: .gesture)
+
             
             Spacer(minLength: 0)
                 .allowsHitTesting(false)
@@ -3382,13 +3491,14 @@ struct LatticeView: View {
         VStack {
             HStack {
                 Spacer()
-                infoCard
-                    .padding(.top, 72)
-                    .padding(.trailing, 12)
-                    .frame(maxWidth: 320, alignment: .trailing)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .contentShape(Rectangle())
-                    .allowsHitTesting(true)
+                if focusedPoint != nil {
+                    infoCard
+                        .padding(.top, infoCardTopPad)
+                        .padding(.trailing, 12)
+                        .frame(maxWidth: infoCardMaxWidth, alignment: .trailing)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .contentShape(Rectangle())
+                }
             }
             Spacer()
         }
@@ -3807,7 +3917,7 @@ struct LatticeView: View {
                                 }
                                 toggleAllOverlayChipPrimes()
                             }
-                    )
+                        , including: .gesture)
                 }
             }
             .padding(8)
@@ -3923,8 +4033,9 @@ struct LatticeView: View {
                     HStack(spacing: 6) {
                         GlassPuckButton(systemName: "chevron.down", isEnabled: canDown) {
                             let newOffset = infoOctaveOffset - 1
-                            let hzNew = f.hz * pow(2.0, Double(newOffset))
-                            switchInfoTone(toHz: hzNew, newOffset: newOffset)
+                                let raw = app.rootHz * (Double(f.num) / Double(f.den)) * pow(2.0, Double(newOffset))
+                                let hz2 = foldToAudible(raw, minHz: 20, maxHz: 5000)
+                                switchInfoTone(toHz: hz2, newOffset: newOffset)
                             if let coord = f.coord, store.selected.contains(coord) {
                                 store.setOctaveOffset(for: coord, to: newOffset)
                             }
@@ -3932,8 +4043,9 @@ struct LatticeView: View {
 
                         GlassPuckButton(systemName: "chevron.up", isEnabled: canUp) {
                             let newOffset = infoOctaveOffset + 1
-                            let hzNew = f.hz * pow(2.0, Double(newOffset))
-                            switchInfoTone(toHz: hzNew, newOffset: newOffset)
+                                let raw = app.rootHz * (Double(f.num) / Double(f.den)) * pow(2.0, Double(newOffset))
+                                let hz2 = foldToAudible(raw, minHz: 20, maxHz: 5000)
+                                switchInfoTone(toHz: hz2, newOffset: newOffset)
                             if let coord = f.coord, store.selected.contains(coord) {
                                 store.setOctaveOffset(for: coord, to: newOffset)
                             }
@@ -3966,6 +4078,11 @@ struct LatticeView: View {
         }
         .padding(8)
         .frame(maxWidth: 320, alignment: .leading)
+        // Ensure octave changes always retune immediately (even if other gestures also fire while the card is up).
+                .onChange(of: infoOctaveOffset) { newOffset in
+                let hzNew = f.hz * pow(2.0, Double(newOffset))
+                    switchInfoTone(toHz: hzNew, newOffset: newOffset)
+                }
     }
     // Glass circle chevron (top-right octave stepper)
     private struct GlassPuckButton: View {

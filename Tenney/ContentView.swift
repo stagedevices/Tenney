@@ -1310,6 +1310,121 @@ private struct UtilityBar: View {
 
     @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
     @Environment(\.tenneyPracticeActive) private var practiceActive
+    
+    @Namespace private var modeSwitchNS
+    @Namespace private var auditionNS
+    
+    @Namespace private var rootChipNS
+
+    private let rootCorner: CGFloat = 12
+    @State private var rootFeedbackToken: Int = 0
+
+    private func setRootHz(_ hz: Double) {
+        // clamp if you have preferred bounds; otherwise keep as-is
+        withAnimation(.snappy(duration: 0.18)) {
+            app.rootHz = hz
+        }
+    }
+
+    private func nudgeRootHz(_ delta: Double) {
+        setRootHz(app.rootHz + delta)
+    }
+
+
+    private struct ModeTab: Identifiable, Hashable {
+        let mode: AppScreenMode
+        let title: String
+        let icon: String
+        var id: AppScreenMode { mode }   //  stable
+    }
+
+    private var modeTabs: [ModeTab] {
+        let lattice = ModeTab(mode: .lattice, title: "Lattice", icon: "dot.circle.and.hand.point.up.left.fill")
+        let tuner  = ModeTab(mode: .tuner,  title: "Tuner",  icon: "waveform")
+        return (defaultView == "lattice") ? [lattice, tuner] : [tuner, lattice]
+    }
+
+    private var rootValueText: some View {
+        Text(String(format: "%.1f", app.rootHz))
+            .font(.footnote.monospacedDigit().weight(.semibold))
+            .contentTransition(.numericText())
+    }
+
+    private func rootValueTextMaybeHero() -> some View {
+        Group {
+            if showRootStudio {
+                rootValueText
+                    .matchedGeometryEffect(id: "rootValue", in: rootNS, isSource: true)
+            } else {
+                rootValueText
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func rootChipBackground(isEditing: Bool) -> some View {
+        let rr = RoundedRectangle(cornerRadius: rootCorner, style: .continuous)
+
+        if #available(iOS 26.0, *) {
+            // single layer: glass (no stacking)
+            Color.clear
+                .glassEffect(.regular, in: rr)
+        } else {
+            rr.fill(.ultraThinMaterial)
+        }
+    }
+
+    private func rootChipStroke(isEditing: Bool) -> some View {
+        let rr = RoundedRectangle(cornerRadius: rootCorner, style: .continuous)
+
+        return rr
+            .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
+            .overlay(
+                rr.stroke(Color.accentColor.opacity(isEditing ? 0.22 : 0.0), lineWidth: 1)
+            )
+    }
+
+    private var rootChipLabel: some View {
+        ViewThatFits(in: .horizontal) {
+            // Full: icon + value + Hz + chevrons
+            HStack(spacing: 6) {
+                Image(systemName: "tuningfork")
+                    .symbolRenderingMode(.hierarchical)
+                    .font(.footnote.weight(.semibold))
+
+                HStack(spacing: 3) {
+                    rootValueTextMaybeHero()
+                    Text("Hz")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+
+                Image(systemName: "chevron.up.chevron.down")
+                    .symbolRenderingMode(.hierarchical)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+
+            // Medium: icon + value(+Hz)
+            HStack(spacing: 6) {
+                Image(systemName: "tuningfork")
+                    .symbolRenderingMode(.hierarchical)
+                    .font(.footnote.weight(.semibold))
+
+                HStack(spacing: 3) {
+                    rootValueTextMaybeHero()
+                    Text("Hz")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            // Compact: value only
+            rootValueTextMaybeHero()
+        }
+        .lineLimit(1)
+    }
+
 
     private var pillGrad: LinearGradient {
         LinearGradient(
@@ -1318,6 +1433,137 @@ private struct UtilityBar: View {
             endPoint: .bottomTrailing
         )
     }
+    
+    private var rimStroke: Color {
+        Color.primary.opacity(theme.isDark ? 0.22 : 0.16)
+    }
+
+    private var rimStrokeMuted: Color {
+        Color.secondary.opacity(theme.isDark ? 0.18 : 0.14)
+    }
+
+    private func auditionPillLabel(on: Bool) -> some View {
+        ViewThatFits(in: .horizontal) {
+            // Full
+            HStack(spacing: 8) {
+                auditionIcon(on: on)
+                Text("Audition")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(on ? Color.primary : Color.secondary)
+                    .lineLimit(1)
+
+                auditionThumb(on: on)
+            }
+
+            // Compact (tight bars): icon + thumb only
+            HStack(spacing: 8) {
+                auditionIcon(on: on)
+                auditionThumb(on: on)
+            }
+        }
+    }
+
+    private func auditionIcon(on: Bool) -> some View {
+        Image(systemName: on ? "speaker.wave.2.fill" : "speaker.slash.fill")
+            .symbolRenderingMode(.hierarchical)
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(on ? AnyShapeStyle(pillGrad) : AnyShapeStyle(Color.secondary))
+            .contentTransition(.symbolEffect(.replace.downUp.byLayer))
+    }
+
+    private func auditionThumb(on: Bool) -> some View {
+        let trackW: CGFloat = 34
+        let trackH: CGFloat = 20
+        let knob: CGFloat = 18
+
+        return ZStack {
+            Capsule()
+                .fill(on ? .thinMaterial : .ultraThinMaterial)
+
+            HStack(spacing: 0) {
+                if on { Spacer(minLength: 0) }
+                Circle()
+                    .fill(.thinMaterial)
+                    .overlay(
+                        Circle().stroke(on ? rimStroke : rimStrokeMuted, lineWidth: 1)
+                    )
+                    .frame(width: knob, height: knob)
+                    .matchedGeometryEffect(id: "audition-knob", in: auditionNS)
+                if !on { Spacer(minLength: 0) }
+            }
+            .padding(1)
+        }
+        .frame(width: trackW, height: trackH)
+        .overlay(Capsule().stroke(on ? rimStroke : rimStrokeMuted, lineWidth: 1))
+        .allowsHitTesting(false)
+    }
+
+    private func auditionChrome(on: Bool) -> some View {
+        ZStack {
+            // OFF layer
+            Capsule()
+                .fill(.ultraThinMaterial)
+                .overlay(Capsule().stroke(rimStrokeMuted, lineWidth: 1))
+                .opacity(on ? 0 : 1)
+
+            // ON layer (energized)
+            Capsule()
+                .fill(theme.isDark ? .thinMaterial : .regularMaterial)
+                .overlay(Capsule().stroke(rimStroke, lineWidth: 1))
+                .shadow(color: Color.black.opacity(theme.isDark ? 0.0 : 0.10), radius: 1, x: 0, y: 1)
+                .opacity(on ? 1 : 0)
+        }
+    }
+
+    private var modeSwitch: some View {
+        HStack(spacing: 6) {
+            ForEach(modeTabs) { tab in
+                modeTabButton(tab)
+            }
+        }
+        .padding(3)
+        .background(.ultraThinMaterial, in: Capsule())
+        .overlay(Capsule().stroke(Color.secondary.opacity(0.12), lineWidth: 1))
+        .animation(.snappy(duration: 0.28), value: mode)
+    }
+
+    private func modeTabButton(_ tab: ModeTab) -> some View {
+        let selected = (mode == tab.mode)
+
+        return Button {
+            withAnimation(.snappy(duration: 0.28)) { mode = tab.mode }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: tab.icon)
+                    .imageScale(.medium)
+                    .font(.footnote.weight(.semibold))
+
+                if selected {
+                    Text(tab.title)
+                        .font(.footnote.weight(.semibold))
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                }
+            }
+            .foregroundStyle(selected ? Color.primary : Color.secondary)
+            .padding(.vertical, 7)
+            .padding(.horizontal, selected ? 12 : 10)    // ✅ selected gets more width
+            .background {
+                if selected {
+                    Capsule()
+                        .fill(.thinMaterial)
+                        .matchedGeometryEffect(id: "mode-pill", in: modeSwitchNS)
+                        .allowsHitTesting(false)          // ✅ pill never steals taps
+                }
+            }
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(tab.title)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+
 
     var body: some View {
         HStack {
@@ -1329,18 +1575,8 @@ private struct UtilityBar: View {
                 .foregroundStyle(.secondary)
                 .padding(.trailing, 8)
             } else {
-                Picker("Mode", selection: $mode) {
-                    if defaultView == "lattice" {
-                        Text("Lattice").tag(AppScreenMode.lattice)
-                        Text("Tuner").tag(AppScreenMode.tuner)
-                    } else {
-                        Text("Tuner").tag(AppScreenMode.tuner)
-                        Text("Lattice").tag(AppScreenMode.lattice)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 220)
-                .padding(.trailing, 8)
+                modeSwitch
+                    .padding(.trailing, 8)
             }
 
 
@@ -1350,45 +1586,14 @@ private struct UtilityBar: View {
                     app.latticeAuditionOn.toggle()
                 } label: {
                     let on = app.latticeAuditionOn
-                    HStack(spacing: 8) {
-                        Image(systemName: on ? "speaker.wave.2.fill" : "speaker.slash.fill")
-                            .imageScale(.large)
-                            .foregroundStyle(
-                                on
-                                ? AnyShapeStyle(pillGrad)
-                                : AnyShapeStyle(Color.secondary)
-                            )
-                            .blendMode(on ? (theme.isDark ? .screen : .darken) : .normal)
-// MARK: - UTILITY BAR SOUND ON AND OFF TOGGLE
-                        ZStack {
-                            Text("Off").opacity(on ? 0 : 1)
-                            Text("On").opacity(on ? 1 : 0)
-                        }
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(
-                            on
-                            ? (theme.isDark ? Color.white : Color.black)
-                            : Color.secondary
-                        )
-                        .fixedSize(horizontal: true, vertical: false)
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(
-                        on
-                        ? AnyShapeStyle(.thinMaterial)
-                        : AnyShapeStyle(.ultraThinMaterial),
-                        in: Capsule()
-                    )
-                    .overlay(
-                        Capsule().stroke(
-                            on
-                            ? AnyShapeStyle(pillGrad)
-                            : AnyShapeStyle(Color.secondary.opacity(0.12)),
-                            lineWidth: 1
-                        )
-                    )
-                    .contentShape(Capsule())
+
+                    auditionPillLabel(on: on)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(auditionChrome(on: on))
+                        .contentShape(Capsule())
+                        .animation(.snappy(duration: 0.22), value: on)
+                        .sensoryFeedback(.success, trigger: on)
                 }
                 .buttonStyle(.plain)
                 .tenneyChromaShadow(true)
@@ -1399,42 +1604,45 @@ private struct UtilityBar: View {
                                     }
             Spacer()
 
-            // Only one matchedGeometry source should exist at a time.
-                        // In Lattice: Utility Bar owns the hero → sheet.
-                        // In Tuner: Root card owns the hero; Utility Bar shows a static label.
-                        if mode == .lattice {
-                            Button {
-                                showRootStudio = true
-                            } label: {
-                                HStack(spacing: 6) {
-                                    // ROOT PICKER IN FOOTER BAR
-                                    Image(systemName: "tuningfork").imageScale(.medium)
-                                    Text(String(format: "%.1f Hz", app.rootHz))
-                                        .matchedGeometryEffect(id: "rootValue", in: rootNS)
-                                        .font(.footnote.monospacedDigit())
-                                }
-                                .padding(.horizontal, 8).padding(.vertical, 6)
-                                .background(.ultraThinMaterial, in: Capsule())
-                            }
-                            .buttonStyle(.plain)
-                        } else {
-                            Button {
-                                showRootStudio = true
-                            } label: {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "tuningfork").imageScale(.medium)
-                                    Text(String(format: "%.1f Hz", app.rootHz))
-                                        .font(.footnote.monospacedDigit())
-                                }
-                                .padding(.horizontal, 8).padding(.vertical, 6)
-                                .background(.ultraThinMaterial, in: Capsule())
-                                .contentShape(Capsule())
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Root pitch")
-                        }
+            Button {
+                showRootStudio = true
+            } label: {
+                let isEditing = showRootStudio
+                let rr = RoundedRectangle(cornerRadius: rootCorner, style: .continuous)
 
-             
+                rootChipLabel
+                    .foregroundStyle(Color.primary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background { rootChipBackground(isEditing: isEditing) }
+                    .overlay(rootChipStroke(isEditing: isEditing))
+                    .clipShape(rr)
+                    .contentShape(rr)
+                    .animation(.snappy(duration: 0.22), value: isEditing)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Root pitch")
+            .accessibilityValue(String(format: "%.1f hertz", app.rootHz))
+            .sensoryFeedback(.selection, trigger: rootFeedbackToken)
+            .onChange(of: app.rootHz) { _ in
+                rootFeedbackToken &+= 1
+            }
+            .contextMenu {
+                Button("415.0 Hz") { setRootHz(415.0) }
+                Button("432.0 Hz") { setRootHz(432.0) }
+                Button("440.0 Hz") { setRootHz(440.0) }
+
+                Divider()
+
+                Button("−0.1") { nudgeRootHz(-0.1) }
+                Button("+0.1") { nudgeRootHz(0.1) }
+                Button("−1.0") { nudgeRootHz(-1.0) }
+                Button("+1.0") { nudgeRootHz(1.0) }
+
+                Divider()
+
+                Button("Reset to default") { setRootHz(440.0) }
+            }
 
             // Gear
             Button {

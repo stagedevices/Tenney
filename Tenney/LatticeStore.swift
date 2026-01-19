@@ -1325,7 +1325,9 @@ final class LatticeStore: ObservableObject {
             voiceForCoord.removeAll()
             voiceForGhost.removeAll()
             pausedPlane.removeAll()
+         
     }
+    
 }
 extension LatticeStore {
     /// Exactly two **plane** nodes selected, in order; ignores overlay selections.

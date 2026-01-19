@@ -35,7 +35,7 @@ enum LearnTenneyModule: String, CaseIterable, Identifiable, Sendable {
 
     var systemImage: String {
         switch self {
-        case .lattice: return "circle.grid.3x3.fill"
+        case .lattice: return "dot.circle.and.hand.point.up.left.fill"
         case .tuner:   return "dial.high.fill"
         case .builder: return "pianokeys.inverse"
         }
