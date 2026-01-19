@@ -3,6 +3,18 @@ import Foundation
 /// Current (UI-facing) scale model.
 /// Back-compat: can decode legacy `{rootHz, tones, notes}` blobs.
 struct TenneyScale: Identifiable, Codable, Hashable, Sendable {
+    struct Provenance: Codable, Hashable, Sendable {
+        enum Kind: String, Codable, Sendable {
+            case communityPack
+        }
+
+        var kind: Kind
+        var packID: String
+        var packName: String
+        var authorName: String?
+        var installedVersion: String?
+    }
+
     var id: UUID
     var name: String
     var descriptionText: String
@@ -24,6 +36,7 @@ struct TenneyScale: Identifiable, Codable, Hashable, Sendable {
 
     // Optional authorship
     var author: String?
+    var provenance: Provenance?
 
     // MARK: - Convenience / compatibility
 
@@ -46,7 +59,8 @@ struct TenneyScale: Identifiable, Codable, Hashable, Sendable {
         detectedLimit: Int? = nil,
         periodRatio: Double = 2.0,
         maxTenneyHeight: Int? = nil,
-        author: String? = nil
+        author: String? = nil,
+        provenance: Provenance? = nil
     ) {
         self.id = id
         self.name = name
@@ -59,6 +73,7 @@ struct TenneyScale: Identifiable, Codable, Hashable, Sendable {
         self.rootLabel = rootLabel
         self.periodRatio = periodRatio
         self.author = author
+        self.provenance = provenance
 
         self.detectedLimit = detectedLimit ?? TenneyScale.detectedLimit(for: degrees)
         self.maxTenneyHeight = maxTenneyHeight ?? TenneyScale.maxTenneyHeight(for: degrees)
@@ -108,7 +123,7 @@ struct TenneyScale: Identifiable, Codable, Hashable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         // current
-        case id, name, descriptionText, degrees, tagIDs, favorite, lastPlayed, referenceHz, rootLabel, periodRatio, detectedLimit, maxTenneyHeight, author
+        case id, name, descriptionText, degrees, tagIDs, favorite, lastPlayed, referenceHz, rootLabel, periodRatio, detectedLimit, maxTenneyHeight, author, provenance
 
         // legacy
         case rootHz, tones, notes, rootLabelLegacy, tags
@@ -157,6 +172,7 @@ struct TenneyScale: Identifiable, Codable, Hashable, Sendable {
 
         periodRatio = try c.decodeIfPresent(Double.self, forKey: .periodRatio) ?? 2.0
         author = try c.decodeIfPresent(String.self, forKey: .author)
+        provenance = try c.decodeIfPresent(Provenance.self, forKey: .provenance)
 
         detectedLimit = try c.decodeIfPresent(Int.self, forKey: .detectedLimit) ?? TenneyScale.detectedLimit(for: degrees)
         maxTenneyHeight = try c.decodeIfPresent(Int.self, forKey: .maxTenneyHeight) ?? TenneyScale.maxTenneyHeight(for: degrees)
@@ -176,6 +192,7 @@ struct TenneyScale: Identifiable, Codable, Hashable, Sendable {
           try c.encode(detectedLimit, forKey: .detectedLimit)
           try c.encode(maxTenneyHeight, forKey: .maxTenneyHeight)
           try c.encodeIfPresent(author, forKey: .author)
+          try c.encodeIfPresent(provenance, forKey: .provenance)
       }
 }
 
