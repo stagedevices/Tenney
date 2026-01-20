@@ -26,6 +26,30 @@ final class CommunityPacksStore: ObservableObject {
     private var activeInstallID: String? = nil
     private var cancellables: Set<AnyCancellable> = []
 
+    private struct CanonicalPackSignature: Codable {
+        let packID: String
+        let scales: [CanonicalScaleSignature]
+    }
+
+    private struct CanonicalScaleSignature: Codable {
+        let id: String
+        let title: String
+        let rootHz: Double
+        let refs: [CanonicalRatioRef]
+    }
+
+    private struct CanonicalRatioRef: Codable {
+        let p: Int
+        let q: Int
+        let octave: Int
+        let monzo: [CanonicalMonzoEntry]
+    }
+
+    private struct CanonicalMonzoEntry: Codable {
+        let prime: Int
+        let exponent: Int
+    }
+
     enum InstallAction {
         case install
         case update
@@ -244,7 +268,8 @@ final class CommunityPacksStore: ObservableObject {
             installedScaleIDs: installedIDs,
             installedAt: Date(),
             installedVersion: pack.version,
-            installedContentHash: pack.contentHash
+            installedContentHash: pack.contentHash,
+            installedContentSignature: pack.contentHash
         )
         registry.setInstalled(packID: pack.packID, record: record)
     }
@@ -306,8 +331,21 @@ final class CommunityPacksStore: ObservableObject {
         for pack in packs {
             guard installedIDs.contains(pack.packID),
                   let record = registry.records[pack.packID] else { continue }
-            if record.installedContentHash != pack.contentHash {
+            guard let installedSignature = record.installedContentSignature else {
+                #if DEBUG
+                logFetch("CommunityPacks update check \(pack.packID): missing installed signature (installedVersion=\(record.installedVersion) remoteVersion=\(pack.version))")
+                #endif
+                continue
+            }
+            if installedSignature != pack.contentHash {
                 updates.insert(pack.packID)
+                #if DEBUG
+                logFetch("CommunityPacks update check \(pack.packID): installedVersion=\(record.installedVersion) remoteVersion=\(pack.version) installedSig=\(installedSignature.prefix(8)) remoteSig=\(pack.contentHash.prefix(8))")
+                #endif
+            } else if record.installedVersion != pack.version {
+                #if DEBUG
+                logFetch("CommunityPacks update check \(pack.packID): version differs but signature matches (installedVersion=\(record.installedVersion) remoteVersion=\(pack.version))")
+                #endif
             }
         }
         updateAvailablePackIDs = updates
@@ -530,13 +568,13 @@ final class CommunityPacksStore: ObservableObject {
             )
         }
 
-        let hash = sha256Hex(for: packData, scaleData: pack.scales.map { scaleDataByPath[$0.path] ?? Data() })
+        let resolvedPackID = indexEntry.packID.isEmpty ? indexEntry.path : indexEntry.packID
+        let hash = contentSignatureHash(packID: pack.packID.isEmpty ? resolvedPackID : pack.packID, scales: scales)
         let sanitizedDescription = sanitizeCommunityDescription(pack.description)
         let sanitizedSummary = sanitizeCommunityDescription(pack.summary ?? pack.description)
         let sanitizedChangelog = sanitizeCommunityDescription(pack.changelog ?? "")
         let dateString = pack.date
 
-        let resolvedPackID = indexEntry.packID.isEmpty ? indexEntry.path : indexEntry.packID
         let lastUpdated = communityDate(from: dateString)
         return CommunityPackViewModel(
             id: resolvedPackID,
@@ -731,14 +769,62 @@ final class CommunityPacksStore: ObservableObject {
         }
     }
 
-    private func sha256Hex(for packData: Data, scaleData: [Data]) -> String {
-        var combined = Data()
-        combined.append(packData)
-        for data in scaleData {
-            combined.append(data)
+    private func contentSignatureHash(packID: String, scales: [CommunityPackScaleViewModel]) -> String {
+        let signature = CanonicalPackSignature(
+            packID: packID,
+            scales: canonicalScales(from: scales)
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        guard let data = try? encoder.encode(signature) else {
+            #if DEBUG
+            logFetch("CommunityPacks signature encode failed for packID=\(packID)")
+            #endif
+            return ""
         }
-        let hash = SHA256.hash(data: combined)
-        return hash.compactMap { String(format: "%02x", $0) }.joined()
+        let hash = SHA256.hash(data: data)
+        return hash.map { String(format: "%02x", $0) }.joined()
+    }
+
+    private func canonicalScales(from scales: [CommunityPackScaleViewModel]) -> [CanonicalScaleSignature] {
+        let sortedScales = scales.sorted {
+            if $0.id != $1.id { return $0.id < $1.id }
+            return $0.title < $1.title
+        }
+        return sortedScales.map { scale in
+            CanonicalScaleSignature(
+                id: scale.id,
+                title: canonicalTitle(payloadTitle: scale.payload.title, fallback: scale.title),
+                rootHz: canonicalDouble(scale.payload.rootHz),
+                refs: canonicalRefs(scale.payload.refs)
+            )
+        }
+    }
+
+    private func canonicalTitle(payloadTitle: String, fallback: String) -> String {
+        let trimmedPayload = payloadTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedPayload.isEmpty {
+            return trimmedPayload
+        }
+        return fallback.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func canonicalRefs(_ refs: [RatioRef]) -> [CanonicalRatioRef] {
+        refs.map { ref in
+            let sortedMonzo = ref.monzo.keys.sorted().map { key in
+                CanonicalMonzoEntry(prime: key, exponent: ref.monzo[key] ?? 0)
+            }
+            return CanonicalRatioRef(
+                p: ref.p,
+                q: ref.q,
+                octave: ref.octave,
+                monzo: sortedMonzo
+            )
+        }
+    }
+
+    private func canonicalDouble(_ value: Double, precision: Double = 1_000_000_000) -> Double {
+        (value * precision).rounded() / precision
     }
 
     private func setState(_ newState: LoadState) {
