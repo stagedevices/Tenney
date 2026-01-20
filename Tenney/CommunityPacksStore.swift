@@ -18,6 +18,7 @@ final class CommunityPacksStore: ObservableObject {
     @Published private(set) var state: LoadState = .idle
     @Published private(set) var showingCachedBanner: Bool = false
     @Published private(set) var installingPackIDs: Set<String> = []
+    @Published private(set) var deletedPackIDs: Set<String> = []
 
     private var installQueue: [InstallRequest] = []
     private var activeInstallID: String? = nil
@@ -121,10 +122,15 @@ final class CommunityPacksStore: ObservableObject {
         action: InstallAction = .install,
         resolution: InstallResolution = .overwrite
     ) {
+        deletedPackIDs.remove(pack.packID)
         guard installingPackIDs.contains(pack.packID) == false else { return }
         guard installQueue.contains(where: { $0.pack.packID == pack.packID }) == false else { return }
         installQueue.append(InstallRequest(pack: pack, action: action, resolution: resolution))
         startNextInstallIfNeeded()
+    }
+
+    func isDeleted(_ packID: String) -> Bool {
+        deletedPackIDs.contains(packID)
     }
 
     func uninstall(pack: CommunityPackViewModel) {
@@ -137,6 +143,8 @@ final class CommunityPacksStore: ObservableObject {
             }
         }
         registry.removeInstalled(packID: pack.packID)
+        deletedPackIDs.insert(pack.packID)
+        removeFromInstallQueue(packID: pack.packID)
     }
 
     private func startNextInstallIfNeeded() {
@@ -239,6 +247,14 @@ final class CommunityPacksStore: ObservableObject {
             authorName: pack.authorName,
             installedVersion: pack.version
         )
+    }
+
+    private func removeFromInstallQueue(packID: String) {
+        installQueue.removeAll { $0.pack.packID == packID }
+        installingPackIDs.remove(packID)
+        if activeInstallID == packID {
+            activeInstallID = nil
+        }
     }
 
     private func fetchRemote() async throws -> [CommunityPackViewModel] {

@@ -57,7 +57,6 @@ struct CommunityPacksPageList: View {
     @ObservedObject private var tagStore = TagStore.shared
     @ObservedObject private var registry = CommunityInstallRegistryStore.shared
     @State private var didTriggerRefresh = false
-    @State private var packSearchText = ""
     @State private var selectedPack: CommunityPackViewModel?
     @Namespace private var packNamespace
 
@@ -74,8 +73,6 @@ struct CommunityPacksPageList: View {
                         availableCount: availableCount,
                         updatesCount: updatesCount
                     )
-
-                    PackSearchField(text: $packSearchText)
 
                     if case .schemaMismatch = store.state {
                         ContentUnavailableView(
@@ -105,8 +102,7 @@ struct CommunityPacksPageList: View {
                         let filteredPacks = filteredPacks()
                         if filteredPacks.isEmpty {
                             FullPageEmptyState(
-                                onClearFilters: onClearFilters,
-                                onClearPackSearch: { packSearchText = "" }
+                                onClearFilters: onClearFilters
                             )
                             .frame(minHeight: proxy.size.height * 0.6)
                         } else {
@@ -138,7 +134,7 @@ struct CommunityPacksPageList: View {
     }
 
     private var installedCount: Int {
-        filteredPacks().filter { isInstalled($0) }.count
+        filteredPacks().filter { isInstalled($0) && !isDeleted($0) }.count
     }
 
     private var availableCount: Int {
@@ -146,21 +142,11 @@ struct CommunityPacksPageList: View {
     }
 
     private var updatesCount: Int {
-        filteredPacks().filter { updateAvailable($0) }.count
+        filteredPacks().filter { updateAvailable($0) && !isDeleted($0) }.count
     }
 
     private func filteredPacks() -> [CommunityPackViewModel] {
         var output = store.packs.filter { packMatchesGlobalFilters($0) }
-        let query = packSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !query.isEmpty {
-            output = output.filter { pack in
-                if pack.title.localizedCaseInsensitiveContains(query) { return true }
-                if pack.authorName.localizedCaseInsensitiveContains(query) { return true }
-                if pack.description.localizedCaseInsensitiveContains(query) { return true }
-                if pack.summary.localizedCaseInsensitiveContains(query) { return true }
-                return false
-            }
-        }
         switch sortKey {
         case .recent:
             output.sort { ($0.date ?? .distantPast) > ($1.date ?? .distantPast) }
@@ -175,7 +161,7 @@ struct CommunityPacksPageList: View {
     }
 
     private func packMatchesGlobalFilters(_ pack: CommunityPackViewModel) -> Bool {
-        pack.scales.contains { scale in
+        let scaleMatch = pack.scales.contains { scale in
             let tenneyScale = communityScaleForFiltering(pack: pack, scale: scale)
             return filters.matches(
                 scale: tenneyScale,
@@ -185,6 +171,22 @@ struct CommunityPacksPageList: View {
                 favoriteIDs: library.favoriteIDs
             )
         }
+        let metadataMatch = packMatchesMetadata(pack)
+        if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return scaleMatch
+        }
+        return scaleMatch || metadataMatch
+    }
+
+    private func packMatchesMetadata(_ pack: CommunityPackViewModel) -> Bool {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return false }
+        if pack.title.localizedCaseInsensitiveContains(query) { return true }
+        if pack.authorName.localizedCaseInsensitiveContains(query) { return true }
+        if pack.description.localizedCaseInsensitiveContains(query) { return true }
+        if pack.summary.localizedCaseInsensitiveContains(query) { return true }
+        if pack.packID.localizedCaseInsensitiveContains(query) { return true }
+        return false
     }
 
     private func isInstalled(_ pack: CommunityPackViewModel) -> Bool {
@@ -192,8 +194,13 @@ struct CommunityPacksPageList: View {
     }
 
     private func updateAvailable(_ pack: CommunityPackViewModel) -> Bool {
+        guard !isDeleted(pack) else { return false }
         guard let record = registry.record(for: pack.packID) else { return false }
         return record.installedContentHash != pack.contentHash
+    }
+
+    private func isDeleted(_ pack: CommunityPackViewModel) -> Bool {
+        store.isDeleted(pack.packID)
     }
 }
 
@@ -236,30 +243,6 @@ private struct CommunityPacksHeader: View {
     }
 }
 
-private struct PackSearchField: View {
-    @Binding var text: String
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
-            TextField("Search packs", text: $text)
-                .textInputAutocapitalization(.never)
-            if !text.isEmpty {
-                Button {
-                    text = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(12)
-        .background(PackCardSurface(cornerRadius: 16))
-    }
-}
-
 private struct CommunityPacksSections: View {
     let filteredPacks: [CommunityPackViewModel]
     @Binding var selectedPack: CommunityPackViewModel?
@@ -268,10 +251,16 @@ private struct CommunityPacksSections: View {
     @ObservedObject private var store = CommunityPacksStore.shared
 
     var body: some View {
-        let featured = filteredPacks.filter { $0.isFeatured }
+        let deleted = filteredPacks.filter { store.isDeleted($0.packID) }
+        let featured = filteredPacks.filter { $0.isFeatured && !store.isDeleted($0.packID) }
         let featuredIDs = Set(featured.map { $0.packID })
-        let installed = filteredPacks.filter { registry.isInstalled($0.packID) && !featuredIDs.contains($0.packID) }
-        let browseAll = filteredPacks.filter { !registry.isInstalled($0.packID) && !featuredIDs.contains($0.packID) }
+        let installed = filteredPacks.filter {
+            registry.isInstalled($0.packID) && !featuredIDs.contains($0.packID) && !store.isDeleted($0.packID)
+        }
+        var browseAll = filteredPacks.filter {
+            !registry.isInstalled($0.packID) && !featuredIDs.contains($0.packID) && !store.isDeleted($0.packID)
+        }
+        browseAll.append(contentsOf: deleted.filter { !featuredIDs.contains($0.packID) })
 
         VStack(alignment: .leading, spacing: 18) {
             if !featured.isEmpty {
@@ -340,6 +329,7 @@ private struct CommunityPacksSections: View {
     }
 
     private func updateAvailable(_ pack: CommunityPackViewModel) -> Bool {
+        guard !store.isDeleted(pack.packID) else { return false }
         guard let record = registry.record(for: pack.packID) else { return false }
         return record.installedContentHash != pack.contentHash
     }
@@ -609,22 +599,16 @@ private struct PackCardSurface: View {
 
 private struct FullPageEmptyState: View {
     let onClearFilters: () -> Void
-    let onClearPackSearch: () -> Void
 
     var body: some View {
         VStack(spacing: 12) {
             ContentUnavailableView(
                 "No matching packs",
                 systemImage: "shippingbox",
-                description: Text("Try clearing filters or adjusting your pack search.")
+                description: Text("Try clearing filters or adjusting your search.")
             )
             Button("Clear filters") {
                 onClearFilters()
-            }
-            .buttonStyle(.bordered)
-
-            Button("Clear pack search") {
-                onClearPackSearch()
             }
             .buttonStyle(.bordered)
         }
@@ -652,6 +636,7 @@ private struct CommunityPackDetailView: View {
     }
 
     private var updateAvailable: Bool {
+        guard !store.isDeleted(pack.packID) else { return false }
         guard let record = installedRecord else { return false }
         return record.installedContentHash != pack.contentHash
     }
