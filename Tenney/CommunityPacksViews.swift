@@ -931,7 +931,7 @@ private struct CommunityPackDetailView: View {
         if #available(iOS 17.0, *) {
             Image(systemName: "xmark")
                 .font(.caption.weight(.semibold))
-                .symbolEffect(.drawOn, value: closeSymbolVisible)
+                .symbolEffect(.bounce, value: closeSymbolVisible)
         } else {
             Image(systemName: "xmark")
                 .font(.caption.weight(.semibold))
