@@ -6,6 +6,7 @@ struct CommunityInstallRecord: Codable, Hashable {
     var installedAt: Date
     var installedVersion: String
     var installedContentHash: String
+    var installedContentSignature: String?
 }
 
 @MainActor
