@@ -1,5 +1,11 @@
 import SwiftUI
 
+struct CommunityPackPreviewRequest {
+    let packID: String
+    let scaleID: String
+    let scale: TenneyScale
+}
+
 private func communityScaleForFiltering(pack: CommunityPackViewModel, scale: CommunityPackScaleViewModel) -> TenneyScale {
     let provenance = TenneyScale.Provenance(
         kind: .communityPack,
@@ -52,6 +58,7 @@ struct CommunityPacksPageList: View {
     let favoritesOnly: Bool
     let searchText: String
     let onClearFilters: () -> Void
+    let onPreviewRequested: (CommunityPackPreviewRequest) -> Void
     @ObservedObject private var store = CommunityPacksStore.shared
     @ObservedObject private var library = ScaleLibraryStore.shared
     @ObservedObject private var tagStore = TagStore.shared
@@ -122,7 +129,11 @@ struct CommunityPacksPageList: View {
             }
         }
         .fullScreenCover(item: $selectedPack) { pack in
-            CommunityPackDetailView(pack: pack, namespace: packNamespace)
+            CommunityPackDetailView(
+                pack: pack,
+                namespace: packNamespace,
+                onPreviewRequested: onPreviewRequested
+            )
         }
         .task {
             guard !didTriggerRefresh else { return }
@@ -631,11 +642,12 @@ private struct FullPageEmptyState: View {
 private struct CommunityPackDetailView: View {
     let pack: CommunityPackViewModel
     let namespace: Namespace.ID
+    let onPreviewRequested: (CommunityPackPreviewRequest) -> Void
     @ObservedObject private var store = CommunityPacksStore.shared
-    @EnvironmentObject private var model: AppModel
     @Environment(\.openURL) private var openURL
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage(SettingsKeys.communityPackLastPreviewedScaleIDs) private var lastPreviewedScaleIDsJSON: String = ""
 
     @State private var showConflictDialog = false
     @State private var showUninstallConfirm = false
@@ -643,7 +655,6 @@ private struct CommunityPackDetailView: View {
     @State private var heroVisible = false
     @State private var contentVisible = false
     @State private var closeSymbolVisible = false
-    @State private var actionScale: TenneyScale?
 
     private var isInstalled: Bool {
         store.isInstalled(pack.packID)
@@ -657,7 +668,7 @@ private struct CommunityPackDetailView: View {
     private var primaryActionTitle: String {
         if !isInstalled { return "Install" }
         if updateAvailable { return "Update" }
-        return "Open"
+        return "Preview"
     }
 
     var body: some View {
@@ -694,7 +705,7 @@ private struct CommunityPackDetailView: View {
                             CommunityScaleRow(
                                 scale: scale,
                                 packID: pack.packID,
-                                onActions: { actionScale = communityScaleForFiltering(pack: pack, scale: scale) }
+                                onActions: { handleScalePreview(scale) }
                             )
                         }
                     }
@@ -735,15 +746,6 @@ private struct CommunityPackDetailView: View {
         .safeAreaInset(edge: .top) { detailToolbar }
         .safeAreaInset(edge: .bottom) { detailActionBar }
         .onAppear(perform: startReveal)
-        .sheet(item: $actionScale) { scale in
-            ScaleActionsSheet(
-                scale: scale,
-                onOpen: { model.openBuilder(with: scale) },
-                onAdd: { model.addToBuilder(scale: scale) }
-            )
-            .presentationDetents([.medium, .large])
-            .presentationDragIndicator(.visible)
-        }
         .confirmationDialog(
             "Some scales already exist in your Library.",
             isPresented: $showConflictDialog,
@@ -866,7 +868,7 @@ private struct CommunityPackDetailView: View {
                 showConflictDialog = true
             }
         } else {
-            dismiss()
+            handleDefaultPreview()
         }
     }
 
@@ -940,22 +942,66 @@ private struct CommunityPackDetailView: View {
 
     private var detailActionBar: some View {
         HStack(spacing: 12) {
-            Button(action: handlePrimaryAction) {
-                HStack(spacing: 8) {
-                    if store.installingPackIDs.contains(pack.packID) {
-                        ProgressView()
-                            .controlSize(.small)
-                    } else {
-                        actionSymbol
+            if showsPreviewActions && pack.scales.count > 1 {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 8) {
+                        Button(action: handlePrimaryAction) {
+                            HStack(spacing: 8) {
+                                if store.installingPackIDs.contains(pack.packID) {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                } else {
+                                    actionSymbol
+                                }
+                                Text(store.installingPackIDs.contains(pack.packID) ? "Installing…" : primaryActionTitle)
+                                    .font(.callout.weight(.semibold))
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                        .disabled(store.installingPackIDs.contains(pack.packID))
+
+                        Menu {
+                            ForEach(pack.scales) { scale in
+                                Button(action: { handleScalePreview(scale) }) {
+                                    Text(scaleMenuTitle(scale))
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "chevron.down")
+                                .frame(width: 34, height: 34)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.large)
+                        .accessibilityLabel("Choose scale")
                     }
-                    Text(store.installingPackIDs.contains(pack.packID) ? "Installing…" : primaryActionTitle)
-                        .font(.callout.weight(.semibold))
+
+                    if let lastPreviewedScaleName {
+                        Text("Last: \(lastPreviewedScaleName)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
-                .frame(maxWidth: .infinity)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                Button(action: handlePrimaryAction) {
+                    HStack(spacing: 8) {
+                        if store.installingPackIDs.contains(pack.packID) {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            actionSymbol
+                        }
+                        Text(store.installingPackIDs.contains(pack.packID) ? "Installing…" : primaryActionTitle)
+                            .font(.callout.weight(.semibold))
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .disabled(store.installingPackIDs.contains(pack.packID))
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .disabled(store.installingPackIDs.contains(pack.packID))
 
             if isInstalled && !updateAvailable {
                 Button("Uninstall") {
@@ -993,6 +1039,10 @@ private struct CommunityPackDetailView: View {
         .opacity(contentVisible ? 1 : 0)
     }
 
+    private var showsPreviewActions: Bool {
+        isInstalled && !updateAvailable
+    }
+
     @ViewBuilder
     private var actionSymbol: some View {
         if #available(iOS 17.0, *) {
@@ -1001,6 +1051,65 @@ private struct CommunityPackDetailView: View {
         } else {
             Image(systemName: actionIcon)
         }
+    }
+
+    private var lastPreviewedScaleName: String? {
+        guard let scaleID = lastPreviewedScaleID(for: pack.packID) else { return nil }
+        return pack.scales.first(where: { $0.id == scaleID })?.title
+    }
+
+    private func scaleMenuTitle(_ scale: CommunityPackScaleViewModel) -> String {
+        "\(scale.title) • \(scale.primeLimit)-limit"
+    }
+
+    private func handleDefaultPreview() {
+        guard let target = defaultPreviewScale() else { return }
+        handleScalePreview(target)
+    }
+
+    private func defaultPreviewScale() -> CommunityPackScaleViewModel? {
+        guard !pack.scales.isEmpty else { return nil }
+        if pack.scales.count == 1 {
+            return pack.scales.first
+        }
+        if let lastScaleID = lastPreviewedScaleID(for: pack.packID),
+           let lastScale = pack.scales.first(where: { $0.id == lastScaleID }) {
+            return lastScale
+        }
+        return pack.scales.first
+    }
+
+    private func handleScalePreview(_ scale: CommunityPackScaleViewModel) {
+        setLastPreviewedScaleID(packID: pack.packID, scaleID: scale.id)
+        let tenneyScale = communityScaleForFiltering(pack: pack, scale: scale)
+        let request = CommunityPackPreviewRequest(
+            packID: pack.packID,
+            scaleID: scale.id,
+            scale: tenneyScale
+        )
+        dismiss()
+        DispatchQueue.main.async {
+            onPreviewRequested(request)
+        }
+    }
+
+    private func lastPreviewedScaleID(for packID: String) -> String? {
+        decodeLastPreviewedScaleIDs()[packID]
+    }
+
+    private func setLastPreviewedScaleID(packID: String, scaleID: String) {
+        var map = decodeLastPreviewedScaleIDs()
+        map[packID] = scaleID
+        guard let data = try? JSONEncoder().encode(map),
+              let encoded = String(data: data, encoding: .utf8) else {
+            return
+        }
+        lastPreviewedScaleIDsJSON = encoded
+    }
+
+    private func decodeLastPreviewedScaleIDs() -> [String: String] {
+        guard let data = lastPreviewedScaleIDsJSON.data(using: .utf8) else { return [:] }
+        return (try? JSONDecoder().decode([String: String].self, from: data)) ?? [:]
     }
 
     private func startReveal() {

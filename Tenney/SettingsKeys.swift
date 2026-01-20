@@ -124,6 +124,7 @@ enum SettingsKeys {
     static let libraryFavoritesOnly = "tenney.library.favoritesOnly"
     static let librarySortKey = "tenney.library.sortKey"
     static let libraryFavoriteIDsJSON = "tenney.library.favorites.json"
+    static let communityPackLastPreviewedScaleIDs = "tenney.communityPacks.lastPreviewedScaleIDs"
 
     // Builder (present, but used later)
     static let nearDupWarn   = "tenney.builder.nearDupWarn"
