@@ -1832,11 +1832,11 @@ struct LatticeView: View {
             monzo: target.monzo
         )
         let payload: ScaleBuilderPayload
-        if app.builderSessionPayload != nil || app.builderSession.loadedScaleID != nil {
+        if app.builderSessionExists {
 #if DEBUG
             let draftHash = AppModel.debugDegreeHash(app.builderSession.draftDegrees)
             let pendingCount = app.builderSession.pendingAddRefs?.count ?? 0
-            print("[Builder+Context] loadedScaleID=\(app.builderSession.loadedScaleID?.uuidString ?? "nil") draftCount=\(app.builderSession.draftDegrees.count) draftHash=\(draftHash) payloadRefs=1 pendingAddRefs=\(pendingCount)")
+            print("[Builder+Context] loadedScaleID=\(app.builderSession.savedScaleID?.uuidString ?? "nil") draftCount=\(app.builderSession.draftDegrees.count) draftHash=\(draftHash) payloadRefs=1 pendingAddRefs=\(pendingCount)")
 #endif
             app.appendBuilderDraftRefs([ref])
             if let sessionPayload = app.builderSessionPayload {
@@ -2479,8 +2479,8 @@ struct LatticeView: View {
         }
         
         private var hasDelta: Bool { store.additionsSinceBaseline > 0 }
-        private var hasLoadedBuilderSession: Bool { app.builderSession.loadedScaleID != nil }
-        private var hasBuilderSession: Bool { app.builderSessionPayload != nil }
+        private var hasLoadedBuilderSession: Bool { app.builderSession.savedScaleID != nil }
+        private var hasBuilderSession: Bool { app.builderSessionExists }
         private var isScaleLoaded: Bool { hasLoadedBuilderSession }
 
         // Only show the word when (a) not compact by selectionCount, and (b) no delta flag
@@ -2499,90 +2499,63 @@ struct LatticeView: View {
         private let trayPadV: CGFloat = 8      // reduce padding so net height stays ~same
         private let railSpacing: CGFloat = 4
 
-        private struct LoadedScaleStatus: Equatable {
-            let isLoaded: Bool
+        private struct BuilderSessionStatus: Equatable {
+            let exists: Bool
             let displayName: String
-            let provenanceText: String?
             let isEdited: Bool
+            let isLoaded: Bool
+
+            var leftPrefix: String {
+                if isEdited { return "Editing" }
+                return isLoaded ? "Loaded" : "Draft"
+            }
+
+            var leftLabel: String {
+                "\(leftPrefix) — \(displayName)"
+            }
+
+            var stateText: String {
+                if isEdited { return "Edited" }
+                return isLoaded ? "Clean" : "Unsaved"
+            }
+
+            var stateTextWithDelta: String {
+                isEdited ? "Edited Δ" : stateText
+            }
+
+            var stateSymbol: String {
+                if isEdited { return "pencil.circle" }
+                return isLoaded ? "checkmark.circle" : "pencil.circle"
+            }
+
+            var helpText: String {
+                "\(displayName) — \(stateTextWithDelta)"
+            }
+
+            var accessibilityLabel: String {
+                let sessionLabel = isEdited ? "Editing scale" : (isLoaded ? "Loaded scale" : "Draft scale")
+                return [sessionLabel, displayName, stateText].joined(separator: ", ")
+            }
         }
 
-        private var loadedScaleStatus: LoadedScaleStatus {
-            guard hasLoadedBuilderSession, let existing = app.builderLoadedScale else {
-                return LoadedScaleStatus(isLoaded: false, displayName: "", provenanceText: nil, isEdited: false)
+        private var builderSessionStatus: BuilderSessionStatus {
+            guard app.builderSessionExists else {
+                return BuilderSessionStatus(exists: false, displayName: "", isEdited: false, isLoaded: false)
             }
-            let rawName = app.loadedScaleDisplayNameOverride ?? existing.name
+            let rawName = app.builderSession.displayName
             let trimmedName = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
             let displayName = trimmedName.isEmpty ? "Untitled Scale" : trimmedName
-            let provenanceText: String?
-            if let provenance = existing.provenance, provenance.kind == .communityPack {
-                provenanceText = "Community: \(provenance.packName)"
-            } else {
-                provenanceText = nil
-            }
-            let isEdited = app.builderSession.isEdited
-            return LoadedScaleStatus(
-                isLoaded: true,
+            return BuilderSessionStatus(
+                exists: true,
                 displayName: displayName,
-                provenanceText: provenanceText,
-                isEdited: isEdited
+                isEdited: app.builderSession.isEdited,
+                isLoaded: app.builderSession.savedScaleID != nil
             )
         }
 
-        private var loadedScaleHelpText: String {
-            let status = loadedScaleStatus
-            var text = "Loaded: \(status.displayName)"
-            if let provenance = status.provenanceText {
-                text += " • \(provenance)"
-            }
-            text += status.isEdited ? " — Edited" : " — Clean"
-            return text
-        }
-
-        private var loadedScaleAccessibilityLabel: String {
-            let status = loadedScaleStatus
-            var parts = ["Loaded scale", status.displayName, status.isEdited ? "Edited" : "Clean"]
-            if let provenance = status.provenanceText {
-                parts.append(provenance)
-            }
-            return parts.joined(separator: ", ")
-        }
-
-        private var warmAmber: Color {
-            Color(red: 0.96, green: 0.58, blue: 0.12)
-        }
-
-        private var loadedScaleTint: Color {
-            loadedScaleStatus.isEdited ? warmAmber : .secondary
-        }
-
         @ViewBuilder
-        private var loadedScaleNameView: some View {
-            let nameText = Text(loadedScaleStatus.displayName)
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .layoutPriority(2)
-
-            if let provenance = loadedScaleStatus.provenanceText {
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 4) {
-                        nameText
-                        Text("• \(provenance)")
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                            .layoutPriority(0)
-                    }
-                    nameText
-                }
-            } else {
-                nameText
-            }
-        }
-
-        @ViewBuilder
-        private var loadedScaleStateIcon: some View {
-            let symbol = loadedScaleStatus.isEdited ? "pencil.circle" : "checkmark.circle"
+        private var builderSessionStateIcon: some View {
+            let symbol = builderSessionStatus.stateSymbol
             if #available(iOS 17.0, *) {
                 Image(systemName: symbol)
                     .symbolRenderingMode(.hierarchical)
@@ -2593,41 +2566,39 @@ struct LatticeView: View {
             }
         }
 
-        private var loadedScaleRail: some View {
+        private var builderSessionRail: some View {
+            let status = builderSessionStatus
             HStack(spacing: 8) {
                 HStack(spacing: 6) {
                     ZStack {
                         Circle()
-                            .stroke(loadedScaleTint.opacity(0.45), lineWidth: 1)
+                            .stroke(Color.secondary.opacity(0.45), lineWidth: 1)
                         Circle()
-                            .fill(loadedScaleTint.opacity(0.35))
+                            .fill(Color.secondary.opacity(0.35))
                             .frame(width: 3.5, height: 3.5)
                     }
                     .frame(width: 7, height: 7)
 
-                    Text(loadedScaleStatus.isEdited ? "Editing" : "Loaded")
-                        .foregroundStyle(.secondary)
+                    Text(status.leftLabel)
                         .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: false)
-
-                    loadedScaleNameView
+                        .truncationMode(.tail)
                 }
                 .layoutPriority(1)
 
                 Spacer(minLength: 8)
 
                 HStack(spacing: 4) {
-                    loadedScaleStateIcon
+                    builderSessionStateIcon
                         .font(.caption.weight(.semibold))
-                    if loadedScaleStatus.isEdited {
+                    Text(status.stateText)
+                    if status.isEdited {
                         Text("Δ")
                             .font(.caption2.weight(.semibold))
-                            .foregroundStyle(warmAmber)
                     }
                 }
-                .foregroundStyle(loadedScaleStatus.isEdited ? warmAmber : .secondary)
             }
             .font(.caption2)
+            .foregroundStyle(.secondary)
             .padding(.horizontal, 12)
             .padding(.bottom, 4)
             .padding(.top, 2)
@@ -2641,9 +2612,9 @@ struct LatticeView: View {
             )
             .allowsHitTesting(false)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(loadedScaleAccessibilityLabel)
+            .accessibilityLabel(status.accessibilityLabel)
 #if os(macOS) || targetEnvironment(macCatalyst)
-            .help(loadedScaleHelpText)
+            .help(status.helpText)
 #endif
         }
 
@@ -2810,7 +2781,7 @@ struct LatticeView: View {
         }
 
         // Truth table (SelectionTray status):
-        // loadedSession? (loadedScaleID != nil), edited? (builderSession.isEdited), delta?, selectedCount
+        // loadedSession? (savedScaleID != nil), edited? (builderSession.isEdited), delta?, selectedCount
         // -> xmark: red when loaded+edited, neutral when loaded+clean, amber when no loaded and (delta/selection).
         // -> "+" label: word shown only when !hasDelta && selectedCount <= 1. Word = Add if session exists else New.
         // -> "+" action: session exists -> reopen/append; no session -> new builder.
@@ -3079,7 +3050,7 @@ struct LatticeView: View {
 #if DEBUG
                 let draftHash = AppModel.debugDegreeHash(app.builderSession.draftDegrees)
                 let pendingCount = app.builderSession.pendingAddRefs?.count ?? 0
-                print("[Builder+Tray] loadedScaleID=\(app.builderSession.loadedScaleID?.uuidString ?? "nil") draftCount=\(app.builderSession.draftDegrees.count) draftHash=\(draftHash) payloadRefs=\(refs.count) pendingAddRefs=\(pendingCount)")
+                print("[Builder+Tray] loadedScaleID=\(app.builderSession.savedScaleID?.uuidString ?? "nil") draftCount=\(app.builderSession.draftDegrees.count) draftHash=\(draftHash) payloadRefs=\(refs.count) pendingAddRefs=\(pendingCount)")
 #endif
                 if hasBuilderSession {
                     app.appendBuilderDraftRefs(refs)
@@ -3261,7 +3232,7 @@ struct LatticeView: View {
         // MARK: - Body
 
         var body: some View {
-            let status = loadedScaleStatus
+            let status = builderSessionStatus
             let railTransition: AnyTransition = reduceMotion
                 ? .opacity
                 : .move(edge: .bottom).combined(with: .opacity)
@@ -3279,18 +3250,18 @@ struct LatticeView: View {
                         .allowsHitTesting(isActive)
                 }
 
-                if status.isLoaded {
-                    loadedScaleRail
+                if status.exists {
+                    builderSessionRail
                         .transition(railTransition)
                 }
             }
             .padding(.horizontal, 0)
             .padding(.vertical, trayPadV) // <- reduced to keep tray height stable while controls grow
             .animation(.spring(response: 0.32, dampingFraction: 0.9), value: isActive)
-            .animation(reduceMotion ? .easeOut(duration: 0.12) : .snappy(duration: 0.22), value: status.isLoaded)
+            .animation(reduceMotion ? .easeOut(duration: 0.12) : .snappy(duration: 0.22), value: status.exists)
             .animation(reduceMotion ? .easeOut(duration: 0.12) : .snappy(duration: 0.2), value: status.isEdited)
             .frame(maxWidth: .infinity)
-            .modifier(_SelectionTrayContainer(showsRail: status.isLoaded, reduceTransparency: reduceTransparency))
+            .modifier(_SelectionTrayContainer(showsRail: status.exists, reduceTransparency: reduceTransparency))
             .fixedSize(horizontal: false, vertical: true)
             .background(
                 GeometryReader { proxy in

@@ -24,7 +24,8 @@ enum AppModelLocator {
 @MainActor
 final class AppModel: ObservableObject {
     struct BuilderSessionState: Equatable {
-        var loadedScaleID: TenneyScale.ID? = nil
+        var sessionID: UUID? = nil
+        var savedScaleID: TenneyScale.ID? = nil
         var isEdited: Bool = false
         var pendingAddRefs: [RatioRef]? = nil
         var draftInitialized: Bool = false
@@ -32,6 +33,10 @@ final class AppModel: ObservableObject {
         var draftDescription: String = ""
         var draftRootHz: Double = 440.0
         var draftDegrees: [RatioRef] = []
+        var baselineSignature: Int? = nil
+        var displayName: String = ""
+
+        var isUnsavedDraft: Bool { savedScaleID == nil }
     }
 
     private var micPCMTap: (([Float], Double) -> Void)?
@@ -210,6 +215,7 @@ final class AppModel: ObservableObject {
             }
             builderSessionPayload = payload
             seedBuilderDraftFromPayloadIfNeeded(payload)
+            initializeBuilderSessionIfNeeded()
         }
     }
 
@@ -217,11 +223,14 @@ final class AppModel: ObservableObject {
         didSet {
             if builderLoadedScale?.id != oldValue?.id {
                 clearLoadedScaleMetadata()
-                builderSession.loadedScaleID = builderLoadedScale?.id
+                builderSession.savedScaleID = builderLoadedScale?.id
                 builderSession.isEdited = false
                 builderSession.pendingAddRefs = nil
                 if let existing = builderLoadedScale {
                     seedBuilderDraft(from: existing)
+                    builderSession.displayName = normalizedScaleName(existing.name)
+                    builderSession.sessionID = UUID()
+                    builderSession.baselineSignature = nil
                 } else {
                     builderSession = .init()
                 }
@@ -262,9 +271,9 @@ final class AppModel: ObservableObject {
         }
         builderSession.draftDegrees.append(contentsOf: refs)
         builderSession.pendingAddRefs = nil
-        if builderSession.loadedScaleID != nil {
-            builderSession.isEdited = true
-        }
+        ensureBuilderSessionID()
+        updateBuilderSessionDisplayName(builderSession.draftName)
+        updateDraftEditedState()
         syncBuilderSessionPayloadFromDraft()
     }
 
@@ -274,11 +283,14 @@ final class AppModel: ObservableObject {
         rootHz: Double,
         degrees: [RatioRef]
     ) {
+        ensureBuilderSessionID()
         builderSession.draftInitialized = true
         builderSession.draftName = name
         builderSession.draftDescription = description
         builderSession.draftRootHz = rootHz
         builderSession.draftDegrees = degrees
+        updateBuilderSessionDisplayName(name)
+        updateDraftEditedState()
         syncBuilderSessionPayloadFromDraft()
     }
 
@@ -288,6 +300,7 @@ final class AppModel: ObservableObject {
         builderSession.draftDescription = scale.descriptionText
         builderSession.draftRootHz = scale.referenceHz
         builderSession.draftDegrees = scale.degrees
+        updateBuilderSessionDisplayName(scale.name)
     }
 
     private func seedBuilderDraft(from payload: ScaleBuilderPayload) {
@@ -296,6 +309,7 @@ final class AppModel: ObservableObject {
         builderSession.draftDescription = payload.existing?.descriptionText ?? payload.notes
         builderSession.draftRootHz = payload.rootHz
         builderSession.draftDegrees = payload.items
+        updateBuilderSessionDisplayName(payload.existing?.name ?? payload.title)
     }
 
     private func seedBuilderDraftFromPayloadIfNeeded(_ payload: ScaleBuilderPayload) {
@@ -305,6 +319,58 @@ final class AppModel: ObservableObject {
         } else {
             seedBuilderDraft(from: payload)
         }
+    }
+
+    private func initializeBuilderSessionIfNeeded() {
+        ensureBuilderSessionID()
+        updateDraftEditedState()
+    }
+
+    private func ensureBuilderSessionID() {
+        if builderSession.sessionID == nil {
+            builderSession.sessionID = UUID()
+        }
+    }
+
+    private func normalizedScaleName(_ name: String) -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Untitled Scale" : trimmed
+    }
+
+    private func updateBuilderSessionDisplayName(_ name: String) {
+        builderSession.displayName = normalizedScaleName(name)
+    }
+
+    private func builderSessionSignature(
+        name: String,
+        description: String,
+        rootHz: Double,
+        degrees: [RatioRef]
+    ) -> Int {
+        var hasher = Hasher()
+        hasher.combine(name.trimmingCharacters(in: .whitespacesAndNewlines))
+        hasher.combine(description.trimmingCharacters(in: .whitespacesAndNewlines))
+        hasher.combine(rootHz)
+        for ref in degrees {
+            hasher.combine(ref)
+        }
+        return hasher.finalize()
+    }
+
+    private func updateDraftEditedState() {
+        guard builderSession.savedScaleID == nil else { return }
+        let signature = builderSessionSignature(
+            name: builderSession.draftName,
+            description: builderSession.draftDescription,
+            rootHz: builderSession.draftRootHz,
+            degrees: builderSession.draftDegrees
+        )
+        if builderSession.baselineSignature == nil {
+            builderSession.baselineSignature = signature
+            builderSession.isEdited = false
+            return
+        }
+        builderSession.isEdited = signature != builderSession.baselineSignature
     }
 
     private func syncBuilderSessionPayloadFromDraft() {
@@ -318,10 +384,7 @@ final class AppModel: ObservableObject {
     }
 
     func updateBuilderSessionEdited(loadedScaleEdited: Bool, metadataEdited: Bool) {
-        guard builderSession.loadedScaleID != nil else {
-            builderSession.isEdited = false
-            return
-        }
+        guard builderSession.savedScaleID != nil else { return }
         let nextValue = loadedScaleEdited || metadataEdited
         if builderSession.isEdited != nextValue {
             builderSession.isEdited = nextValue
@@ -335,6 +398,9 @@ final class AppModel: ObservableObject {
         isEdited: Bool? = nil
     ) {
         loadedScaleDisplayNameOverride = name
+        if builderSession.sessionID != nil {
+            updateBuilderSessionDisplayName(name)
+        }
         if let isEdited {
             loadedScaleMetadataEdited = isEdited
             return
@@ -353,6 +419,10 @@ final class AppModel: ObservableObject {
     func clearLoadedScaleMetadata() {
         loadedScaleDisplayNameOverride = nil
         loadedScaleMetadataEdited = false
+    }
+
+    var builderSessionExists: Bool {
+        builderSession.sessionID != nil
     }
     
     func configureAndStart() {

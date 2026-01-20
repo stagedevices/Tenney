@@ -81,10 +81,12 @@ struct ScaleBuilderScreen: View {
     }
 
     private func syncBuilderSessionPayload() {
-        var payload = store.payload
-        payload.title = store.name
-        payload.notes = store.descriptionText
-        app.builderSessionPayload = payload
+        app.updateBuilderDraft(
+            name: store.name,
+            description: store.descriptionText,
+            rootHz: store.payload.rootHz,
+            degrees: store.degrees
+        )
     }
 
     private func applyPendingAddsIfNeeded() {
@@ -96,12 +98,6 @@ struct ScaleBuilderScreen: View {
         print("[BuilderHydrate] appendingPendingRefs count=\(pending.count) storeCount=\(store.degrees.count) draftHash=\(draftHash)")
 #endif
         app.builderSession.pendingAddRefs = nil
-        app.updateBuilderDraft(
-            name: store.name,
-            description: store.descriptionText,
-            rootHz: store.payload.rootHz,
-            degrees: store.degrees
-        )
         syncLoadedScaleMetadata()
         syncBuilderSessionPayload()
     }
@@ -306,7 +302,7 @@ struct ScaleBuilderScreen: View {
     private func hydrateDraftIfNeeded() {
         guard !isUserEditingText else { return }
         if app.builderSession.draftInitialized {
-            if app.builderSession.loadedScaleID != nil, app.builderSession.loadedScaleID == lastHydratedLoadedScaleID {
+            if app.builderSession.savedScaleID != nil, app.builderSession.savedScaleID == lastHydratedLoadedScaleID {
                 return
             }
             store.name = app.builderSession.draftName
@@ -314,7 +310,7 @@ struct ScaleBuilderScreen: View {
             store.payload.rootHz = app.builderSession.draftRootHz
             store.payload.items = app.builderSession.draftDegrees
             store.rebuild()
-            lastHydratedLoadedScaleID = app.builderSession.loadedScaleID
+            lastHydratedLoadedScaleID = app.builderSession.savedScaleID
 #if DEBUG
             let draftHash = AppModel.debugDegreeHash(store.degrees)
             print("[BuilderHydrate] source=sessionDraft storeCount=\(store.degrees.count) draftHash=\(draftHash)")
@@ -466,6 +462,10 @@ struct ScaleBuilderScreen: View {
                 syncBuilderSessionPayload()
             }
             .onChange(of: store.descriptionText) { _ in
+                syncLoadedScaleMetadata()
+                syncBuilderSessionPayload()
+            }
+            .onChange(of: store.payload.rootHz) { _ in
                 syncLoadedScaleMetadata()
                 syncBuilderSessionPayload()
             }
