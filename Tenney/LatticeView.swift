@@ -2450,7 +2450,7 @@ struct LatticeView: View {
         }
         
         private var hasDelta: Bool { store.additionsSinceBaseline > 0 }
-        private var isScaleLoaded: Bool { app.builderPayload?.existing != nil }
+        private var isScaleLoaded: Bool { app.builderLoadedScale != nil }
 
         // “open sheet” = ScaleBuilder is currently presented (you already set this in ScaleBuilderScreen)
         private var isAddingToOpenSheet: Bool { app.builderPresented }
@@ -2479,7 +2479,7 @@ struct LatticeView: View {
         }
 
         private var loadedScaleStatus: LoadedScaleStatus {
-            guard let existing = app.builderPayload?.existing else {
+            guard let existing = app.builderLoadedScale else {
                 return LoadedScaleStatus(isLoaded: false, displayName: "", provenanceText: nil, isEdited: false)
             }
             let rawName = app.loadedScaleDisplayNameOverride ?? existing.name
@@ -4010,7 +4010,7 @@ struct LatticeView: View {
                         store.beginStaging()
                     }
                 }
-                .onChange(of: app.builderPayload?.existing?.id) { id in
+                .onChange(of: app.builderLoadedScale?.id) { id in
                     if id != nil {
                         store.captureLoadedScaleBaseline()
                     } else {
