@@ -31,6 +31,9 @@ final class CommunityPacksStore: ObservableObject {
             setState(.loaded)
             showingCachedBanner = false
             return
+        } catch is CancellationError {
+            setState(.idle)
+            return
         } catch CommunityPacksError.schemaMismatch {
             setState(.schemaMismatch)
             return
@@ -93,16 +96,18 @@ final class CommunityPacksStore: ObservableObject {
         var viewModels: [CommunityPackViewModel] = []
         var sawSchemaMismatch = false
         for (offset, entry) in index.packs.enumerated() {
-            if entry.usesFilesContract {
-                sawSchemaMismatch = true
-                logFetch("CommunityPacks index entry uses files contract (packID=\(entry.packID)); app update required.")
-                continue
-            }
-            guard !entry.path.isEmpty else {
-                logFetch("CommunityPacks index entry missing path (packID=\(entry.packID)); skipping.")
-                continue
-            }
             do {
+                if entry.usesFilesContract {
+                    let (viewModel, cachedPack) = try await fetchFilesContractPack(entry: entry, indexOrder: offset)
+                    viewModels.append(viewModel)
+                    cachedPacks.append(cachedPack)
+                    try? CommunityPacksCache.save(indexData: indexData, packs: cachedPacks)
+                    continue
+                }
+                guard !entry.path.isEmpty else {
+                    logFetch("CommunityPacks index entry missing path (packID=\(entry.packID)); skipping.")
+                    continue
+                }
                 let packPath = "\(entry.path)/pack.json"
                 let packURL = CommunityPacksEndpoints.url(base: CommunityPacksEndpoints.rawBase, path: packPath)
                 let packCDN = CommunityPacksEndpoints.url(base: CommunityPacksEndpoints.cdnBase, path: packPath)
@@ -154,11 +159,6 @@ final class CommunityPacksStore: ObservableObject {
         var viewModels: [CommunityPackViewModel] = []
         var sawSchemaMismatch = false
         for (offset, entry) in index.packs.enumerated() {
-            if entry.usesFilesContract {
-                sawSchemaMismatch = true
-                logFetch("CommunityPacks cached entry uses files contract (packID=\(entry.packID)); app update required.")
-                continue
-            }
             guard !entry.path.isEmpty else {
                 logFetch("CommunityPacks cached entry missing path (packID=\(entry.packID)); skipping.")
                 continue
@@ -265,6 +265,65 @@ final class CommunityPacksStore: ObservableObject {
             indexOrder: indexOrder,
             contentHash: hash
         )
+    }
+
+    private func fetchFilesContractPack(
+        entry: CommunityIndexEntry,
+        indexOrder: Int
+    ) async throws -> (CommunityPackViewModel, CommunityCachedPack) {
+        guard let tenneyPath = entry.tenneyPath, !tenneyPath.isEmpty else {
+            throw CommunityPacksError.decoding("INDEX.json is missing a tenney file path.")
+        }
+        let scalePathComponent = (tenneyPath as NSString).lastPathComponent
+        let scaleURL = CommunityPacksEndpoints.url(base: CommunityPacksEndpoints.rawBase, path: tenneyPath)
+        let scaleCDN = CommunityPacksEndpoints.url(base: CommunityPacksEndpoints.cdnBase, path: tenneyPath)
+        let (scaleData, _, _) = try await fetchData(primary: scaleURL, fallback: scaleCDN, label: tenneyPath)
+        _ = try decodeSchema(CommunityScaleBuilderEnvelope.self, data: scaleData, label: tenneyPath)
+
+        let packData = try synthesizePackData(entry: entry, scalePathComponent: scalePathComponent)
+        let viewModel = try buildViewModel(
+            indexEntry: entry,
+            indexOrder: indexOrder,
+            packData: packData,
+            scaleDataByPath: [scalePathComponent: scaleData]
+        )
+        let resolvedPackID = entry.packID.isEmpty ? entry.path : entry.packID
+        let cachedPack = CommunityCachedPack(
+            packID: resolvedPackID,
+            packData: packData,
+            scaleDataByPath: [scalePathComponent: scaleData]
+        )
+        return (viewModel, cachedPack)
+    }
+
+    private func synthesizePackData(entry: CommunityIndexEntry, scalePathComponent: String) throws -> Data {
+        let resolvedPackID = entry.packID.isEmpty ? entry.path : entry.packID
+        let title = entry.title ?? "Untitled Pack"
+        let authorName = entry.authorName ?? "Unknown"
+        let description = entry.description ?? ""
+        let license = entry.license ?? ""
+        var author: [String: Any] = ["name": authorName]
+        if let url = entry.authorURLString, !url.isEmpty {
+            author["url"] = url
+        }
+        let payload: [String: Any] = [
+            "schemaVersion": CommunityPack.supportedSchemaVersion,
+            "packID": resolvedPackID,
+            "title": title,
+            "version": "1",
+            "date": "",
+            "license": license,
+            "author": author,
+            "description": description,
+            "scales": [
+                [
+                    "id": resolvedPackID,
+                    "title": title,
+                    "path": scalePathComponent
+                ]
+            ]
+        ]
+        return try JSONSerialization.data(withJSONObject: payload)
     }
 
     private func fetchData(primary: URL, fallback: URL, label: String) async throws -> (Data, HTTPURLResponse, URL) {

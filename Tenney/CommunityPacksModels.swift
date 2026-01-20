@@ -66,6 +66,10 @@ struct CommunityIndexEntry: Decodable {
     let path: String
     let title: String?
     let description: String?
+    let authorName: String?
+    let authorURLString: String?
+    let license: String?
+    let tenneyPath: String?
     let usesFilesContract: Bool
 
     enum CodingKeys: String, CodingKey {
@@ -75,6 +79,9 @@ struct CommunityIndexEntry: Decodable {
         case title
         case description
         case descr
+        case author
+        case authorUrl
+        case license
         case files
     }
 
@@ -89,7 +96,11 @@ struct CommunityIndexEntry: Decodable {
         self.title = try c.decodeIfPresent(String.self, forKey: .title)
         self.description = try c.decodeIfPresent(String.self, forKey: .description)
             ?? c.decodeIfPresent(String.self, forKey: .descr)
-        self.usesFilesContract = (files?.tenney?.isEmpty == false)
+        self.authorName = try c.decodeIfPresent(String.self, forKey: .author)
+        self.authorURLString = try c.decodeIfPresent(String.self, forKey: .authorUrl)
+        self.license = try c.decodeIfPresent(String.self, forKey: .license)
+        self.tenneyPath = files?.tenney
+        self.usesFilesContract = (tenneyPath?.isEmpty == false)
     }
 }
 
