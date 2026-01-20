@@ -254,6 +254,18 @@ final class AppModel: ObservableObject {
         builderSession = .init()
     }
 
+    func resumeBuilderSessionFromRail() {
+        guard builderSessionExists else { return }
+        guard !builderPresented else { return }
+        guard let payload = builderSessionPayload else {
+#if DEBUG
+            assertionFailure("Builder session exists without payload when resuming from rail.")
+#endif
+            return
+        }
+        builderPayload = payload
+    }
+
     func appendBuilderDraftRefs(_ refs: [RatioRef]) {
         guard !refs.isEmpty else { return }
         if !builderSession.draftInitialized {
