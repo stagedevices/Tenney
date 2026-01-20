@@ -2643,7 +2643,7 @@ struct LatticeView: View {
         @State private var addDidCommit: Bool = false
 
         private var isActive: Bool {
-            store.selectedCount > 0 || store.additionsSinceBaseline > 0
+            store.selectedCount > 0 || store.additionsSinceBaseline > 0 || isScaleLoaded
         }
 
         @ViewBuilder
@@ -2829,6 +2829,24 @@ struct LatticeView: View {
             }
         }
 
+        private func performClearTransientState() {
+            stopInfoPreview(true)
+            store.stopSelectionAudio(hard: true)
+            withAnimation(.snappy) { store.clearSelection() }
+            store.resetStagingDelta()
+        }
+
+        private func performDiscardAndUnload() {
+            stopInfoPreview(true)
+            store.stopSelectionAudio(hard: true)
+            if app.builderPresented {
+                ToneOutputEngine.shared.builderDidDismiss()
+            }
+            withAnimation(.snappy) { store.clearSelection() }
+            store.resetStagingDelta()
+            app.unloadBuilderScale()
+        }
+
         private func performClearAction(state: ClearState) {
             let selectionExists = store.selectedCount > 0
 
@@ -2838,19 +2856,9 @@ struct LatticeView: View {
                 store.stopSelectionAudio(hard: true)
                 withAnimation(.snappy) { store.clearSelection() }
             case .amber:
-                stopInfoPreview(true)
-                store.stopSelectionAudio(hard: true)
-                store.resetStagingDelta()
-                withAnimation(.snappy) { store.clearSelection() }
+                performClearTransientState()
             case .red:
-                stopInfoPreview(true)
-                store.stopSelectionAudio(hard: true)
-                if app.builderPresented {
-                    ToneOutputEngine.shared.builderDidDismiss()
-                }
-                store.resetStagingDelta()
-                withAnimation(.snappy) { store.clearSelection() }
-                app.unloadBuilderScale()
+                performDiscardAndUnload()
             }
         }
 
