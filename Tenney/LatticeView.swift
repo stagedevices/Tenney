@@ -2641,9 +2641,13 @@ struct LatticeView: View {
 
         @State private var emptyMode: EmptyMode = .recents
         @State private var addDidCommit: Bool = false
+        @State private var keepTrayOpenAfterClear: Bool = false
 
         private var isActive: Bool {
-            store.selectedCount > 0 || store.additionsSinceBaseline > 0
+            store.selectedCount > 0
+                || store.additionsSinceBaseline > 0
+                || isScaleLoaded
+                || keepTrayOpenAfterClear
         }
 
         @ViewBuilder
@@ -2829,6 +2833,26 @@ struct LatticeView: View {
             }
         }
 
+        private func performClearTransientState() {
+            stopInfoPreview(true)
+            store.stopSelectionAudio(hard: true)
+            withAnimation(.snappy) { store.clearSelection() }
+            store.resetStagingDelta()
+            keepTrayOpenAfterClear = true
+        }
+
+        private func performDiscardAndUnload() {
+            stopInfoPreview(true)
+            store.stopSelectionAudio(hard: true)
+            if app.builderPresented {
+                ToneOutputEngine.shared.builderDidDismiss()
+            }
+            withAnimation(.snappy) { store.clearSelection() }
+            store.resetStagingDelta()
+            app.unloadBuilderScale()
+            keepTrayOpenAfterClear = false
+        }
+
         private func performClearAction(state: ClearState) {
             let selectionExists = store.selectedCount > 0
 
@@ -2838,19 +2862,14 @@ struct LatticeView: View {
                 store.stopSelectionAudio(hard: true)
                 withAnimation(.snappy) { store.clearSelection() }
             case .amber:
-                stopInfoPreview(true)
-                store.stopSelectionAudio(hard: true)
-                store.resetStagingDelta()
-                withAnimation(.snappy) { store.clearSelection() }
+                performClearTransientState()
             case .red:
-                stopInfoPreview(true)
-                store.stopSelectionAudio(hard: true)
-                if app.builderPresented {
-                    ToneOutputEngine.shared.builderDidDismiss()
+#if DEBUG
+                if clearBehaviorOverride == .neverUnload {
+                    assertionFailure("SelectionTray red clear should never run when 'Never unload' is enabled.")
                 }
-                store.resetStagingDelta()
-                withAnimation(.snappy) { store.clearSelection() }
-                app.unloadBuilderScale()
+#endif
+                performDiscardAndUnload()
             }
         }
 
