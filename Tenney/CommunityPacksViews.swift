@@ -423,7 +423,7 @@ private struct FeaturedPackCard: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
             .background(Capsule().fill(Color.accentColor.opacity(0.18)))
-            .foregroundStyle(.accentColor)
+            .foregroundStyle(.primary)
     }
 
     private var primeLimitLabel: String {
@@ -574,7 +574,7 @@ private struct PackButtonStyleModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         if #available(iOS 15.0, macOS 12.0, *) {
-            content.buttonStyle(isProminent ? .borderedProminent : .bordered)
+            content.buttonStyle(isProminent ? .bordered : .bordered)
         } else {
             content.buttonStyle(.plain)
         }
