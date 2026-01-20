@@ -2568,7 +2568,7 @@ struct LatticeView: View {
 
         private var builderSessionRail: some View {
             let status = builderSessionStatus
-            HStack(spacing: 8) {
+            return HStack(spacing: 8) {
                 HStack(spacing: 6) {
                     ZStack {
                         Circle()
