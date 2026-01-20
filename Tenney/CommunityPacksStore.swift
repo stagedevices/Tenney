@@ -17,6 +17,31 @@ final class CommunityPacksStore: ObservableObject {
     @Published private(set) var packs: [CommunityPackViewModel] = []
     @Published private(set) var state: LoadState = .idle
     @Published private(set) var showingCachedBanner: Bool = false
+    @Published private(set) var installingPackIDs: Set<String> = []
+
+    private var installQueue: [InstallRequest] = []
+    private var activeInstallID: String? = nil
+
+    enum InstallAction {
+        case install
+        case update
+    }
+
+    enum InstallResolution {
+        case overwrite
+        case keepExisting
+        case duplicate
+    }
+
+    private struct InstallRequest: Equatable {
+        let pack: CommunityPackViewModel
+        let action: InstallAction
+        let resolution: InstallResolution
+
+        static func == (lhs: InstallRequest, rhs: InstallRequest) -> Bool {
+            lhs.pack.packID == rhs.pack.packID
+        }
+    }
 
     private init() {}
 
@@ -81,6 +106,139 @@ final class CommunityPacksStore: ObservableObject {
             output.sort { $0.primeLimitMin < $1.primeLimitMin }
         }
         return output
+    }
+
+    func collisions(for pack: CommunityPackViewModel) -> [UUID] {
+        let library = ScaleLibraryStore.shared
+        return pack.scales.compactMap { scale in
+            let id = communityScaleUUID(packID: pack.packID, scaleID: scale.id)
+            return library.scales[id] != nil ? id : nil
+        }
+    }
+
+    func enqueueInstall(
+        pack: CommunityPackViewModel,
+        action: InstallAction = .install,
+        resolution: InstallResolution = .overwrite
+    ) {
+        guard installingPackIDs.contains(pack.packID) == false else { return }
+        guard installQueue.contains(where: { $0.pack.packID == pack.packID }) == false else { return }
+        installQueue.append(InstallRequest(pack: pack, action: action, resolution: resolution))
+        startNextInstallIfNeeded()
+    }
+
+    func uninstall(pack: CommunityPackViewModel) {
+        let library = ScaleLibraryStore.shared
+        let registry = CommunityInstallRegistryStore.shared
+        let installedIDs = registry.record(for: pack.packID)?.installedScaleIDs ?? []
+        for id in installedIDs {
+            if let scale = library.scales[id], scale.provenance?.packID == pack.packID {
+                library.deleteScale(id: id)
+            }
+        }
+        registry.removeInstalled(packID: pack.packID)
+    }
+
+    private func startNextInstallIfNeeded() {
+        guard activeInstallID == nil else { return }
+        guard !installQueue.isEmpty else { return }
+        let request = installQueue.removeFirst()
+        activeInstallID = request.pack.packID
+        installingPackIDs.insert(request.pack.packID)
+        Task {
+            await performInstall(request: request)
+            await MainActor.run {
+                self.installingPackIDs.remove(request.pack.packID)
+                self.activeInstallID = nil
+                self.startNextInstallIfNeeded()
+            }
+        }
+    }
+
+    private func performInstall(request: InstallRequest) async {
+        let pack = request.pack
+        let library = ScaleLibraryStore.shared
+        let registry = CommunityInstallRegistryStore.shared
+        let existingIDs = Set(library.scales.keys)
+        var imported: [TenneyScale] = []
+        let newIDs = Set(pack.scales.map { communityScaleUUID(packID: pack.packID, scaleID: $0.id) })
+
+        if request.action == .update, request.resolution == .overwrite {
+            for scale in library.scales.values where scale.provenance?.packID == pack.packID && !newIDs.contains(scale.id) {
+                library.deleteScale(id: scale.id)
+            }
+        }
+
+        for scale in pack.scales {
+            let stableID = communityScaleUUID(packID: pack.packID, scaleID: scale.id)
+            let collision = existingIDs.contains(stableID)
+            switch request.resolution {
+            case .overwrite:
+                imported.append(makeScale(from: scale, pack: pack, id: stableID, provenance: communityProvenance(for: pack)))
+            case .keepExisting:
+                if !collision {
+                    imported.append(makeScale(from: scale, pack: pack, id: stableID, provenance: communityProvenance(for: pack)))
+                }
+            case .duplicate:
+                if collision {
+                    imported.append(makeScale(from: scale, pack: pack, id: UUID(), provenance: nil))
+                } else {
+                    imported.append(makeScale(from: scale, pack: pack, id: stableID, provenance: communityProvenance(for: pack)))
+                }
+            }
+        }
+
+        for scale in imported {
+            library.updateScale(scale)
+        }
+
+        let installedIDs: [UUID] = library.scales.values.compactMap { scale in
+            guard scale.provenance?.packID == pack.packID else { return nil }
+            return scale.id
+        }
+        let record = CommunityInstallRecord(
+            installedScaleIDs: installedIDs,
+            installedAt: Date(),
+            installedVersion: pack.version,
+            installedContentHash: pack.contentHash
+        )
+        registry.setInstalled(packID: pack.packID, record: record)
+    }
+
+    private func makeScale(
+        from scale: CommunityPackScaleViewModel,
+        pack: CommunityPackViewModel,
+        id: UUID,
+        provenance: TenneyScale.Provenance?
+    ) -> TenneyScale {
+        let title = scale.payload.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedName = title.isEmpty ? scale.title : title
+        return TenneyScale(
+            id: id,
+            name: resolvedName,
+            descriptionText: scale.payload.notes,
+            degrees: scale.payload.refs,
+            tagIDs: [],
+            favorite: false,
+            lastPlayed: nil,
+            referenceHz: scale.payload.rootHz,
+            rootLabel: nil,
+            detectedLimit: TenneyScale.detectedLimit(for: scale.payload.refs),
+            periodRatio: 2.0,
+            maxTenneyHeight: TenneyScale.maxTenneyHeight(for: scale.payload.refs),
+            author: pack.authorName,
+            provenance: provenance
+        )
+    }
+
+    private func communityProvenance(for pack: CommunityPackViewModel) -> TenneyScale.Provenance {
+        TenneyScale.Provenance(
+            kind: .communityPack,
+            packID: pack.packID,
+            packName: pack.title,
+            authorName: pack.authorName,
+            installedVersion: pack.version
+        )
     }
 
     private func fetchRemote() async throws -> [CommunityPackViewModel] {
@@ -302,9 +460,12 @@ final class CommunityPacksStore: ObservableObject {
 
         let hash = sha256Hex(for: packData, scaleData: pack.scales.map { scaleDataByPath[$0.path] ?? Data() })
         let sanitizedDescription = sanitizeCommunityDescription(pack.description)
+        let sanitizedSummary = sanitizeCommunityDescription(pack.summary ?? pack.description)
+        let sanitizedChangelog = sanitizeCommunityDescription(pack.changelog ?? "")
         let dateString = pack.date
 
         let resolvedPackID = indexEntry.packID.isEmpty ? indexEntry.path : indexEntry.packID
+        let lastUpdated = communityDate(from: dateString)
         return CommunityPackViewModel(
             id: resolvedPackID,
             packID: pack.packID.isEmpty ? resolvedPackID : pack.packID,
@@ -313,15 +474,19 @@ final class CommunityPacksStore: ObservableObject {
             authorURL: pack.author.url.flatMap(URL.init(string:)),
             license: pack.license,
             dateString: dateString,
-            date: communityDate(from: dateString),
+            date: lastUpdated,
+            lastUpdated: lastUpdated,
             description: sanitizedDescription,
+            summary: sanitizedSummary,
+            changelog: sanitizedChangelog,
             version: pack.version,
             scaleCount: scales.count,
             primeLimitMin: minLimit == Int.max ? 0 : minLimit,
             primeLimitMax: maxLimit,
             scales: scales,
             indexOrder: indexOrder,
-            contentHash: hash
+            contentHash: hash,
+            isFeatured: indexEntry.isFeatured
         )
     }
 
