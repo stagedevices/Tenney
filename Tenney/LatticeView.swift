@@ -2572,53 +2572,51 @@ struct LatticeView: View {
 
         private var builderSessionRail: some View {
             let status = builderSessionStatus
-            return HStack(spacing: 8) {
-                HStack(spacing: 6) {
-                    ZStack {
-                        Circle()
-                            .stroke(Color.secondary.opacity(0.45), lineWidth: 1)
-                        Circle()
-                            .fill(Color.secondary.opacity(0.35))
-                            .frame(width: 3.5, height: 3.5)
+            return Button {
+                app.resumeBuilderSessionFromRail()
+            } label: {
+                HStack(spacing: 8) {
+                    HStack(spacing: 6) {
+                        ZStack {
+                            Circle()
+                                .stroke(Color.secondary.opacity(0.45), lineWidth: 1)
+                            Circle()
+                                .fill(Color.secondary.opacity(0.35))
+                                .frame(width: 3.5, height: 3.5)
+                        }
+                        .frame(width: 7, height: 7)
+
+                        Text(status.leftLabel)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
                     }
-                    .frame(width: 7, height: 7)
+                    .layoutPriority(1)
 
-                    Text(status.leftLabel)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                }
-                .layoutPriority(1)
+                    Spacer(minLength: 8)
 
-                Spacer(minLength: 8)
-
-                HStack(spacing: 4) {
-                    builderSessionStateIcon
-                        .font(.caption.weight(.semibold))
-                    Text(status.stateText)
-                    if status.isEdited {
-                        Text("Δ")
-                            .font(.caption2.weight(.semibold))
+                    HStack(spacing: 4) {
+                        builderSessionStateIcon
+                            .font(.caption.weight(.semibold))
+                        Text(status.stateText)
+                        if status.isEdited {
+                            Text("Δ")
+                                .font(.caption2.weight(.semibold))
+                        }
                     }
                 }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 12)
+                .padding(.bottom, 4)
+                .padding(.top, 2)
             }
-            .font(.caption2)
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 12)
-            .padding(.bottom, 4)
-            .padding(.top, 2)
-            .background(
-                Group {
-                    if reduceTransparency {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(Color.secondary.opacity(0.12))
-                    }
-                }
-            )
-            .allowsHitTesting(false)
+            .buttonStyle(RailButtonStyle(reduceTransparency: reduceTransparency, isHovered: railHovered))
+            .contentShape(Rectangle())
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(status.accessibilityLabel)
 #if os(macOS) || targetEnvironment(macCatalyst)
             .help(status.helpText)
+            .onHover { railHovered = $0 }
 #endif
         }
 
@@ -2645,6 +2643,7 @@ struct LatticeView: View {
         @State private var emptyMode: EmptyMode = .recents
         @State private var addDidCommit: Bool = false
         @State private var keepTrayOpenAfterClear: Bool = false
+        @State private var railHovered: Bool = false
 
         private var isActive: Bool {
             stagingActive
@@ -2771,6 +2770,31 @@ struct LatticeView: View {
                         .background(.ultraThinMaterial, in: c)
                         .background(c.fill(Color.white.opacity(0.28)))
                 }
+            }
+        }
+
+        private struct RailButtonStyle: ButtonStyle {
+            let reduceTransparency: Bool
+            let isHovered: Bool
+
+            func makeBody(configuration: Configuration) -> some View {
+                let pressed = configuration.isPressed
+                let fillOpacity = reduceTransparency
+                    ? (pressed ? 0.18 : 0.12)
+                    : (pressed ? 0.08 : (isHovered ? 0.05 : 0.0))
+                let strokeOpacity = reduceTransparency
+                    ? (pressed ? 0.32 : (isHovered ? 0.26 : 0.18))
+                    : (pressed ? 0.24 : (isHovered ? 0.18 : 0.12))
+
+                return configuration.label
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Color.secondary.opacity(fillOpacity))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .stroke(Color.secondary.opacity(strokeOpacity), lineWidth: 1)
+                    )
             }
         }
         
