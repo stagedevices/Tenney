@@ -276,6 +276,7 @@ private struct CommunityPacksSections: View {
                             )
                             .frame(width: 280)
                             .modifier(FeaturedScrollTransition())
+                            .opacity(selectedPack?.packID == pack.packID ? 0 : 1)
                         }
                     }
                     .padding(.horizontal, 4)
@@ -300,6 +301,7 @@ private struct CommunityPacksSections: View {
                             onInstall: { store.enqueueInstall(pack: pack, action: .update) },
                             namespace: namespace
                         )
+                        .opacity(selectedPack?.packID == pack.packID ? 0 : 1)
                     }
                 }
             }
@@ -316,6 +318,7 @@ private struct CommunityPacksSections: View {
                         onInstall: { store.enqueueInstall(pack: pack, action: .install) },
                         namespace: namespace
                     )
+                    .opacity(selectedPack?.packID == pack.packID ? 0 : 1)
                 }
             }
         }
@@ -403,7 +406,7 @@ private struct FeaturedPackCard: View {
         .padding(16)
         .background(
             PackCardSurface(cornerRadius: 24)
-                .matchedGeometryEffect(id: "pack-card-\(pack.packID)", in: namespace)
+                .matchedGeometryEffect(id: "pack-card-\(pack.packID)", in: namespace, isSource: true)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
@@ -497,7 +500,7 @@ private struct CompactPackCard: View {
         .padding(12)
         .background(
             PackCardSurface(cornerRadius: 16)
-                .matchedGeometryEffect(id: "pack-card-\(pack.packID)", in: namespace)
+                .matchedGeometryEffect(id: "pack-card-\(pack.packID)", in: namespace, isSource: true)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -558,7 +561,7 @@ private struct PackPrimaryActionButton: View {
     private var symbolImage: some View {
         if #available(iOS 17.0, *) {
             Image(systemName: systemImage)
-                .symbolEffect(.pulse, value: animateSymbol)
+                .symbolEffect(.bounce, value: animateSymbol)
         } else {
             Image(systemName: systemImage)
         }
@@ -629,14 +632,18 @@ private struct CommunityPackDetailView: View {
     let pack: CommunityPackViewModel
     let namespace: Namespace.ID
     @ObservedObject private var store = CommunityPacksStore.shared
+    @EnvironmentObject private var model: AppModel
     @Environment(\.openURL) private var openURL
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var showConflictDialog = false
     @State private var showUninstallConfirm = false
-    @State private var revealContent = false
     @State private var showChangelog = false
+    @State private var heroVisible = false
+    @State private var contentVisible = false
+    @State private var closeSymbolVisible = false
+    @State private var actionScale: TenneyScale?
 
     private var isInstalled: Bool {
         store.isInstalled(pack.packID)
@@ -654,35 +661,50 @@ private struct CommunityPackDetailView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
-            Color.black
-                .opacity(revealContent ? 0.18 : 0)
-                .ignoresSafeArea()
+        let content = detailContent
+        if #available(iOS 16.0, *) {
+            content
+                .presentationBackground(detailBackdrop)
+        } else {
+            content
+                .background(detailBackdrop.ignoresSafeArea())
+        }
+    }
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    headerCard
+    private var detailContent: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                headerCard
+                    .opacity(heroVisible ? 1 : 0)
+                    .offset(y: heroVisible ? 0 : 18)
 
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("What you get")
-                            .font(.headline)
-                        HStack(spacing: 16) {
-                            DetailStatView(title: "Scales", value: "\(pack.scaleCount)")
-                            DetailStatView(title: "Typical limit", value: "\(typicalLimit)-limit")
-                        }
+                DetailSectionCard(title: "What you get") {
+                    HStack(spacing: 16) {
+                        DetailStatView(title: "Scales", value: "\(pack.scaleCount)")
+                        DetailStatView(title: "Typical limit", value: "\(typicalLimit)-limit")
                     }
+                }
+                .opacity(contentVisible ? 1 : 0)
+                .offset(y: contentVisible ? 0 : 16)
+                .blur(radius: contentVisible ? 0 : 6)
 
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Sample scales")
-                            .font(.headline)
+                DetailSectionCard(title: "Sample scales") {
+                    VStack(spacing: 10) {
                         ForEach(sampleScales) { scale in
-                            CommunityScaleRow(scale: scale, packID: pack.packID)
+                            CommunityScaleRow(
+                                scale: scale,
+                                packID: pack.packID,
+                                onActions: { actionScale = communityScaleForFiltering(pack: pack, scale: scale) }
+                            )
                         }
                     }
+                }
+                .opacity(contentVisible ? 1 : 0)
+                .offset(y: contentVisible ? 0 : 16)
+                .blur(radius: contentVisible ? 0 : 6)
 
+                DetailSectionCard(title: "Version & updates") {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("Version & updates")
-                            .font(.headline)
                         HStack(spacing: 12) {
                             Label(pack.version, systemImage: "tag")
                             if let updated = pack.lastUpdated {
@@ -701,57 +723,26 @@ private struct CommunityPackDetailView: View {
                                 .font(.subheadline.weight(.semibold))
                         }
                     }
-
-                    VStack(alignment: .leading, spacing: 12) {
-                        PackPrimaryActionButton(
-                            title: primaryActionTitle,
-                            systemImage: actionIcon,
-                            isInstalling: store.installingPackIDs.contains(pack.packID),
-                            animateSymbol: updateAvailable,
-                            isProminent: true,
-                            onPress: handlePrimaryAction
-                        )
-
-                        if isInstalled && !updateAvailable {
-                            Button("Uninstall") {
-                                showUninstallConfirm = true
-                            }
-                            .buttonStyle(.bordered)
-                            .tint(.red)
-                        }
-
-                        Button("Submit a Pack") {
-                            openURL(CommunityPacksEndpoints.submitURL)
-                        }
-                        .buttonStyle(.bordered)
-
-                        Button("How to submit (GitHub Issues)") {
-                            openURL(CommunityPacksEndpoints.issuesURL)
-                        }
-                        .buttonStyle(.bordered)
-                    }
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 28)
-                .opacity(revealContent ? 1 : 0)
-                .offset(y: revealContent ? 0 : 20)
+                .opacity(contentVisible ? 1 : 0)
+                .offset(y: contentVisible ? 0 : 16)
+                .blur(radius: contentVisible ? 0 : 6)
             }
-
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.title2)
-                    .foregroundStyle(.secondary)
-                    .padding(16)
-            }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .padding(.bottom, 24)
         }
-        .onAppear {
-            guard !revealContent else { return }
-            let animation = Animation.easeOut(duration: reduceMotion ? 0 : 0.8)
-            withAnimation(animation) {
-                revealContent = true
-            }
+        .safeAreaInset(edge: .top) { detailToolbar }
+        .safeAreaInset(edge: .bottom) { detailActionBar }
+        .onAppear(perform: startReveal)
+        .sheet(item: $actionScale) { scale in
+            ScaleActionsSheet(
+                scale: scale,
+                onOpen: { model.openBuilder(with: scale) },
+                onAdd: { model.addToBuilder(scale: scale) }
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
         }
         .confirmationDialog(
             "Some scales already exist in your Library.",
@@ -883,6 +874,158 @@ private struct CommunityPackDetailView: View {
         let action: CommunityPacksStore.InstallAction = updateAvailable ? .update : .install
         store.enqueueInstall(pack: pack, action: action, resolution: resolution)
     }
+
+    private var detailBackdrop: LinearGradient {
+        LinearGradient(
+            colors: [
+                Color(.systemBackground),
+                Color(.secondarySystemBackground),
+                Color(.systemBackground)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
+    private var detailToolbar: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(pack.title)
+                    .font(.headline.weight(.semibold))
+                Text("Community Pack")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button(action: { dismiss() }) {
+                ZStack {
+                    DetailGlassCircle()
+                    closeSymbol
+                }
+                .frame(width: 34, height: 34)
+                .overlay(
+                    Circle()
+                        .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
+                )
+                .accessibilityLabel("Close")
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 10)
+        .padding(.bottom, 12)
+        .background(
+            PackCardSurface(cornerRadius: 0)
+                .overlay(
+                    Rectangle()
+                        .fill(Color.secondary.opacity(0.12))
+                        .frame(height: 1),
+                    alignment: .bottom
+                )
+        )
+        .opacity(heroVisible ? 1 : 0)
+    }
+
+    @ViewBuilder
+    private var closeSymbol: some View {
+        if #available(iOS 17.0, *) {
+            Image(systemName: "xmark")
+                .font(.caption.weight(.semibold))
+                .symbolEffect(.drawOn, value: closeSymbolVisible)
+        } else {
+            Image(systemName: "xmark")
+                .font(.caption.weight(.semibold))
+        }
+    }
+
+    private var detailActionBar: some View {
+        HStack(spacing: 12) {
+            Button(action: handlePrimaryAction) {
+                HStack(spacing: 8) {
+                    if store.installingPackIDs.contains(pack.packID) {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        actionSymbol
+                    }
+                    Text(store.installingPackIDs.contains(pack.packID) ? "Installing…" : primaryActionTitle)
+                        .font(.callout.weight(.semibold))
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .disabled(store.installingPackIDs.contains(pack.packID))
+
+            if isInstalled && !updateAvailable {
+                Button("Uninstall") {
+                    showUninstallConfirm = true
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+                .tint(.red)
+            }
+
+            Menu {
+                Button("Submit a Pack") {
+                    openURL(CommunityPacksEndpoints.submitURL)
+                }
+                Button("How to submit (GitHub Issues)") {
+                    openURL(CommunityPacksEndpoints.issuesURL)
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(
+            PackCardSurface(cornerRadius: 0)
+                .overlay(
+                    Rectangle()
+                        .fill(Color.secondary.opacity(0.12))
+                        .frame(height: 1),
+                    alignment: .top
+                )
+        )
+        .opacity(contentVisible ? 1 : 0)
+    }
+
+    @ViewBuilder
+    private var actionSymbol: some View {
+        if #available(iOS 17.0, *) {
+            Image(systemName: actionIcon)
+                .symbolEffect(.bounce, value: updateAvailable)
+        } else {
+            Image(systemName: actionIcon)
+        }
+    }
+
+    private func startReveal() {
+        guard !heroVisible else { return }
+        if reduceMotion {
+            withAnimation(.easeOut(duration: 0.2)) {
+                heroVisible = true
+                contentVisible = true
+                closeSymbolVisible = true
+            }
+            return
+        }
+        withAnimation(.easeOut(duration: 0.45)) {
+            heroVisible = true
+        }
+        Task {
+            try? await Task.sleep(nanoseconds: 220_000_000)
+            await MainActor.run {
+                withAnimation(.easeOut(duration: 0.4)) {
+                    contentVisible = true
+                    closeSymbolVisible = true
+                }
+            }
+        }
+    }
 }
 
 private struct DetailStatView: View {
@@ -898,9 +1041,10 @@ private struct DetailStatView: View {
                 .font(.headline.monospacedDigit())
         }
         .padding(12)
-        .background(
+        .background(PackCardSurface(cornerRadius: 12))
+        .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.secondary.opacity(0.1))
+                .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
         )
     }
 }
@@ -908,6 +1052,7 @@ private struct DetailStatView: View {
 private struct CommunityScaleRow: View {
     let scale: CommunityPackScaleViewModel
     let packID: String
+    let onActions: () -> Void
     @ObservedObject private var library = ScaleLibraryStore.shared
 
     var body: some View {
@@ -937,11 +1082,56 @@ private struct CommunityScaleRow: View {
                 Image(systemName: "star.fill")
                     .foregroundStyle(.yellow)
             }
+            Button(action: onActions) {
+                Image(systemName: "ellipsis")
+                    .font(.headline)
+                    .rotationEffect(.degrees(90))
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.plain)
         }
         .padding(10)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.secondary.opacity(0.08))
+            PackCardSurface(cornerRadius: 14)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
+                )
         )
+    }
+}
+
+private struct DetailSectionCard<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title)
+                .font(.headline)
+            content()
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            PackCardSurface(cornerRadius: 20)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
+                )
+        )
+    }
+}
+
+private struct DetailGlassCircle: View {
+    var body: some View {
+        if #available(iOS 26.0, *) {
+            Circle()
+                .fill(.clear)
+                .glassEffect(.regular, in: Circle())
+        } else {
+            Circle()
+                .fill(.ultraThinMaterial)
+        }
     }
 }
