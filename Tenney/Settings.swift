@@ -387,6 +387,13 @@ struct StudioConsoleView: View {
 
     
     @AppStorage(SettingsKeys.defaultView) private var defaultView: String = "tuner" // "lattice" | "tuner"
+    @AppStorage(SettingsKeys.selectionTrayClearBehavior)
+    private var selectionTrayClearBehaviorRaw: String = SelectionTrayClearBehavior.contextual.rawValue
+
+    private var selectionTrayClearBehavior: SelectionTrayClearBehavior {
+        get { SelectionTrayClearBehavior(rawValue: selectionTrayClearBehaviorRaw) ?? .contextual }
+        set { selectionTrayClearBehaviorRaw = newValue.rawValue }
+    }
 
     @EnvironmentObject private var model: AppModel   //  bring AppModel into scope
     @EnvironmentObject private var app: AppModel
@@ -3399,6 +3406,7 @@ struct StudioConsoleView: View {
             VStack(spacing: 14) {
                 quickSetupCard
                 defaultViewSection
+                selectionTrayClearBehaviorSection
                 whatsNewSection
                 diagnosticsSection
                 aboutSection
@@ -4224,6 +4232,26 @@ private struct GlassNavTile<Destination: View>: View {
             }
 
             Text("Matches the first-run setup. Reorders the Utility Bar so your default is on the left.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+        .tenneyChromaShadow(true)
+    }
+
+    @ViewBuilder private var selectionTrayClearBehaviorSection: some View {
+        glassCard(
+            icon: "xmark",
+            title: "Selection Clear Button",
+            subtitle: "Unload behavior"
+        ) {
+            Picker("Clear behavior", selection: $selectionTrayClearBehavior) {
+                ForEach(SelectionTrayClearBehavior.allCases) { behavior in
+                    Text(behavior.title).tag(behavior)
+                }
+            }
+            .pickerStyle(.menu)
+
+            Text("Controls whether the Lattice clear button unloads a loaded scale.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }

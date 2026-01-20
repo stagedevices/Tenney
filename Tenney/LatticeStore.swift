@@ -948,6 +948,7 @@ final class LatticeStore: ObservableObject {
     private var stagingBaseline: Set<LatticeCoord>? = nil
     func beginStaging() { stagingBaseline = selected }
     func endStaging() { stagingBaseline = nil }
+    func resetStagingDelta() { beginStaging() }
     var additionsSinceBaseline: Int {
         guard let base = stagingBaseline else { return 0 }
         return selected.subtracting(base).count

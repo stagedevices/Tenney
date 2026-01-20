@@ -189,6 +189,12 @@ final class AppModel: ObservableObject {
     /// When user taps "Add from Lattice" in Builder, we dismiss the sheet and
     /// When Builder closes with “Add from Lattice”, remember the base count.
     @Published var builderStagingBaseCount: Int? = nil
+
+    func unloadBuilderScale() {
+        builderPayload = nil
+        builderStagingBaseCount = nil
+        builderPresented = false
+    }
     
     func configureAndStart() {
 #if DEBUG
