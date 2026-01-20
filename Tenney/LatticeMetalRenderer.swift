@@ -315,7 +315,7 @@ final class LatticeMetalRenderer: NSObject, MTKViewDelegate {
         if let metalFXTexture = metalFXInputTexture {
             // MetalFX renders into an offscreen texture; do not mutate the view's descriptor.
             let offscreenDescriptor = MTLRenderPassDescriptor()
-            let colorAttachment = offscreenDescriptor.colorAttachments[0]
+            guard let colorAttachment = offscreenDescriptor.colorAttachments[0] else { return }
             colorAttachment.texture = metalFXTexture
             colorAttachment.loadAction = .clear
             colorAttachment.storeAction = .store
@@ -458,7 +458,7 @@ final class LatticeMetalRenderer: NSObject, MTKViewDelegate {
             height: outputHeight,
             mipmapped: false
         )
-        outputDescriptor.usage = [.renderTarget, .blitSource]
+        outputDescriptor.usage = [.renderTarget]
         outputDescriptor.storageMode = .private
         metalFXOutputTexture = device.makeTexture(descriptor: outputDescriptor)
 
