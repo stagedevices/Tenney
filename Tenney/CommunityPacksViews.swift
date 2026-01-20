@@ -103,6 +103,7 @@ struct CommunityPacksPageList: View {
     @Binding var sortKey: CommunityPackSortKey
     @ObservedObject private var store = CommunityPacksStore.shared
     @ObservedObject private var library = ScaleLibraryStore.shared
+    @State private var didTriggerRefresh = false
 
     var body: some View {
         ScrollView {
@@ -159,6 +160,12 @@ struct CommunityPacksPageList: View {
         }
         .refreshable {
             await store.refresh(force: true)
+        }
+        .task {
+            guard !didTriggerRefresh else { return }
+            guard store.packs.isEmpty || (store.state == .idle) else { return }
+            didTriggerRefresh = true
+            await store.refresh(force: false)
         }
     }
 }
