@@ -250,8 +250,11 @@ private let libraryStore = ScaleLibraryStore.shared
         }
         .environment(\.tenneyTheme, resolvedTheme)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-        .background(resolvedTheme.surfaceTint.ignoresSafeArea())
+        .screenShell {
+            resolvedTheme.surfaceTint
+        }
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbarBackground(.visible, for: .tabBar)
 
         // Still in ContentView.body view modifiers
         .onAppear {
@@ -287,7 +290,7 @@ private let libraryStore = ScaleLibraryStore.shared
                 withAnimation(.easeOut(duration: 0.25)) { venueToast = nil }
             }
         }
-        .overlay(alignment: .top) {
+        .safeAreaInset(edge: .top) {
             if let t = venueToast {
                 VenueBanner(text: "\(t.name) • A4 \(String(format: "%.1f", t.a4)) Hz")
                     .transition(.move(edge: .top).combined(with: .opacity))
@@ -449,7 +452,6 @@ private let libraryStore = ScaleLibraryStore.shared
     private var latticeContent: some View {
         LatticeScreen()
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(.top, -20)
     }
 
     private var tunerCardView: some View {
