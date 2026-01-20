@@ -942,7 +942,7 @@ private extension ScaleLibrarySheet {
     }
 }
 // MARK: - Per-scale Action Sheet (Open • Add • Play)
-private struct ScaleActionsSheet: View {
+struct ScaleActionsSheet: View {
     @State private var isDronePlaying: Bool = false
 
     let scale: TenneyScale
