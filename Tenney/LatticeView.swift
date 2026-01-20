@@ -1832,17 +1832,27 @@ struct LatticeView: View {
             monzo: target.monzo
         )
         let payload: ScaleBuilderPayload
-        if app.builderSession.loadedScaleID != nil, let existing = app.builderLoadedScale {
+        if app.builderSessionPayload != nil || app.builderSession.loadedScaleID != nil {
             app.builderSession.pendingAddRefs = [ref]
-            payload = ScaleBuilderPayload(
-                rootHz: existing.referenceHz,
-                primeLimit: existing.detectedLimit,
-                axisShift: [:],
-                items: existing.degrees,
-                autoplayAll: app.latticeAuditionOn,
-                startInLibrary: false,
-                existing: existing
-            )
+            if let sessionPayload = app.builderSessionPayload {
+                payload = sessionPayload
+            } else if let existing = app.builderLoadedScale {
+                payload = ScaleBuilderPayload(
+                    rootHz: existing.referenceHz,
+                    primeLimit: existing.detectedLimit,
+                    axisShift: [:],
+                    items: existing.degrees,
+                    autoplayAll: app.latticeAuditionOn,
+                    startInLibrary: false,
+                    existing: existing
+                )
+            } else {
+                payload = ScaleBuilderPayload(
+                    rootHz: app.rootHz,
+                    primeLimit: app.primeLimit,
+                    refs: [ref]
+                )
+            }
         } else {
             payload = ScaleBuilderPayload(
                 rootHz: app.rootHz,
@@ -2465,12 +2475,13 @@ struct LatticeView: View {
         
         private var hasDelta: Bool { store.additionsSinceBaseline > 0 }
         private var hasLoadedBuilderSession: Bool { app.builderSession.loadedScaleID != nil }
+        private var hasBuilderSession: Bool { app.builderSessionPayload != nil }
         private var isScaleLoaded: Bool { hasLoadedBuilderSession }
 
         // Only show the word when (a) not compact by selectionCount, and (b) no delta flag
         private var addShowsWord: Bool { !addIsCompact && !hasDelta }
 
-        private var addWord: String { hasLoadedBuilderSession ? "Add" : "New" }
+        private var addWord: String { hasBuilderSession ? "Add" : "New" }
 
         private var addIsCompact: Bool {
             store.selectedCount > 1
@@ -2796,8 +2807,8 @@ struct LatticeView: View {
         // Truth table (SelectionTray status):
         // loadedSession? (loadedScaleID != nil), edited? (builderSession.isEdited), delta?, selectedCount
         // -> xmark: red when loaded+edited, neutral when loaded+clean, amber when no loaded and (delta/selection).
-        // -> "+" label: word shown only when !hasDelta && selectedCount <= 1. Word = Add if loaded session else New.
-        // -> "+" action: loaded session -> reopen/append; no session -> new builder.
+        // -> "+" label: word shown only when !hasDelta && selectedCount <= 1. Word = Add if session exists else New.
+        // -> "+" action: session exists -> reopen/append; no session -> new builder.
         // Edge case: selection empty + delta present + sustaining audio -> amber without loaded session;
         // loaded+edited -> red; loaded+clean -> neutral (amber clear must not flip to red).
         private var baseClearState: ClearState {
@@ -3060,17 +3071,27 @@ struct LatticeView: View {
             Button {
                 let refs = store.selectionRefs(pivot: store.pivot, axisShift: store.axisShift)
                 let payload: ScaleBuilderPayload
-                if hasLoadedBuilderSession, let existing = app.builderLoadedScale {
+                if hasBuilderSession {
                     app.builderSession.pendingAddRefs = refs
-                    payload = ScaleBuilderPayload(
-                        rootHz: existing.referenceHz,
-                        primeLimit: existing.detectedLimit,
-                        axisShift: [:],
-                        items: existing.degrees,
-                        autoplayAll: app.latticeAuditionOn,
-                        startInLibrary: false,
-                        existing: existing
-                    )
+                    if let sessionPayload = app.builderSessionPayload {
+                        payload = sessionPayload
+                    } else if let existing = app.builderLoadedScale {
+                        payload = ScaleBuilderPayload(
+                            rootHz: existing.referenceHz,
+                            primeLimit: existing.detectedLimit,
+                            axisShift: [:],
+                            items: existing.degrees,
+                            autoplayAll: app.latticeAuditionOn,
+                            startInLibrary: false,
+                            existing: existing
+                        )
+                    } else {
+                        payload = ScaleBuilderPayload(
+                            rootHz: app.rootHz,
+                            primeLimit: app.primeLimit,
+                            refs: refs
+                        )
+                    }
                 } else {
                     payload = ScaleBuilderPayload(
                         rootHz: app.rootHz,

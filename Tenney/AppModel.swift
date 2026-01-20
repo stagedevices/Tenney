@@ -39,6 +39,7 @@ final class AppModel: ObservableObject {
     private var latticeSoundSetting: Bool = true
 
     @Published var builderSession: BuilderSessionState = .init()
+    @Published var builderSessionPayload: ScaleBuilderPayload? = nil
     @Published var builderPresented: Bool = false
     private var _recenterObserver: NSObjectProtocol?
     init() {
@@ -199,6 +200,7 @@ final class AppModel: ObservableObject {
             } else {
                 builderLoadedScale = nil
             }
+            builderSessionPayload = payload
         }
     }
 
@@ -225,6 +227,7 @@ final class AppModel: ObservableObject {
         builderLoadedScale = nil
         builderStagingBaseCount = nil
         builderPresented = false
+        builderSessionPayload = nil
         builderSession = .init()
     }
 
