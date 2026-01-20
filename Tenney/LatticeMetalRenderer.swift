@@ -41,6 +41,8 @@ final class LatticeMetalRenderer: NSObject, MTKViewDelegate {
 
     private let puckPipeline: MTLRenderPipelineState
     private let linkPipeline: MTLRenderPipelineState
+    private let presentPipeline: MTLRenderPipelineState
+    private let presentSampler: MTLSamplerState
     private let cullPipeline: MTLComputePipelineState
     private let indirectPipeline: MTLComputePipelineState
     private let pickPipeline: MTLComputePipelineState
@@ -64,6 +66,7 @@ final class LatticeMetalRenderer: NSObject, MTKViewDelegate {
     private var lastFXOutputWidth: Int?
     private var lastFXOutputHeight: Int?
     private var lastFXPixelFormat: MTLPixelFormat?
+    private var metalFXLogPending = false
     private var lastIndirectArgsLogTime: CFTimeInterval = 0
 
     var onPick: ((LatticeMetalPickResult) -> Void)?
@@ -158,8 +161,21 @@ final class LatticeMetalRenderer: NSObject, MTKViewDelegate {
         linkDescriptor.colorAttachments[0].destinationRGBBlendFactor = .oneMinusSourceAlpha
         linkDescriptor.colorAttachments[0].destinationAlphaBlendFactor = .oneMinusSourceAlpha
 
+        let presentDescriptor = MTLRenderPipelineDescriptor()
+        presentDescriptor.vertexFunction = library.makeFunction(name: "presentVertex")
+        presentDescriptor.fragmentFunction = library.makeFunction(name: "presentFragment")
+        presentDescriptor.colorAttachments[0].pixelFormat = view.colorPixelFormat
+
+        let samplerDescriptor = MTLSamplerDescriptor()
+        samplerDescriptor.minFilter = .linear
+        samplerDescriptor.magFilter = .linear
+        samplerDescriptor.sAddressMode = .clampToEdge
+        samplerDescriptor.tAddressMode = .clampToEdge
+
         guard let puckPipeline = try? device.makeRenderPipelineState(descriptor: puckDescriptor),
               let linkPipeline = try? device.makeRenderPipelineState(descriptor: linkDescriptor),
+              let presentPipeline = try? device.makeRenderPipelineState(descriptor: presentDescriptor),
+              let presentSampler = device.makeSamplerState(descriptor: samplerDescriptor),
               let cullPipeline = library.makeFunction(name: "cullNodes").flatMap({ try? device.makeComputePipelineState(function: $0) }),
               let indirectPipeline = library.makeFunction(name: "buildIndirectArgs").flatMap({ try? device.makeComputePipelineState(function: $0) }),
               let pickPipeline = library.makeFunction(name: "pickNodes").flatMap({ try? device.makeComputePipelineState(function: $0) })
@@ -167,6 +183,8 @@ final class LatticeMetalRenderer: NSObject, MTKViewDelegate {
 
         self.puckPipeline = puckPipeline
         self.linkPipeline = linkPipeline
+        self.presentPipeline = presentPipeline
+        self.presentSampler = presentSampler
         self.cullPipeline = cullPipeline
         self.indirectPipeline = indirectPipeline
         self.pickPipeline = pickPipeline
@@ -382,8 +400,27 @@ final class LatticeMetalRenderer: NSObject, MTKViewDelegate {
            let metalFXOutput = metalFXOutputTexture,
            let scaler = metalFXScaler as? any MTLFXSpatialScaler {
             scaler.inputTexture = metalFXTexture
-            scaler.outputTexture = drawable.texture
+#if DEBUG
+            if metalFXLogPending {
+                print("[LatticeMetal] MetalFX input=\(metalFXTexture.width)x\(metalFXTexture.height) \(metalFXTexture.pixelFormat) storage=\(metalFXTexture.storageMode) output=\(metalFXOutput.width)x\(metalFXOutput.height) \(metalFXOutput.pixelFormat) storage=\(metalFXOutput.storageMode) drawable=\(drawable.texture.width)x\(drawable.texture.height) \(drawable.texture.pixelFormat) storage=\(drawable.texture.storageMode)")
+                metalFXLogPending = false
+            }
+#endif
+            scaler.outputTexture = metalFXOutput
             scaler.encode(commandBuffer: commandBuffer)
+
+            if let presentDescriptor = view.currentRenderPassDescriptor,
+               let presentAttachment = presentDescriptor.colorAttachments[0] {
+                presentAttachment.loadAction = .dontCare
+                presentAttachment.storeAction = .store
+                if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: presentDescriptor) {
+                    encoder.setRenderPipelineState(presentPipeline)
+                    encoder.setFragmentTexture(metalFXOutput, index: 0)
+                    encoder.setFragmentSamplerState(presentSampler, index: 0)
+                    encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+                    encoder.endEncoding()
+                }
+            }
         }
 #endif
 
@@ -436,6 +473,7 @@ final class LatticeMetalRenderer: NSObject, MTKViewDelegate {
             metalFXScaler = nil
             metalFXInputTexture = nil
             metalFXOutputTexture = nil
+            metalFXLogPending = false
             return
         }
 
@@ -473,7 +511,7 @@ final class LatticeMetalRenderer: NSObject, MTKViewDelegate {
             height: outputHeight,
             mipmapped: false
         )
-        outputDescriptor.usage = [.renderTarget]
+        outputDescriptor.usage = [.shaderRead, .shaderWrite]
         outputDescriptor.storageMode = .private
         metalFXOutputTexture = device.makeTexture(descriptor: outputDescriptor)
 
@@ -493,6 +531,7 @@ final class LatticeMetalRenderer: NSObject, MTKViewDelegate {
             metalFXSupported = false
             metalFXInputTexture = nil
             metalFXOutputTexture = nil
+            metalFXLogPending = false
             lastFXInputWidth = nil
             lastFXInputHeight = nil
             lastFXOutputWidth = nil
@@ -505,10 +544,12 @@ final class LatticeMetalRenderer: NSObject, MTKViewDelegate {
         lastFXOutputWidth = outputWidth
         lastFXOutputHeight = outputHeight
         lastFXPixelFormat = pixelFormat
+        metalFXLogPending = true
 #else
         metalFXScaler = nil
         metalFXInputTexture = nil
         metalFXOutputTexture = nil
+        metalFXLogPending = false
 #endif
     }
 }

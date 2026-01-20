@@ -60,6 +60,11 @@ struct LinkVertexOut {
     float4 color;
 };
 
+struct PresentVertexOut {
+    float4 position [[position]];
+    float2 texCoord;
+};
+
 float hash11(float p) {
     float x = fract(p * 0.1031);
     x *= x + 33.33;
@@ -274,4 +279,23 @@ fragment float4 linkFragment(LinkVertexOut in [[stage_in]],
         return float4(float3(1.0 - uniforms.linkAlpha, uniforms.linkAlpha, 0.25), 1.0);
     }
     return float4(in.color.rgb, alpha);
+}
+
+vertex PresentVertexOut presentVertex(uint vid [[vertex_id]]) {
+    float2 positions[3] = {
+        float2(-1.0, -1.0),
+        float2(3.0, -1.0),
+        float2(-1.0, 3.0)
+    };
+    float2 pos = positions[vid];
+    PresentVertexOut out;
+    out.position = float4(pos, 0.0, 1.0);
+    out.texCoord = float2((pos.x + 1.0) * 0.5, (1.0 - (pos.y + 1.0) * 0.5));
+    return out;
+}
+
+fragment float4 presentFragment(PresentVertexOut in [[stage_in]],
+                                texture2d<float> colorTexture [[texture(0)]],
+                                sampler colorSampler [[sampler(0)]]) {
+    return colorTexture.sample(colorSampler, in.texCoord);
 }
