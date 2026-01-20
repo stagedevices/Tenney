@@ -186,7 +186,18 @@ final class AppModel: ObservableObject {
     
     @Published var builderPayload: ScaleBuilderPayload? = nil {
         didSet {
-            if builderPayload?.existing == nil {
+            guard let payload = builderPayload else { return }
+            if let existing = payload.existing {
+                builderLoadedScale = existing
+            } else {
+                builderLoadedScale = nil
+            }
+        }
+    }
+
+    @Published var builderLoadedScale: TenneyScale? = nil {
+        didSet {
+            if builderLoadedScale?.id != oldValue?.id {
                 clearLoadedScaleMetadata()
             }
         }
@@ -201,6 +212,7 @@ final class AppModel: ObservableObject {
 
     func unloadBuilderScale() {
         builderPayload = nil
+        builderLoadedScale = nil
         builderStagingBaseCount = nil
         builderPresented = false
     }

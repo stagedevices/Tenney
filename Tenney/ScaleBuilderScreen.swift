@@ -50,7 +50,7 @@ struct ScaleBuilderScreen: View {
         if store.payload.existing != nil {
             store.payload.existing = nil
         }
-        app.builderPayload = nil
+        app.unloadBuilderScale()
 
         // 2) Deselect nodes + 3) reset delta flag (handled by Lattice via NotificationCenter)
         NotificationCenter.default.post(
@@ -359,7 +359,6 @@ struct ScaleBuilderScreen: View {
                     app.setMicActive(true)
                     pausedMicForBuilder = false
                 }
-                app.clearLoadedScaleMetadata()
             }
             .onChange(of: store.name) { _ in syncLoadedScaleMetadata() }
             .onChange(of: store.descriptionText) { _ in syncLoadedScaleMetadata() }
