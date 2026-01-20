@@ -18,10 +18,13 @@ final class CommunityPacksStore: ObservableObject {
     @Published private(set) var state: LoadState = .idle
     @Published private(set) var showingCachedBanner: Bool = false
     @Published private(set) var installingPackIDs: Set<String> = []
+    @Published private(set) var installedPackIDs: Set<String> = []
+    @Published private(set) var updateAvailablePackIDs: Set<String> = []
     @Published private(set) var deletedPackIDs: Set<String> = []
 
     private var installQueue: [InstallRequest] = []
     private var activeInstallID: String? = nil
+    private var cancellables: Set<AnyCancellable> = []
 
     enum InstallAction {
         case install
@@ -44,7 +47,15 @@ final class CommunityPacksStore: ObservableObject {
         }
     }
 
-    private init() {}
+    private init() {
+        let registry = CommunityInstallRegistryStore.shared
+        registry.$records
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.updateInstallState()
+            }
+            .store(in: &cancellables)
+    }
 
     func refresh(force: Bool) async {
         guard state != .loading else { return }
@@ -53,7 +64,7 @@ final class CommunityPacksStore: ObservableObject {
 
         do {
             let result = try await fetchRemote()
-            packs = result
+            setPacks(result)
             setState(.loaded)
             showingCachedBanner = false
             return
@@ -70,7 +81,7 @@ final class CommunityPacksStore: ObservableObject {
             let remoteError = error
             do {
                 let cached = try loadCached()
-                packs = cached
+                setPacks(cached)
                 setState(.loaded)
                 showingCachedBanner = true
                 return
@@ -122,7 +133,9 @@ final class CommunityPacksStore: ObservableObject {
         action: InstallAction = .install,
         resolution: InstallResolution = .overwrite
     ) {
-        deletedPackIDs.remove(pack.packID)
+        if deletedPackIDs.remove(pack.packID) != nil {
+            updateInstallState()
+        }
         guard installingPackIDs.contains(pack.packID) == false else { return }
         guard installQueue.contains(where: { $0.pack.packID == pack.packID }) == false else { return }
         installQueue.append(InstallRequest(pack: pack, action: action, resolution: resolution))
@@ -131,6 +144,14 @@ final class CommunityPacksStore: ObservableObject {
 
     func isDeleted(_ packID: String) -> Bool {
         deletedPackIDs.contains(packID)
+    }
+
+    func isInstalled(_ packID: String) -> Bool {
+        installedPackIDs.contains(packID)
+    }
+
+    func isUpdateAvailable(_ packID: String) -> Bool {
+        updateAvailablePackIDs.contains(packID) && installedPackIDs.contains(packID)
     }
 
     func uninstall(pack: CommunityPackViewModel) {
@@ -145,6 +166,13 @@ final class CommunityPacksStore: ObservableObject {
         registry.removeInstalled(packID: pack.packID)
         deletedPackIDs.insert(pack.packID)
         removeFromInstallQueue(packID: pack.packID)
+        installedPackIDs.remove(pack.packID)
+        updateAvailablePackIDs.remove(pack.packID)
+        updateInstallState()
+        #if DEBUG
+        assert(!installedPackIDs.contains(pack.packID))
+        assert(!updateAvailablePackIDs.contains(pack.packID))
+        #endif
     }
 
     private func startNextInstallIfNeeded() {
@@ -255,6 +283,26 @@ final class CommunityPacksStore: ObservableObject {
         if activeInstallID == packID {
             activeInstallID = nil
         }
+    }
+
+    private func setPacks(_ packs: [CommunityPackViewModel]) {
+        self.packs = packs
+        updateInstallState()
+    }
+
+    private func updateInstallState() {
+        let registry = CommunityInstallRegistryStore.shared
+        let installedIDs = Set(registry.records.keys).subtracting(deletedPackIDs)
+        installedPackIDs = installedIDs
+        var updates: Set<String> = []
+        for pack in packs {
+            guard installedIDs.contains(pack.packID),
+                  let record = registry.records[pack.packID] else { continue }
+            if record.installedContentHash != pack.contentHash {
+                updates.insert(pack.packID)
+            }
+        }
+        updateAvailablePackIDs = updates
     }
 
     private func fetchRemote() async throws -> [CommunityPackViewModel] {

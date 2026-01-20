@@ -55,7 +55,6 @@ struct CommunityPacksPageList: View {
     @ObservedObject private var store = CommunityPacksStore.shared
     @ObservedObject private var library = ScaleLibraryStore.shared
     @ObservedObject private var tagStore = TagStore.shared
-    @ObservedObject private var registry = CommunityInstallRegistryStore.shared
     @State private var didTriggerRefresh = false
     @State private var selectedPack: CommunityPackViewModel?
     @Namespace private var packNamespace
@@ -190,13 +189,12 @@ struct CommunityPacksPageList: View {
     }
 
     private func isInstalled(_ pack: CommunityPackViewModel) -> Bool {
-        registry.isInstalled(pack.packID)
+        store.isInstalled(pack.packID)
     }
 
     private func updateAvailable(_ pack: CommunityPackViewModel) -> Bool {
         guard !isDeleted(pack) else { return false }
-        guard let record = registry.record(for: pack.packID) else { return false }
-        return record.installedContentHash != pack.contentHash
+        return store.isUpdateAvailable(pack.packID)
     }
 
     private func isDeleted(_ pack: CommunityPackViewModel) -> Bool {
@@ -247,7 +245,6 @@ private struct CommunityPacksSections: View {
     let filteredPacks: [CommunityPackViewModel]
     @Binding var selectedPack: CommunityPackViewModel?
     let namespace: Namespace.ID
-    @ObservedObject private var registry = CommunityInstallRegistryStore.shared
     @ObservedObject private var store = CommunityPacksStore.shared
 
     var body: some View {
@@ -255,10 +252,10 @@ private struct CommunityPacksSections: View {
         let featured = filteredPacks.filter { $0.isFeatured && !store.isDeleted($0.packID) }
         let featuredIDs = Set(featured.map { $0.packID })
         let installed = filteredPacks.filter {
-            registry.isInstalled($0.packID) && !featuredIDs.contains($0.packID) && !store.isDeleted($0.packID)
+            store.isInstalled($0.packID) && !featuredIDs.contains($0.packID) && !store.isDeleted($0.packID)
         }
         let availablePacks = filteredPacks.filter {
-            !registry.isInstalled($0.packID) && !featuredIDs.contains($0.packID) && !store.isDeleted($0.packID)
+            !store.isInstalled($0.packID) && !featuredIDs.contains($0.packID) && !store.isDeleted($0.packID)
         }
         let browseAll = availablePacks + deleted.filter { !featuredIDs.contains($0.packID) }
 
@@ -272,7 +269,7 @@ private struct CommunityPacksSections: View {
                                 pack: pack,
                                 isInstalling: store.installingPackIDs.contains(pack.packID),
                                 updateAvailable: updateAvailable(pack),
-                                isInstalled: registry.isInstalled(pack.packID),
+                                isInstalled: store.isInstalled(pack.packID),
                                 onOpen: { selectedPack = pack },
                                 onInstall: { store.enqueueInstall(pack: pack, action: action(for: pack)) },
                                 namespace: namespace
@@ -330,8 +327,7 @@ private struct CommunityPacksSections: View {
 
     private func updateAvailable(_ pack: CommunityPackViewModel) -> Bool {
         guard !store.isDeleted(pack.packID) else { return false }
-        guard let record = registry.record(for: pack.packID) else { return false }
-        return record.installedContentHash != pack.contentHash
+        return store.isUpdateAvailable(pack.packID)
     }
 }
 
@@ -633,7 +629,6 @@ private struct CommunityPackDetailView: View {
     let pack: CommunityPackViewModel
     let namespace: Namespace.ID
     @ObservedObject private var store = CommunityPacksStore.shared
-    @ObservedObject private var registry = CommunityInstallRegistryStore.shared
     @Environment(\.openURL) private var openURL
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -643,18 +638,17 @@ private struct CommunityPackDetailView: View {
     @State private var revealContent = false
     @State private var showChangelog = false
 
-    private var installedRecord: CommunityInstallRecord? {
-        registry.record(for: pack.packID)
+    private var isInstalled: Bool {
+        store.isInstalled(pack.packID)
     }
 
     private var updateAvailable: Bool {
         guard !store.isDeleted(pack.packID) else { return false }
-        guard let record = installedRecord else { return false }
-        return record.installedContentHash != pack.contentHash
+        return store.isUpdateAvailable(pack.packID)
     }
 
     private var primaryActionTitle: String {
-        if installedRecord == nil { return "Install" }
+        if !isInstalled { return "Install" }
         if updateAvailable { return "Update" }
         return "Open"
     }
@@ -718,7 +712,7 @@ private struct CommunityPackDetailView: View {
                             onPress: handlePrimaryAction
                         )
 
-                        if installedRecord != nil && !updateAvailable {
+                        if isInstalled && !updateAvailable {
                             Button("Uninstall") {
                                 showUninstallConfirm = true
                             }
@@ -863,7 +857,7 @@ private struct CommunityPackDetailView: View {
     }
 
     private var actionIcon: String {
-        if installedRecord == nil {
+        if !isInstalled {
             return "arrow.down.circle.fill"
         }
         if updateAvailable {
@@ -873,7 +867,7 @@ private struct CommunityPackDetailView: View {
     }
 
     private func handlePrimaryAction() {
-        if installedRecord == nil || updateAvailable {
+        if !isInstalled || updateAvailable {
             let collisions = store.collisions(for: pack)
             if collisions.isEmpty {
                 resolveInstall(.overwrite)
