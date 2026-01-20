@@ -2867,7 +2867,7 @@ struct LatticeView: View {
             store.stopSelectionAudio(hard: true)
             store.stopAllLatticeVoices(hard: true)
             ToneOutputEngine.shared.builderDidDismiss()
-            store.resetStagingDelta()
+            store.endStaging()
             withAnimation(.snappy) { store.clearSelection() }
             app.unloadBuilderScale()
             keepTrayOpenAfterClear = false
@@ -4045,10 +4045,16 @@ struct LatticeView: View {
                         withAnimation(.snappy) { store.clearSelection() }
                     }
 
-                    if (u?["resetDelta"] as? Bool) == true {
+                    if (u?["endStaging"] as? Bool) == true {
+                        DispatchQueue.main.async {
+                            store.endStaging()
+                        }
+                    } else if (u?["resetDelta"] as? Bool) == true {
                         // Canonical “baseline reset” you already have (used when starting builder/staging).
                         // This is the safest no-regression primitive if it exists.
-                        store.beginStaging()
+                        DispatchQueue.main.async {
+                            store.beginStaging()
+                        }
                     }
                 }
                 .onChange(of: app.builderLoadedScale?.id) { id in
