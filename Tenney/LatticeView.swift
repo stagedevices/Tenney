@@ -2436,11 +2436,20 @@ struct LatticeView: View {
     private struct SelectionTray: View {
         @ObservedObject var store: LatticeStore
         @ObservedObject var app: AppModel
+        let stopInfoPreview: (Bool) -> Void
 
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
+        @Environment(\.colorScheme) private var colorScheme
+        @AppStorage(SettingsKeys.selectionTrayClearBehavior)
+        private var clearBehaviorRaw: String = SelectionTrayClearBehavior.contextual.rawValue
         @Namespace private var addNS
+
+        private var clearBehaviorOverride: SelectionTrayClearBehavior {
+            SelectionTrayClearBehavior(rawValue: clearBehaviorRaw) ?? .contextual
+        }
         
         private var hasDelta: Bool { store.additionsSinceBaseline > 0 }
+        private var isScaleLoaded: Bool { app.builderPayload?.existing != nil }
 
         // “open sheet” = ScaleBuilder is currently presented (you already set this in ScaleBuilderScreen)
         private var isAddingToOpenSheet: Bool { app.builderPresented }
@@ -2521,17 +2530,47 @@ struct LatticeView: View {
             Circle().stroke(Color.secondary.opacity(0.12), lineWidth: 1)
         }
         
-        private struct GlassBlueRoundedRect: ViewModifier {
+        private struct GlassClearRoundedRect: ViewModifier {
             let corner: CGFloat
             func body(content: Content) -> some View {
                 let rr = RoundedRectangle(cornerRadius: corner, style: .continuous)
                 if #available(iOS 26.0, *) {
-                    content.glassEffect(.regular.tint(.blue), in: rr)
+                    content.glassEffect(.regular, in: rr)
                 } else {
                     content
                         .background(.ultraThinMaterial, in: rr)
-                        .background(rr.fill(Color.blue.opacity(0.22)))
-                        .overlay(rr.stroke(Color.blue.opacity(0.35), lineWidth: 1))
+                        .overlay(rr.stroke(Color.secondary.opacity(0.14), lineWidth: 1))
+                }
+            }
+        }
+
+        private struct GlassAmberRoundedRect: ViewModifier {
+            let corner: CGFloat
+            func body(content: Content) -> some View {
+                let rr = RoundedRectangle(cornerRadius: corner, style: .continuous)
+                let amber = Color(red: 0.96, green: 0.58, blue: 0.12)
+                if #available(iOS 26.0, *) {
+                    content.glassEffect(.regular.tint(amber), in: rr)
+                } else {
+                    content
+                        .background(.ultraThinMaterial, in: rr)
+                        .background(rr.fill(amber.opacity(0.28)))
+                        .overlay(rr.stroke(amber.opacity(0.45), lineWidth: 1))
+                }
+            }
+        }
+
+        private struct GlassRedRoundedRect: ViewModifier {
+            let corner: CGFloat
+            func body(content: Content) -> some View {
+                let rr = RoundedRectangle(cornerRadius: corner, style: .continuous)
+                if #available(iOS 26.0, *) {
+                    content.glassEffect(.regular.tint(.red), in: rr)
+                } else {
+                    content
+                        .background(.ultraThinMaterial, in: rr)
+                        .background(rr.fill(Color.red.opacity(0.28)))
+                        .overlay(rr.stroke(Color.red.opacity(0.45), lineWidth: 1))
                 }
             }
         }
@@ -2583,20 +2622,119 @@ struct LatticeView: View {
 
 
         
-        private var clearButton: some View {
-            Button {
+        private enum ClearState {
+            case neutral
+            case amber
+            case red
+        }
+
+        private var baseClearState: ClearState {
+            if isScaleLoaded && hasDelta { return .red }
+            if isScaleLoaded { return .neutral }
+            if hasDelta || store.selectedCount > 0 { return .amber }
+            return .neutral
+        }
+
+        private var effectiveClearState: ClearState {
+            switch clearBehaviorOverride {
+            case .contextual:
+                return baseClearState
+            case .neverUnload:
+                return baseClearState == .red ? .amber : baseClearState
+            case .alwaysUnloadWhenLoaded:
+                if isScaleLoaded { return .red }
+                return baseClearState
+            }
+        }
+
+        private var clearAccessibilityLabel: String {
+            switch effectiveClearState {
+            case .neutral:
+                return "Clear selection"
+            case .amber:
+                return "Clear selection and reset changes"
+            case .red:
+                return "Discard changes and unload scale"
+            }
+        }
+
+        private var clearHelpText: String {
+            switch effectiveClearState {
+            case .neutral:
+                return "Clears selection. Keeps loaded scale."
+            case .amber:
+                return "Clears selection and resets Δ."
+            case .red:
+                return "Discards edits, unloads the current scale."
+            }
+        }
+
+        private var clearIconColor: Color {
+            switch effectiveClearState {
+            case .neutral:
+                return colorScheme == .dark ? .white : .black
+            case .amber:
+                return colorScheme == .dark ? .white : .black
+            case .red:
+                return .white
+            }
+        }
+
+        private func performClearAction(state: ClearState) {
+            let selectionExists = store.selectedCount > 0
+
+            switch state {
+            case .neutral:
+                guard selectionExists else { return }
+                store.stopSelectionAudio(hard: true)
                 withAnimation(.snappy) { store.clearSelection() }
+            case .amber:
+                stopInfoPreview(true)
+                store.stopSelectionAudio(hard: true)
+                store.resetStagingDelta()
+                withAnimation(.snappy) { store.clearSelection() }
+            case .red:
+                stopInfoPreview(true)
+                store.stopSelectionAudio(hard: true)
+                if app.builderPresented {
+                    ToneOutputEngine.shared.builderDidDismiss()
+                }
+                store.resetStagingDelta()
+                withAnimation(.snappy) { store.clearSelection() }
+                app.unloadBuilderScale()
+            }
+        }
+
+        @ViewBuilder
+        private func clearButtonLabel(for state: ClearState) -> some View {
+            let icon = Image(systemName: "xmark")
+                .font(.footnote.weight(.bold))
+                .foregroundStyle(clearIconColor)
+                .frame(width: ctl, height: ctl)
+
+            switch state {
+            case .neutral:
+                icon.modifier(GlassClearRoundedRect(corner: corner))
+            case .amber:
+                icon.modifier(GlassAmberRoundedRect(corner: corner))
+            case .red:
+                icon.modifier(GlassRedRoundedRect(corner: corner))
+            }
+        }
+
+        private var clearButton: some View {
+            let state = effectiveClearState
+
+            return Button {
+                performClearAction(state: state)
             } label: {
-                Image(systemName: "xmark")
-                    .font(.footnote.weight(.bold))
-                    .foregroundStyle(.white)
-                    .frame(width: ctl, height: ctl)
-                    .modifier(GlassBlueRoundedRect(corner: corner))
+                clearButtonLabel(for: state)
             }
             .buttonStyle(.plain)
-            .disabled(store.selectedCount == 0)
-            .opacity(store.selectedCount == 0 ? 0.35 : 1)
-            .accessibilityLabel("Clear selection")
+            .accessibilityLabel(clearAccessibilityLabel)
+#if os(macOS) || targetEnvironment(macCatalyst)
+            .help(clearHelpText)
+#endif
             .contentShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
         }
 
@@ -3534,7 +3672,11 @@ struct LatticeView: View {
             Spacer()
             if !latticePreviewMode {
                 VStack(spacing: 8) {
-                    SelectionTray(store: store, app: app)
+                    SelectionTray(
+                        store: store,
+                        app: app,
+                        stopInfoPreview: { hard in releaseInfoVoice(hard: hard) }
+                    )
 
                     AxisShiftHUD(
                         store: store,

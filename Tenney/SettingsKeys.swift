@@ -111,6 +111,7 @@ enum SettingsKeys {
     static let stageHideStatus   = "tenney.stage.hideStatus"      // Bool
     static let stageKeepAwake    = "tenney.stage.keepAwake"       // Bool
     static let stageMinimalUI    = "tenney.stage.minimalUI"       // Bool
+    static let selectionTrayClearBehavior = "tenney.lattice.selectionTrayClearBehavior" // String
 
     // Sound
     static let attackMs   = "tenney.audio.attackMs"        // Double
