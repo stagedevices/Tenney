@@ -954,6 +954,51 @@ final class LatticeStore: ObservableObject {
         return selected.subtracting(base).count
     }
 
+    // ===== Loaded scale editing baseline =====
+    private struct LoadedScaleBaseline: Equatable {
+        let pivot: LatticeCoord
+        let axisShift: [Int:Int]
+        let selected: Set<LatticeCoord>
+        let selectedGhosts: Set<GhostMonzo>
+        let selectionOrder: [LatticeCoord]
+        let selectionOrderGhosts: [GhostMonzo]
+        let octaveOffsetByCoord: [LatticeCoord: Int]
+        let octaveOffsetByGhost: [GhostMonzo: Int]
+    }
+
+    private var loadedScaleBaseline: LoadedScaleBaseline? = nil
+
+    func captureLoadedScaleBaseline() {
+        loadedScaleBaseline = LoadedScaleBaseline(
+            pivot: pivot,
+            axisShift: axisShift,
+            selected: selected,
+            selectedGhosts: selectedGhosts,
+            selectionOrder: selectionOrder,
+            selectionOrderGhosts: selectionOrderGhosts,
+            octaveOffsetByCoord: octaveOffsetByCoord,
+            octaveOffsetByGhost: octaveOffsetByGhost
+        )
+    }
+
+    func clearLoadedScaleBaseline() {
+        loadedScaleBaseline = nil
+    }
+
+    var loadedScaleEdited: Bool {
+        guard let baseline = loadedScaleBaseline else { return false }
+        if additionsSinceBaseline > 0 { return true }
+        if pivot != baseline.pivot { return true }
+        if axisShift != baseline.axisShift { return true }
+        if selected != baseline.selected { return true }
+        if selectedGhosts != baseline.selectedGhosts { return true }
+        if selectionOrder != baseline.selectionOrder { return true }
+        if selectionOrderGhosts != baseline.selectionOrderGhosts { return true }
+        if octaveOffsetByCoord != baseline.octaveOffsetByCoord { return true }
+        if octaveOffsetByGhost != baseline.octaveOffsetByGhost { return true }
+        return false
+    }
+
     /// Ordered RatioRefs for Builder — includes plane and overlay selections.
     func selectionRefs(pivot: LatticeCoord, axisShift: [Int:Int]) -> [RatioRef] {
         var refs: [RatioRef] = []

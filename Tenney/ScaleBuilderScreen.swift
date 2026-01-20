@@ -63,6 +63,21 @@ struct ScaleBuilderScreen: View {
         dismiss()
     }
 
+    private func syncLoadedScaleMetadata() {
+        let edited: Bool
+        if let existing = store.payload.existing {
+            edited = store.makeScaleSnapshot() != existing
+        } else {
+            edited = false
+        }
+        app.updateLoadedScaleMetadata(
+            name: store.name,
+            description: store.descriptionText,
+            existing: store.payload.existing,
+            isEdited: edited
+        )
+    }
+
     private var oscEffectiveValues: LissajousPreviewConfigBuilder.EffectiveValues {
         LissajousPreviewConfigBuilder.effectiveValues(
             liveSamples: lissaLiveSamples,
@@ -307,6 +322,7 @@ struct ScaleBuilderScreen: View {
                     store.payload.items = s.degrees
                     store.rebuild()
                 }
+                syncLoadedScaleMetadata()
                 
                 // Sound gating per spec (turn on while in Builder, and remember original)
                 enteredWithSoundOn = soundOn
@@ -343,7 +359,10 @@ struct ScaleBuilderScreen: View {
                     app.setMicActive(true)
                     pausedMicForBuilder = false
                 }
+                app.clearLoadedScaleMetadata()
             }
+            .onChange(of: store.name) { _ in syncLoadedScaleMetadata() }
+            .onChange(of: store.descriptionText) { _ in syncLoadedScaleMetadata() }
             .onChange(of: soundOn) { enabled in
                 if !enabled { stopAllPadVoices() } // hard mute when toggled off
             }

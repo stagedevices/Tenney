@@ -2439,6 +2439,7 @@ struct LatticeView: View {
         let stopInfoPreview: (Bool) -> Void
 
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
+        @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
         @Environment(\.colorScheme) private var colorScheme
         @AppStorage(SettingsKeys.selectionTrayClearBehavior)
         private var clearBehaviorRaw: String = SelectionTrayClearBehavior.contextual.rawValue
@@ -2468,7 +2469,155 @@ struct LatticeView: View {
         private let addCompactSide: CGFloat = 40   // square-ish compact width for "+"
         private let corner: CGFloat = 12       // rounded-rect corner radius
         private let trayPadV: CGFloat = 8      // reduce padding so net height stays ~same
+        private let railSpacing: CGFloat = 4
 
+        private struct LoadedScaleStatus: Equatable {
+            let isLoaded: Bool
+            let displayName: String
+            let provenanceText: String?
+            let isEdited: Bool
+        }
+
+        private var loadedScaleStatus: LoadedScaleStatus {
+            guard let existing = app.builderPayload?.existing else {
+                return LoadedScaleStatus(isLoaded: false, displayName: "", provenanceText: nil, isEdited: false)
+            }
+            let rawName = app.loadedScaleDisplayNameOverride ?? existing.name
+            let trimmedName = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+            let displayName = trimmedName.isEmpty ? "Untitled Scale" : trimmedName
+            let provenanceText: String?
+            if let provenance = existing.provenance, provenance.kind == .communityPack {
+                provenanceText = "Community: \(provenance.packName)"
+            } else {
+                provenanceText = nil
+            }
+            let isEdited = store.loadedScaleEdited || app.loadedScaleMetadataEdited
+            return LoadedScaleStatus(
+                isLoaded: true,
+                displayName: displayName,
+                provenanceText: provenanceText,
+                isEdited: isEdited
+            )
+        }
+
+        private var loadedScaleHelpText: String {
+            let status = loadedScaleStatus
+            var text = "Loaded: \(status.displayName)"
+            if let provenance = status.provenanceText {
+                text += " • \(provenance)"
+            }
+            text += status.isEdited ? " — Edited" : " — Clean"
+            return text
+        }
+
+        private var loadedScaleAccessibilityLabel: String {
+            let status = loadedScaleStatus
+            var parts = ["Loaded scale", status.displayName, status.isEdited ? "Edited" : "Clean"]
+            if let provenance = status.provenanceText {
+                parts.append(provenance)
+            }
+            return parts.joined(separator: ", ")
+        }
+
+        private var warmAmber: Color {
+            Color(red: 0.96, green: 0.58, blue: 0.12)
+        }
+
+        private var loadedScaleTint: Color {
+            loadedScaleStatus.isEdited ? warmAmber : .secondary
+        }
+
+        @ViewBuilder
+        private var loadedScaleNameView: some View {
+            let nameText = Text(loadedScaleStatus.displayName)
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .layoutPriority(2)
+
+            if let provenance = loadedScaleStatus.provenanceText {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 4) {
+                        nameText
+                        Text("• \(provenance)")
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .layoutPriority(0)
+                    }
+                    nameText
+                }
+            } else {
+                nameText
+            }
+        }
+
+        @ViewBuilder
+        private var loadedScaleStateIcon: some View {
+            let symbol = loadedScaleStatus.isEdited ? "pencil.circle" : "checkmark.circle"
+            if #available(iOS 17.0, *) {
+                Image(systemName: symbol)
+                    .symbolRenderingMode(.hierarchical)
+                    .contentTransition(.symbolEffect(.replace.downUp.byLayer))
+            } else {
+                Image(systemName: symbol)
+                    .symbolRenderingMode(.hierarchical)
+            }
+        }
+
+        private var loadedScaleRail: some View {
+            HStack(spacing: 8) {
+                HStack(spacing: 6) {
+                    ZStack {
+                        Circle()
+                            .stroke(loadedScaleTint.opacity(0.45), lineWidth: 1)
+                        Circle()
+                            .fill(loadedScaleTint.opacity(0.35))
+                            .frame(width: 3.5, height: 3.5)
+                    }
+                    .frame(width: 7, height: 7)
+
+                    Text(loadedScaleStatus.isEdited ? "Editing" : "Loaded")
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+
+                    loadedScaleNameView
+                }
+                .layoutPriority(1)
+
+                Spacer(minLength: 8)
+
+                HStack(spacing: 4) {
+                    loadedScaleStateIcon
+                        .font(.caption.weight(.semibold))
+                    if loadedScaleStatus.isEdited {
+                        Text("Δ")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(warmAmber)
+                    }
+                }
+                .foregroundStyle(loadedScaleStatus.isEdited ? warmAmber : .secondary)
+            }
+            .font(.caption2)
+            .padding(.horizontal, 12)
+            .padding(.bottom, 4)
+            .padding(.top, 2)
+            .background(
+                Group {
+                    if reduceTransparency {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Color.secondary.opacity(0.12))
+                    }
+                }
+            )
+            .allowsHitTesting(false)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(loadedScaleAccessibilityLabel)
+#if os(macOS) || targetEnvironment(macCatalyst)
+            .help(loadedScaleHelpText)
+#endif
+        }
 
         private enum EmptyMode: String, CaseIterable, Identifiable {
             case recents
@@ -3029,22 +3178,36 @@ struct LatticeView: View {
         // MARK: - Body
 
         var body: some View {
-            ZStack {
-                emptyRow
-                    .opacity(isActive ? 0 : 1)
-                    .offset(y: isActive ? 6 : 0)
-                    .allowsHitTesting(!isActive)
+            let status = loadedScaleStatus
+            let railTransition: AnyTransition = reduceMotion
+                ? .opacity
+                : .move(edge: .bottom).combined(with: .opacity)
 
-                activeRow
-                    .opacity(isActive ? 1 : 0)
-                    .offset(y: isActive ? 0 : 6)
-                    .allowsHitTesting(isActive)
+            return VStack(spacing: railSpacing) {
+                ZStack {
+                    emptyRow
+                        .opacity(isActive ? 0 : 1)
+                        .offset(y: isActive ? 6 : 0)
+                        .allowsHitTesting(!isActive)
+
+                    activeRow
+                        .opacity(isActive ? 1 : 0)
+                        .offset(y: isActive ? 0 : 6)
+                        .allowsHitTesting(isActive)
+                }
+
+                if status.isLoaded {
+                    loadedScaleRail
+                        .transition(railTransition)
+                }
             }
             .padding(.horizontal, 0)
             .padding(.vertical, trayPadV) // <- reduced to keep tray height stable while controls grow
             .animation(.spring(response: 0.32, dampingFraction: 0.9), value: isActive)
+            .animation(reduceMotion ? .easeOut(duration: 0.12) : .snappy(duration: 0.22), value: status.isLoaded)
+            .animation(reduceMotion ? .easeOut(duration: 0.12) : .snappy(duration: 0.2), value: status.isEdited)
             .frame(maxWidth: .infinity)
-            .modifier(_SelectionTrayContainer())
+            .modifier(_SelectionTrayContainer(showsRail: status.isLoaded, reduceTransparency: reduceTransparency))
             .fixedSize(horizontal: false, vertical: true)
             .background(
                 GeometryReader { proxy in
@@ -3058,6 +3221,13 @@ struct LatticeView: View {
     // MARK: - Container polish (heavier than AxisShiftHUD)
 
     private struct _SelectionTrayContainer: ViewModifier {
+        let showsRail: Bool
+        let reduceTransparency: Bool
+
+        private var strokeOpacity: Double {
+            reduceTransparency ? 0.18 : (showsRail ? 0.14 : 0.10)
+        }
+
         func body(content: Content) -> some View {
             Group {
                 if #available(iOS 26.0, *) {
@@ -3065,12 +3235,20 @@ struct LatticeView: View {
                         .glassEffect(.regular, in: .rect(cornerRadius: 16))
                         .overlay(
                             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .stroke(Color.secondary.opacity(0.10), lineWidth: 1)
+                                .stroke(Color.secondary.opacity(strokeOpacity), lineWidth: 1)
                         )
                 } else {
                     GlassCard {
                         content
                     }
+                    .overlay(
+                        Group {
+                            if showsRail || reduceTransparency {
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .stroke(Color.secondary.opacity(strokeOpacity), lineWidth: 1)
+                            }
+                        }
+                    )
                 }
             }
         }
@@ -3811,6 +3989,13 @@ struct LatticeView: View {
                         // Canonical “baseline reset” you already have (used when starting builder/staging).
                         // This is the safest no-regression primitive if it exists.
                         store.beginStaging()
+                    }
+                }
+                .onChange(of: app.builderPayload?.existing?.id) { id in
+                    if id != nil {
+                        store.captureLoadedScaleBaseline()
+                    } else {
+                        store.clearLoadedScaleBaseline()
                     }
                 }
 

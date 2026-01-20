@@ -184,7 +184,16 @@ final class AppModel: ObservableObject {
     
     // MARK: - Builder staging
     
-    @Published var builderPayload: ScaleBuilderPayload? = nil
+    @Published var builderPayload: ScaleBuilderPayload? = nil {
+        didSet {
+            if builderPayload?.existing == nil {
+                clearLoadedScaleMetadata()
+            }
+        }
+    }
+
+    @Published var loadedScaleDisplayNameOverride: String? = nil
+    @Published var loadedScaleMetadataEdited: Bool = false
     
     /// When user taps "Add from Lattice" in Builder, we dismiss the sheet and
     /// When Builder closes with “Add from Lattice”, remember the base count.
@@ -194,6 +203,33 @@ final class AppModel: ObservableObject {
         builderPayload = nil
         builderStagingBaseCount = nil
         builderPresented = false
+    }
+
+    func updateLoadedScaleMetadata(
+        name: String,
+        description: String,
+        existing: TenneyScale?,
+        isEdited: Bool? = nil
+    ) {
+        loadedScaleDisplayNameOverride = name
+        if let isEdited {
+            loadedScaleMetadataEdited = isEdited
+            return
+        }
+        guard let existing else {
+            loadedScaleMetadataEdited = false
+            return
+        }
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedDescription = description.trimmingCharacters(in: .whitespacesAndNewlines)
+        let existingName = existing.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let existingDescription = existing.descriptionText.trimmingCharacters(in: .whitespacesAndNewlines)
+        loadedScaleMetadataEdited = trimmedName != existingName || trimmedDescription != existingDescription
+    }
+
+    func clearLoadedScaleMetadata() {
+        loadedScaleDisplayNameOverride = nil
+        loadedScaleMetadataEdited = false
     }
     
     func configureAndStart() {
