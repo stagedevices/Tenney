@@ -987,7 +987,6 @@ final class LatticeStore: ObservableObject {
 
     var loadedScaleEdited: Bool {
         guard let baseline = loadedScaleBaseline else { return false }
-        if additionsSinceBaseline > 0 { return true }
         if pivot != baseline.pivot { return true }
         if axisShift != baseline.axisShift { return true }
         if selected != baseline.selected { return true }
