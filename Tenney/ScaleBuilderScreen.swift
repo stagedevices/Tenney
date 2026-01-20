@@ -58,7 +58,7 @@ struct ScaleBuilderScreen: View {
         NotificationCenter.default.post(
             name: .tenneyBuilderDidFinish,
             object: nil,
-            userInfo: ["clearSelection": true, "resetDelta": true]
+            userInfo: ["clearSelection": true, "endStaging": true]
         )
 
         // 4) Dismiss
