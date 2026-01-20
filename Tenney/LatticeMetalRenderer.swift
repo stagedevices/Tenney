@@ -314,7 +314,10 @@ final class LatticeMetalRenderer: NSObject, MTKViewDelegate {
 
         let renderTarget: MTLTexture
 #if canImport(MetalFX)
-        let canUseMetalFX = useMetalFX && metalFXInputTexture != nil && (metalFXScaler as? any MTLFXSpatialScaler) != nil
+        let canUseMetalFX = useMetalFX
+            && metalFXInputTexture != nil
+            && metalFXOutputTexture != nil
+            && (metalFXScaler as? any MTLFXSpatialScaler) != nil
 #else
         let canUseMetalFX = false
 #endif
@@ -376,6 +379,7 @@ final class LatticeMetalRenderer: NSObject, MTKViewDelegate {
 #if canImport(MetalFX)
         if canUseMetalFX,
            let metalFXTexture = metalFXInputTexture,
+           let metalFXOutput = metalFXOutputTexture,
            let scaler = metalFXScaler as? any MTLFXSpatialScaler {
             scaler.inputTexture = metalFXTexture
             scaler.outputTexture = drawable.texture
