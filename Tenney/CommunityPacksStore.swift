@@ -133,7 +133,9 @@ final class CommunityPacksStore: ObservableObject {
         action: InstallAction = .install,
         resolution: InstallResolution = .overwrite
     ) {
-        deletedPackIDs.remove(pack.packID)
+        if deletedPackIDs.remove(pack.packID) != nil {
+            updateInstallState()
+        }
         guard installingPackIDs.contains(pack.packID) == false else { return }
         guard installQueue.contains(where: { $0.pack.packID == pack.packID }) == false else { return }
         installQueue.append(InstallRequest(pack: pack, action: action, resolution: resolution))
@@ -149,7 +151,7 @@ final class CommunityPacksStore: ObservableObject {
     }
 
     func isUpdateAvailable(_ packID: String) -> Bool {
-        updateAvailablePackIDs.contains(packID)
+        updateAvailablePackIDs.contains(packID) && installedPackIDs.contains(packID)
     }
 
     func uninstall(pack: CommunityPackViewModel) {
@@ -164,6 +166,8 @@ final class CommunityPacksStore: ObservableObject {
         registry.removeInstalled(packID: pack.packID)
         deletedPackIDs.insert(pack.packID)
         removeFromInstallQueue(packID: pack.packID)
+        installedPackIDs.remove(pack.packID)
+        updateAvailablePackIDs.remove(pack.packID)
         updateInstallState()
         #if DEBUG
         assert(!installedPackIDs.contains(pack.packID))
@@ -288,7 +292,7 @@ final class CommunityPacksStore: ObservableObject {
 
     private func updateInstallState() {
         let registry = CommunityInstallRegistryStore.shared
-        let installedIDs = Set(registry.records.keys)
+        let installedIDs = Set(registry.records.keys).subtracting(deletedPackIDs)
         installedPackIDs = installedIDs
         var updates: Set<String> = []
         for pack in packs {
