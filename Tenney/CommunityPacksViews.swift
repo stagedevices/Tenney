@@ -672,79 +672,79 @@ private struct CommunityPackDetailView: View {
     }
 
     var body: some View {
-        let content = detailContent
-        if #available(iOS 16.0, *) {
-            content
-                .presentationBackground(detailBackdrop)
-        } else {
-            content
-                .background(detailBackdrop.ignoresSafeArea())
-        }
+        detailContent
     }
 
     private var detailContent: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                headerCard
-                    .opacity(heroVisible ? 1 : 0)
-                    .offset(y: heroVisible ? 0 : 18)
+        ZStack {
+            detailBackdrop
+                .ignoresSafeArea()
 
-                DetailSectionCard(title: "What you get") {
-                    HStack(spacing: 16) {
-                        DetailStatView(title: "Scales", value: "\(pack.scaleCount)")
-                        DetailStatView(title: "Typical limit", value: "\(typicalLimit)-limit")
-                    }
-                }
-                .opacity(contentVisible ? 1 : 0)
-                .offset(y: contentVisible ? 0 : 16)
-                .blur(radius: contentVisible ? 0 : 6)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    headerCard
+                        .opacity(heroVisible ? 1 : 0)
+                        .offset(y: heroVisible ? 0 : 18)
 
-                DetailSectionCard(title: "Sample scales") {
-                    VStack(spacing: 10) {
-                        ForEach(sampleScales) { scale in
-                            CommunityScaleRow(
-                                scale: scale,
-                                packID: pack.packID,
-                                onActions: { handleScalePreview(scale) }
-                            )
+                    DetailSectionCard(title: "What you get") {
+                        HStack(spacing: 16) {
+                            DetailStatView(title: "Scales", value: "\(pack.scaleCount)")
+                            DetailStatView(title: "Typical limit", value: "\(typicalLimit)-limit")
                         }
                     }
-                }
-                .opacity(contentVisible ? 1 : 0)
-                .offset(y: contentVisible ? 0 : 16)
-                .blur(radius: contentVisible ? 0 : 6)
+                    .opacity(contentVisible ? 1 : 0)
+                    .offset(y: contentVisible ? 0 : 16)
+                    .blur(radius: contentVisible ? 0 : 6)
 
-                DetailSectionCard(title: "Version & updates") {
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack(spacing: 12) {
-                            Label(pack.version, systemImage: "tag")
-                            if let updated = pack.lastUpdated {
-                                Label(updated.formatted(date: .abbreviated, time: .omitted), systemImage: "calendar")
+                    DetailSectionCard(title: "Sample scales") {
+                        VStack(spacing: 10) {
+                            ForEach(sampleScales) { scale in
+                                CommunityScaleRow(
+                                    scale: scale,
+                                    packID: pack.packID,
+                                    onActions: { handleScalePreview(scale) }
+                                )
                             }
                         }
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    }
+                    .opacity(contentVisible ? 1 : 0)
+                    .offset(y: contentVisible ? 0 : 16)
+                    .blur(radius: contentVisible ? 0 : 6)
 
-                        DisclosureGroup(isExpanded: $showChangelog) {
-                            Text(pack.changelog.isEmpty ? "No changelog provided." : pack.changelog)
-                                .font(.callout)
-                                .foregroundStyle(.secondary)
-                        } label: {
-                            Text("Changelog")
-                                .font(.subheadline.weight(.semibold))
+                    DetailSectionCard(title: "Version & updates") {
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack(spacing: 12) {
+                                Label(pack.version, systemImage: "tag")
+                                if let updated = pack.lastUpdated {
+                                    Label(updated.formatted(date: .abbreviated, time: .omitted), systemImage: "calendar")
+                                }
+                            }
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                            if !trimmedChangelog.isEmpty {
+                                DisclosureGroup(isExpanded: $showChangelog) {
+                                    Text(trimmedChangelog)
+                                        .font(.callout)
+                                        .foregroundStyle(.secondary)
+                                } label: {
+                                    Text("Changelog")
+                                        .font(.subheadline.weight(.semibold))
+                                }
+                            }
                         }
                     }
+                    .opacity(contentVisible ? 1 : 0)
+                    .offset(y: contentVisible ? 0 : 16)
+                    .blur(radius: contentVisible ? 0 : 6)
                 }
-                .opacity(contentVisible ? 1 : 0)
-                .offset(y: contentVisible ? 0 : 16)
-                .blur(radius: contentVisible ? 0 : 6)
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 96)
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
-            .padding(.bottom, 24)
+            .safeAreaInset(edge: .top) { detailToolbar }
+            .safeAreaInset(edge: .bottom) { detailActionBar }
         }
-        .safeAreaInset(edge: .top) { detailToolbar }
-        .safeAreaInset(edge: .bottom) { detailActionBar }
         .onAppear(perform: startReveal)
         .confirmationDialog(
             "Some scales already exist in your Library.",
@@ -771,13 +771,13 @@ private struct CommunityPackDetailView: View {
     }
 
     private var headerCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 8) {
                     Text(pack.title)
-                        .font(.title2.weight(.semibold))
+                        .font(.largeTitle.weight(.semibold))
                     Text("by \(pack.authorName)")
-                        .font(.caption)
+                        .font(.title3.weight(.medium))
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -793,6 +793,8 @@ private struct CommunityPackDetailView: View {
             if !pack.description.isEmpty {
                 Text(pack.description)
                     .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
             }
 
             HStack(spacing: 10) {
@@ -805,7 +807,7 @@ private struct CommunityPackDetailView: View {
                 Text("\(pack.scaleCount) scales")
                 Text(primeLimitLabel)
             }
-            .font(.caption)
+            .font(.caption.monospacedDigit())
             .foregroundStyle(.secondary)
 
             if updateAvailable {
@@ -816,7 +818,8 @@ private struct CommunityPackDetailView: View {
                     .background(Capsule().fill(Color.accentColor.opacity(0.18)))
             }
         }
-        .padding(16)
+        .padding(.vertical, 20)
+        .padding(.horizontal, 18)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             PackCardSurface(cornerRadius: 24)
@@ -894,22 +897,23 @@ private struct CommunityPackDetailView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(pack.title)
                     .font(.headline.weight(.semibold))
+                    .lineLimit(1)
                 Text("Community Pack")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             Spacer()
             Button(action: { dismiss() }) {
-                ZStack {
-                    DetailGlassCircle()
-                    closeSymbol
-                }
-                .frame(width: 34, height: 34)
-                .overlay(
-                    Circle()
-                        .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
-                )
-                .accessibilityLabel("Close")
+                closeSymbol
+                    .frame(width: 28, height: 28)
+                    .background(.ultraThinMaterial, in: Circle())
+                    .overlay(
+                        Circle()
+                            .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
+                    )
+                    .padding(8)
+                    .contentShape(Rectangle())
+                    .accessibilityLabel("Close")
             }
             .buttonStyle(.plain)
         }
@@ -926,6 +930,7 @@ private struct CommunityPackDetailView: View {
                 )
         )
         .opacity(heroVisible ? 1 : 0)
+        .zIndex(1000)
     }
 
     @ViewBuilder
@@ -1037,6 +1042,10 @@ private struct CommunityPackDetailView: View {
                 )
         )
         .opacity(contentVisible ? 1 : 0)
+    }
+
+    private var trimmedChangelog: String {
+        pack.changelog.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private var showsPreviewActions: Bool {
