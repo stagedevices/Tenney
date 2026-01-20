@@ -928,10 +928,10 @@ private struct CommunityPackDetailView: View {
 
     @ViewBuilder
     private var closeSymbol: some View {
-        if #available(iOS 17.0, *) {
+        if #available(iOS 26.0, *) {
             Image(systemName: "xmark")
                 .font(.caption.weight(.semibold))
-                .symbolEffect(.bounce, value: closeSymbolVisible)
+                .symbolEffect(.drawOn, isActive: closeSymbolVisible)
         } else {
             Image(systemName: "xmark")
                 .font(.caption.weight(.semibold))
