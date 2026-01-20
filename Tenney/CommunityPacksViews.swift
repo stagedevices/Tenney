@@ -257,10 +257,10 @@ private struct CommunityPacksSections: View {
         let installed = filteredPacks.filter {
             registry.isInstalled($0.packID) && !featuredIDs.contains($0.packID) && !store.isDeleted($0.packID)
         }
-        var browseAll = filteredPacks.filter {
+        let availablePacks = filteredPacks.filter {
             !registry.isInstalled($0.packID) && !featuredIDs.contains($0.packID) && !store.isDeleted($0.packID)
         }
-        browseAll.append(contentsOf: deleted.filter { !featuredIDs.contains($0.packID) })
+        let browseAll = availablePacks + deleted.filter { !featuredIDs.contains($0.packID) }
 
         VStack(alignment: .leading, spacing: 18) {
             if !featured.isEmpty {
@@ -423,7 +423,7 @@ private struct FeaturedPackCard: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
             .background(Capsule().fill(Color.accentColor.opacity(0.18)))
-            .foregroundStyle(.accent)
+            .foregroundStyle(.accentColor)
     }
 
     private var primeLimitLabel: String {
@@ -554,7 +554,7 @@ private struct PackPrimaryActionButton: View {
                     .font(.caption.weight(.semibold))
             }
         }
-        .buttonStyle(isProminent ? .borderedProminent : .bordered)
+        .modifier(PackButtonStyleModifier(isProminent: isProminent))
         .disabled(isInstalling)
     }
 
@@ -565,6 +565,18 @@ private struct PackPrimaryActionButton: View {
                 .symbolEffect(.pulse, value: animateSymbol)
         } else {
             Image(systemName: systemImage)
+        }
+    }
+}
+
+private struct PackButtonStyleModifier: ViewModifier {
+    let isProminent: Bool
+
+    func body(content: Content) -> some View {
+        if #available(iOS 15.0, macOS 12.0, *) {
+            content.buttonStyle(isProminent ? .borderedProminent : .bordered)
+        } else {
+            content.buttonStyle(.plain)
         }
     }
 }
