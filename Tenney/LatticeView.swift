@@ -2641,9 +2641,13 @@ struct LatticeView: View {
 
         @State private var emptyMode: EmptyMode = .recents
         @State private var addDidCommit: Bool = false
+        @State private var keepTrayOpenAfterClear: Bool = false
 
         private var isActive: Bool {
-            store.selectedCount > 0 || store.additionsSinceBaseline > 0 || isScaleLoaded
+            store.selectedCount > 0
+                || store.additionsSinceBaseline > 0
+                || isScaleLoaded
+                || keepTrayOpenAfterClear
         }
 
         @ViewBuilder
@@ -2834,6 +2838,7 @@ struct LatticeView: View {
             store.stopSelectionAudio(hard: true)
             withAnimation(.snappy) { store.clearSelection() }
             store.resetStagingDelta()
+            keepTrayOpenAfterClear = true
         }
 
         private func performDiscardAndUnload() {
@@ -2845,6 +2850,7 @@ struct LatticeView: View {
             withAnimation(.snappy) { store.clearSelection() }
             store.resetStagingDelta()
             app.unloadBuilderScale()
+            keepTrayOpenAfterClear = false
         }
 
         private func performClearAction(state: ClearState) {
@@ -2858,6 +2864,11 @@ struct LatticeView: View {
             case .amber:
                 performClearTransientState()
             case .red:
+#if DEBUG
+                if clearBehaviorOverride == .neverUnload {
+                    assertionFailure("SelectionTray red clear should never run when 'Never unload' is enabled.")
+                }
+#endif
                 performDiscardAndUnload()
             }
         }
