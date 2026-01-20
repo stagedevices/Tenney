@@ -214,7 +214,8 @@ struct ScaleLibrarySheet: View {
                                 filters: filters,
                                 favoritesOnly: libraryFavoritesOnly,
                                 searchText: librarySearchText,
-                                onClearFilters: clearAllFilters
+                                onClearFilters: clearAllFilters,
+                                onPreviewRequested: handleCommunityPackPreviewRequest
                             )
                                 .tag(2)
                         }
@@ -296,6 +297,13 @@ struct ScaleLibrarySheet: View {
             Color.clear.glassEffect(.regular, in: shape)
         } else {
             shape.fill(.ultraThinMaterial)
+        }
+    }
+
+    private func handleCommunityPackPreviewRequest(_ request: CommunityPackPreviewRequest) {
+        DispatchQueue.main.async {
+            libraryPage = 0
+            actionTarget = request.scale
         }
     }
 
