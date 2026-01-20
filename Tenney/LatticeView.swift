@@ -8,6 +8,7 @@
 import Foundation
 import SwiftUI
 import UIKit
+import Metal
 #if targetEnvironment(macCatalyst)
 import AppKit
 #endif
@@ -48,6 +49,10 @@ enum LatticeGridMode: String, CaseIterable, Identifiable {
 struct LatticeView: View {
     @AppStorage(SettingsKeys.latticeSoundEnabled)
     private var latticeSoundEnabled: Bool = true
+    @AppStorage(SettingsKeys.latticeMetalFXEnabled)
+    private var latticeMetalFXEnabled: Bool = true
+    @AppStorage(SettingsKeys.latticeMetalDebugOverlay)
+    private var latticeMetalDebugOverlay: Bool = false
     @State private var infoSwitchSeq: UInt64 = 0
     @inline(__always)
     private var latticeAudioAllowed: Bool { latticeSoundEnabled }
@@ -159,6 +164,17 @@ struct LatticeView: View {
         let builtinRaw = raw.hasPrefix("custom:") ? LatticeThemeID.classicBO.rawValue : raw
         let id = LatticeThemeID(rawValue: builtinRaw) ?? .classicBO
         return ThemeRegistry.theme(id, dark: effectiveIsDark)
+    }
+
+    private var supportsMetalLattice: Bool {
+#if targetEnvironment(simulator)
+        return false
+#else
+        if #available(iOS 18.0, macCatalyst 18.0, *) {
+            return MTLCreateSystemDefaultDevice() != nil
+        }
+        return false
+#endif
     }
 
     
@@ -1611,6 +1627,10 @@ struct LatticeView: View {
     @State private var bottomHUDHeight: CGFloat = 0
     @State private var latticeViewSize: CGSize = .zero
     private let utilityBarHeight: CGFloat = 50 // matches your UtilityBar; tweak if needed
+    @StateObject private var metalBridge = LatticeMetalBridge()
+    @State private var metalPickRequest: LatticeMetalPickRequest? = nil
+    @State private var metalPickToken: UInt32 = 0
+    @State private var metalHoverNodeID: UInt32? = nil
     
     
     @AppStorage(SettingsKeys.nodeSize)     private var nodeSize = "m"
@@ -1679,74 +1699,85 @@ struct LatticeView: View {
                 let loc = v.location
                 lastTapPoint = loc
                 
-                // capture BEFORE we mutate focus (used for haptic + focus tick)
-                let prevFocusCoord = focusedPoint?.coord
-
-                guard let cand = hitTestCandidate(at: loc, viewRect: viewRect) else {
-                    endInfoPreviewAndResumeSelectionIfStillSelected()
-                    focusedPoint = nil
-                    return
-                }
-#if targetEnvironment(macCatalyst)
-                contextTarget = makeContextTarget(from: cand)
-#endif
-                
-                if cand.isPlane, let c = cand.coord, focusedPoint?.coord == c, store.selected.contains(c) {
-                    releaseInfoVoice(hard: true)
-                    focusedPoint = nil
-                    store.toggleSelection(c)
-                    selectionHapticTick &+= 1
-                    return
-                }
-
-                let (cn, cd) = canonicalPQ(cand.p, cand.q)
-                let raw = app.rootHz * (Double(cn) / Double(cd))
-                let freq = foldToAudible(raw, minHz: 20, maxHz: 5000)
-                let willDeselectPausedPlane: Bool = {
-                    guard cand.isPlane, let c = cand.coord else { return false }
-                    return (pausedForInfoCoord == c) && store.selected.contains(c)
-                }()
-
-                if willDeselectPausedPlane {
-                    releaseInfoVoice(hard: true)
+                if supportsMetalLattice {
+                    requestMetalPick(at: loc, kind: .tap)
                 } else {
-                    endInfoPreviewAndResumeSelectionIfStillSelected(hard: true)
-                }
-
-                focusedPoint = (
-                    pos: cand.pos,
-                    label: "\(cn)/\(cd)",
-                    etCents: RatioMath.centsFromET(freqHz: freq, refHz: app.rootHz),
-                    hz: freq,
-                    coord: cand.coord,
-                    num: cn,
-                    den: cd
-                )
-                let newFocusCoord = focusedPoint?.coord
-                if prevFocusCoord != newFocusCoord {
-                    focusHapticTick &+= 1
-                #if canImport(UIKit)
-                    UIImpactFeedbackGenerator(style: .rigid).impactOccurred(intensity: 0.35)
-                #endif
-                }
-
-                if cand.isPlane, let c = cand.coord {
-                    // if this tap will deselect the currently focused plane node, add a touch more punch
-                    if let fp = focusedPoint?.coord, fp == c, store.selected.contains(c) {
-                #if canImport(UIKit)
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred(intensity: 1.0)
-                #endif
-                    }
-                    store.toggleSelection(c)
-                    infoOctaveOffset = store.octaveOffset(for: c)
-                    selectionHapticTick &+= 1
-                } else if let g = cand.ghost {
-                    store.toggleOverlay(prime: g.prime, e3: g.e3, e5: g.e5, eP: g.eP)
-                    infoOctaveOffset = 0
-                    selectionHapticTick &+= 1
+                    let cand = hitTestCandidate(at: loc, viewRect: viewRect)
+                    handleTapCandidate(cand)
                 }
 
             }
+    }
+
+    private func handleTapCandidate(
+        _ cand: (pos: CGPoint, label: String, isPlane: Bool, coord: LatticeCoord?, p: Int, q: Int, ghost: (prime:Int, e3:Int, e5:Int, eP:Int)?)?
+    ) {
+        // capture BEFORE we mutate focus (used for haptic + focus tick)
+        let prevFocusCoord = focusedPoint?.coord
+
+        guard let cand else {
+            endInfoPreviewAndResumeSelectionIfStillSelected()
+            focusedPoint = nil
+            return
+        }
+#if targetEnvironment(macCatalyst)
+        contextTarget = makeContextTarget(from: cand)
+#endif
+
+        if cand.isPlane, let c = cand.coord, focusedPoint?.coord == c, store.selected.contains(c) {
+            releaseInfoVoice(hard: true)
+            focusedPoint = nil
+            store.toggleSelection(c)
+            selectionHapticTick &+= 1
+            return
+        }
+
+        let (cn, cd) = canonicalPQ(cand.p, cand.q)
+        let raw = app.rootHz * (Double(cn) / Double(cd))
+        let freq = foldToAudible(raw, minHz: 20, maxHz: 5000)
+        let willDeselectPausedPlane: Bool = {
+            guard cand.isPlane, let c = cand.coord else { return false }
+            return (pausedForInfoCoord == c) && store.selected.contains(c)
+        }()
+
+        if willDeselectPausedPlane {
+            releaseInfoVoice(hard: true)
+        } else {
+            endInfoPreviewAndResumeSelectionIfStillSelected(hard: true)
+        }
+
+        focusedPoint = (
+            pos: cand.pos,
+            label: "\(cn)/\(cd)",
+            etCents: RatioMath.centsFromET(freqHz: freq, refHz: app.rootHz),
+            hz: freq,
+            coord: cand.coord,
+            num: cn,
+            den: cd
+        )
+        let newFocusCoord = focusedPoint?.coord
+        if prevFocusCoord != newFocusCoord {
+            focusHapticTick &+= 1
+#if canImport(UIKit)
+            UIImpactFeedbackGenerator(style: .rigid).impactOccurred(intensity: 0.35)
+#endif
+        }
+
+        if cand.isPlane, let c = cand.coord {
+            // if this tap will deselect the currently focused plane node, add a touch more punch
+            if let fp = focusedPoint?.coord, fp == c, store.selected.contains(c) {
+#if canImport(UIKit)
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred(intensity: 1.0)
+#endif
+            }
+            store.toggleSelection(c)
+            infoOctaveOffset = store.octaveOffset(for: c)
+            selectionHapticTick &+= 1
+        } else if let g = cand.ghost {
+            store.toggleOverlay(prime: g.prime, e3: g.e3, e5: g.e5, eP: g.eP)
+            infoOctaveOffset = 0
+            selectionHapticTick &+= 1
+        }
     }
     
     
@@ -3636,11 +3667,237 @@ struct LatticeView: View {
     private func longPresser(viewRect: CGRect) -> some Gesture {
         LongPressGesture(minimumDuration: 0.35)
             .onEnded { _ in
-                if let cand = hitTestCandidate(at: lastTapPoint, viewRect: viewRect),
-                   cand.isPlane, let c = cand.coord {
+                if supportsMetalLattice {
+                    requestMetalPick(at: lastTapPoint, kind: .longPress)
+                } else if let cand = hitTestCandidate(at: lastTapPoint, viewRect: viewRect),
+                          cand.isPlane, let c = cand.coord {
                     store.setPivot(c)
                 }
             }
+    }
+
+    private func requestMetalPick(at point: CGPoint, kind: LatticeMetalPickRequest.Kind) {
+        metalPickToken &+= 1
+        metalPickRequest = LatticeMetalPickRequest(
+            point: SIMD2(Float(point.x), Float(point.y)),
+            kind: kind,
+            token: metalPickToken
+        )
+        metalBridge.requestPick(metalPickRequest!)
+    }
+
+    private func handleMetalPick(_ result: LatticeMetalPickResult) {
+        guard result.token == metalPickToken else { return }
+        let info = metalBridge.nodeLookup[result.nodeID]
+
+        switch result.kind {
+        case .hover:
+            metalHoverNodeID = info?.nodeID
+#if targetEnvironment(macCatalyst)
+            if let info {
+                let cand = metalCandidate(from: info)
+                contextTarget = makeContextTarget(from: cand)
+            } else {
+                contextTarget = nil
+            }
+#endif
+        case .tap:
+            handleTapCandidate(info.map(metalCandidate(from:)))
+        case .longPress:
+            if let info, info.isPlane, let c = info.coord {
+                store.setPivot(c)
+            }
+        }
+    }
+
+    private func metalCandidate(
+        from info: LatticeMetalNodeInfo
+    ) -> (pos: CGPoint, label: String, isPlane: Bool, coord: LatticeCoord?, p: Int, q: Int, ghost: (prime:Int, e3:Int, e5:Int, eP:Int)?) {
+        let (cp, cq) = canonicalPQ(info.p, info.q)
+        let label = "\(cp)/\(cq)"
+        let ghost: (prime:Int, e3:Int, e5:Int, eP:Int)? = info.isPlane ? nil : (info.prime ?? 0, info.e3, info.e5, info.eP)
+        return (info.pos, label, info.isPlane, info.coord, info.p, info.q, ghost)
+    }
+
+    private func metalNodeID(e3: Int, e5: Int, prime: Int?, eP: Int) -> UInt32 {
+        var h: UInt32 = 2166136261
+        func add(_ v: Int) {
+            h = (h ^ UInt32(bitPattern: Int32(v))) &* 16777619
+        }
+        add(e3); add(e5); add(prime ?? 0); add(eP)
+        return h
+    }
+
+    private func metalSnapshot(viewRect: CGRect, now: Double) -> LatticeMetalSnapshot {
+        var nodes: [LatticeMetalNode] = []
+        nodes.reserveCapacity(512)
+        var lookup: [UInt32: LatticeMetalNodeInfo] = [:]
+
+        let baseRadius = Float(nodeBaseSize())
+        let viewSize = viewRect.size
+        let baseE3 = store.pivot.e3 + (store.axisShift[3] ?? 0)
+        let baseE5 = store.pivot.e5 + (store.axisShift[5] ?? 0)
+
+        let radius = Int(max(8, min(48, store.camera.appliedScale / 5)))
+        let planeNodes = layout.planeNodes(
+            in: viewRect,
+            camera: store.camera,
+            primeLimit: app.primeLimit,
+            radius: radius,
+            shift: store.axisShift
+        )
+
+        for node in planeNodes {
+            let absoluteCoord = LatticeCoord(e3: store.pivot.e3 + node.coord.e3, e5: store.pivot.e5 + node.coord.e5)
+            let e3m = absoluteCoord.e3 + (store.axisShift[3] ?? 0)
+            let e5m = absoluteCoord.e5 + (store.axisShift[5] ?? 0)
+            guard let (num, den) = planePQ(e3: e3m, e5: e5m) else { continue }
+            let id = metalNodeID(e3: absoluteCoord.e3, e5: absoluteCoord.e5, prime: nil, eP: 0)
+            let isSelected = store.selected.contains(absoluteCoord)
+            let isHover = metalHoverNodeID == id
+            var flags: UInt32 = 0
+            if isHover { flags |= 0x1 }
+            if isSelected { flags |= 0x2 }
+            if isSelected && latticeAudioAllowed { flags |= 0x4 }
+
+            let screen = store.camera.worldToScreen(node.pos)
+            let color = activeTheme.nodeColor(e3: node.coord.e3, e5: node.coord.e5).metalRGBA()
+            let octaveOffset = Float(store.octaveOffset(for: absoluteCoord))
+
+            nodes.append(
+                LatticeMetalNode(
+                    worldPosition: SIMD2(Float(node.pos.x), Float(node.pos.y)),
+                    tenneyHeight: Float(node.tenneyHeight),
+                    color: color,
+                    nodeID: id,
+                    flags: flags,
+                    complexity: Float(node.tenneyHeight),
+                    octaveOffset: octaveOffset
+                )
+            )
+
+            lookup[id] = LatticeMetalNodeInfo(
+                nodeID: id,
+                pos: screen,
+                isPlane: true,
+                coord: absoluteCoord,
+                prime: nil,
+                e3: absoluteCoord.e3,
+                e5: absoluteCoord.e5,
+                eP: 0,
+                p: num,
+                q: den
+            )
+        }
+
+        let overlayPrimes = store.renderPrimes.filter { $0 != 2 && $0 != 3 && $0 != 5 }
+        let overlayPad: CGFloat = 80
+        let epSpan = max(6, min(12, Int(store.camera.appliedScale / 8)))
+
+        for prime in overlayPrimes {
+            let shiftP = store.axisShift[prime] ?? 0
+            for ep in (-epSpan...epSpan) where ep != 0 {
+                let eP = ep + shiftP
+                let monzo: [Int:Int] = [3: baseE3, 5: baseE5, prime: eP]
+                let world = layout.position(monzo: monzo)
+                let screen = store.camera.worldToScreen(world)
+                if screen.x < viewRect.minX - overlayPad || screen.x > viewRect.maxX + overlayPad || screen.y < viewRect.minY - overlayPad || screen.y > viewRect.maxY + overlayPad {
+                    continue
+                }
+
+                guard let (num, den) = overlayPQ(e3: baseE3, e5: baseE5, prime: prime, eP: eP) else { continue }
+                let tenney = max(num, den)
+                let id = metalNodeID(e3: baseE3, e5: baseE5, prime: prime, eP: eP)
+                let ghost = LatticeStore.GhostMonzo(e3: baseE3, e5: baseE5, p: prime, eP: eP)
+                let isSelected = store.selectedGhosts.contains(ghost)
+                let isHover = metalHoverNodeID == id
+                var flags: UInt32 = 0
+                if isHover { flags |= 0x1 }
+                if isSelected { flags |= 0x2 }
+
+                nodes.append(
+                    LatticeMetalNode(
+                        worldPosition: SIMD2(Float(world.x), Float(world.y)),
+                        tenneyHeight: Float(tenney),
+                        color: activeTheme.primeTint(prime).metalRGBA(),
+                        nodeID: id,
+                        flags: flags,
+                        complexity: Float(tenney),
+                        octaveOffset: 0
+                    )
+                )
+
+                lookup[id] = LatticeMetalNodeInfo(
+                    nodeID: id,
+                    pos: screen,
+                    isPlane: false,
+                    coord: nil,
+                    prime: prime,
+                    e3: baseE3,
+                    e5: baseE5,
+                    eP: eP,
+                    p: num,
+                    q: den
+                )
+            }
+        }
+
+        let links = metalLinks(pathKeys: orderedSelectionKeysForPath())
+        metalBridge.nodeLookup = lookup
+
+        let density = min(1.0, Float(nodes.count) / 200.0)
+        let zoom = Float(store.camera.appliedScale)
+        let zoomT = max(0.0, min(1.0, (zoom - 36.0) / 80.0))
+        let linkAlpha = max(0.0, zoomT * (1.0 - density * 0.65))
+
+        return LatticeMetalSnapshot(
+            nodes: nodes,
+            links: links,
+            camera: store.camera,
+            viewSize: viewSize,
+            baseRadius: baseRadius,
+            time: now,
+            audioAmplitude: latticeAudioAllowed ? 0.6 : 0.0,
+            audioPhase: Float(now.truncatingRemainder(dividingBy: Double.pi * 2.0)),
+            debugFlags: latticeMetalDebugOverlay ? 0x7 : 0,
+            linkAlpha: linkAlpha,
+            hoverLift: metalHoverNodeID == nil ? 0.0 : 0.4,
+            useMetalFX: latticeMetalFXEnabled
+        )
+    }
+
+    private func metalLinks(pathKeys: [LatticeStore.SelectionKey]) -> [LatticeMetalLink] {
+        guard !pathKeys.isEmpty else { return [] }
+        var links: [LatticeMetalLink] = []
+        links.reserveCapacity(pathKeys.count)
+
+        let color = activeTheme.path.metalRGBA()
+        let width: Float = 1.4
+
+        func worldPoint(for key: LatticeStore.SelectionKey) -> CGPoint? {
+            switch key {
+            case .plane(let coord):
+                let world = layout.position(for: coord)
+                return world
+            case .ghost(let ghost):
+                let monzo: [Int:Int] = [3: ghost.e3, 5: ghost.e5, ghost.p: ghost.eP]
+                return layout.position(monzo: monzo)
+            }
+        }
+
+        for idx in 0..<(pathKeys.count - 1) {
+            guard let start = worldPoint(for: pathKeys[idx]),
+                  let end = worldPoint(for: pathKeys[idx + 1]) else { continue }
+            links.append(
+                LatticeMetalLink(
+                    start: SIMD2(Float(start.x), Float(start.y)),
+                    end: SIMD2(Float(end.x), Float(end.y)),
+                    color: color,
+                    width: width
+                )
+            )
+        }
+        return links
     }
     @ViewBuilder
     private func canvasLayer(viewRect: CGRect) -> some View {
@@ -3764,12 +4021,45 @@ struct LatticeView: View {
             .allowsHitTesting(false)
         }
     }
+
+    @ViewBuilder
+    private func metalLayer(viewRect: CGRect) -> some View {
+        TimelineView(.animation) { _ in
+            let now = CACurrentMediaTime()
+            let snapshot = metalSnapshot(viewRect: viewRect, now: now)
+#if targetEnvironment(macCatalyst)
+            LatticeMetalNSView(
+                snapshot: snapshot,
+                pickRequest: metalPickRequest,
+                onPick: handleMetalPick,
+                bridge: metalBridge
+            )
+#else
+            LatticeMetalView(
+                snapshot: snapshot,
+                pickRequest: metalPickRequest,
+                onPick: handleMetalPick,
+                bridge: metalBridge
+            )
+#endif
+        }
+        .allowsHitTesting(false)
+    }
+
+    @ViewBuilder
+    private func latticeSceneLayer(viewRect: CGRect) -> some View {
+        if supportsMetalLattice {
+            metalLayer(viewRect: viewRect)
+        } else {
+            canvasLayer(viewRect: viewRect)
+        }
+    }
     @ViewBuilder
     private func latticeStack(in geo: GeometryProxy) -> some View {
         let viewRect = CGRect(origin: .zero, size: geo.size)
         
         ZStack {
-            canvasLayer(viewRect: viewRect)
+            latticeSceneLayer(viewRect: viewRect)
                 .allowsHitTesting(false)
 #if os(macOS) || targetEnvironment(macCatalyst)
                 .overlay(alignment: .topLeading) {
@@ -3778,7 +4068,11 @@ struct LatticeView: View {
                             pointerInLattice = loc
                             logPointer(loc)
 #if targetEnvironment(macCatalyst)
-                            updateContextTarget(at: loc, in: geo.size)
+                            if supportsMetalLattice {
+                                requestMetalPick(at: loc, kind: .hover)
+                            } else {
+                                updateContextTarget(at: loc, in: geo.size)
+                            }
 #endif
                         },
                         onScrollPan: { delta in
@@ -3795,6 +4089,7 @@ struct LatticeView: View {
 #if targetEnvironment(macCatalyst)
                                 contextTarget = nil
 #endif
+                                metalHoverNodeID = nil
                             }
                         }
                     )
