@@ -65,6 +65,28 @@ struct CommunityIndexEntry: Decodable {
     let packID: String
     let path: String
     let title: String?
+    let description: String?
+
+    enum CodingKeys: String, CodingKey {
+        case packID
+        case path
+        case slug
+        case title
+        case description
+        case descr
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let packID = try c.decodeIfPresent(String.self, forKey: .packID)
+        let path = try c.decodeIfPresent(String.self, forKey: .path)
+        let slug = try c.decodeIfPresent(String.self, forKey: .slug)
+        self.packID = packID ?? slug ?? path ?? ""
+        self.path = path ?? slug ?? packID ?? ""
+        self.title = try c.decodeIfPresent(String.self, forKey: .title)
+        self.description = try c.decodeIfPresent(String.self, forKey: .description)
+            ?? c.decodeIfPresent(String.self, forKey: .descr)
+    }
 }
 
 struct CommunityPack: Decodable {

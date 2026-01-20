@@ -93,6 +93,10 @@ final class CommunityPacksStore: ObservableObject {
         var viewModels: [CommunityPackViewModel] = []
         var sawSchemaMismatch = false
         for (offset, entry) in index.packs.enumerated() {
+            guard !entry.path.isEmpty else {
+                logFetch("CommunityPacks index entry missing path (packID=\(entry.packID)); skipping.")
+                continue
+            }
             do {
                 let packPath = "\(entry.path)/pack.json"
                 let packURL = CommunityPacksEndpoints.url(base: CommunityPacksEndpoints.rawBase, path: packPath)
@@ -117,13 +121,15 @@ final class CommunityPacksStore: ObservableObject {
                     scaleDataByPath: scaleDataByPath
                 )
                 viewModels.append(viewModel)
-                cachedPacks.append(CommunityCachedPack(packID: pack.packID.isEmpty ? entry.packID : pack.packID, packData: packData, scaleDataByPath: scaleDataByPath))
+                let resolvedPackID = entry.packID.isEmpty ? entry.path : entry.packID
+                let cacheID = pack.packID.isEmpty ? resolvedPackID : pack.packID
+                cachedPacks.append(CommunityCachedPack(packID: cacheID, packData: packData, scaleDataByPath: scaleDataByPath))
                 try? CommunityPacksCache.save(indexData: indexData, packs: cachedPacks)
             } catch CommunityPacksError.schemaMismatch {
                 sawSchemaMismatch = true
-                logFetch("CommunityPacks pack \(entry.packID) schema mismatch; skipping pack.")
+                logFetch("CommunityPacks pack \(entry.packID.isEmpty ? entry.path : entry.packID) schema mismatch; skipping pack.")
             } catch {
-                logFetch("CommunityPacks pack \(entry.packID) failed: \(error.localizedDescription)")
+                logFetch("CommunityPacks pack \(entry.packID.isEmpty ? entry.path : entry.packID) failed: \(error.localizedDescription)")
             }
         }
 
@@ -143,8 +149,18 @@ final class CommunityPacksStore: ObservableObject {
         var viewModels: [CommunityPackViewModel] = []
         var sawSchemaMismatch = false
         for (offset, entry) in index.packs.enumerated() {
+            guard !entry.path.isEmpty else {
+                logFetch("CommunityPacks cached entry missing path (packID=\(entry.packID)); skipping.")
+                continue
+            }
             guard let cachedPack = cached.packs.first(where: { pack in
-                pack.packID == CommunityPacksCache.safePathComponent(entry.packID) || pack.packID == entry.packID
+                let candidateIDs = [
+                    entry.packID,
+                    entry.path,
+                    CommunityPacksCache.safePathComponent(entry.packID),
+                    CommunityPacksCache.safePathComponent(entry.path)
+                ].filter { !$0.isEmpty }
+                return candidateIDs.contains(pack.packID)
             }) else {
                 continue
             }
@@ -171,9 +187,9 @@ final class CommunityPacksStore: ObservableObject {
                 viewModels.append(viewModel)
             } catch CommunityPacksError.schemaMismatch {
                 sawSchemaMismatch = true
-                logFetch("CommunityPacks cached pack \(entry.packID) schema mismatch; skipping pack.")
+                logFetch("CommunityPacks cached pack \(entry.packID.isEmpty ? entry.path : entry.packID) schema mismatch; skipping pack.")
             } catch {
-                logFetch("CommunityPacks cached pack \(entry.packID) failed: \(error.localizedDescription)")
+                logFetch("CommunityPacks cached pack \(entry.packID.isEmpty ? entry.path : entry.packID) failed: \(error.localizedDescription)")
             }
         }
 
@@ -220,9 +236,10 @@ final class CommunityPacksStore: ObservableObject {
         let sanitizedDescription = sanitizeCommunityDescription(pack.description)
         let dateString = pack.date
 
+        let resolvedPackID = indexEntry.packID.isEmpty ? indexEntry.path : indexEntry.packID
         return CommunityPackViewModel(
-            id: indexEntry.packID,
-            packID: pack.packID.isEmpty ? indexEntry.packID : pack.packID,
+            id: resolvedPackID,
+            packID: pack.packID.isEmpty ? resolvedPackID : pack.packID,
             title: pack.title,
             authorName: pack.author.name,
             authorURL: pack.author.url.flatMap(URL.init(string:)),
