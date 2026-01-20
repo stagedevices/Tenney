@@ -118,6 +118,13 @@ enum SettingsKeys {
     static let releaseSec = "tenney.audio.releaseSec"      // Double
     static let safeAmp    = "tenney.audio.safeAmp"         // Double
 
+    // Library filters
+    static let libraryFiltersJSON = "tenney.library.filters.json"
+    static let librarySearchText = "tenney.library.search"
+    static let libraryFavoritesOnly = "tenney.library.favoritesOnly"
+    static let librarySortKey = "tenney.library.sortKey"
+    static let libraryFavoriteIDsJSON = "tenney.library.favorites.json"
+
     // Builder (present, but used later)
     static let nearDupWarn   = "tenney.builder.nearDupWarn"
     static let nearDupThresh = "tenney.builder.nearDupThresh"

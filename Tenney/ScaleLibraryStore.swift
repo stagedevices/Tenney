@@ -52,6 +52,8 @@ final class ScaleLibraryStore: ObservableObject {
         didSet { scheduleSave() }
     }
 
+    @Published private(set) var favoriteIDs: Set<UUID> = []
+
     // MARK: - Persistence
 
     private struct LibraryBlob: Codable {
@@ -79,17 +81,42 @@ final class ScaleLibraryStore: ObservableObject {
 
     func updateScale(_ scale: TenneyScale) {
         scales[scale.id] = scale
+        updateFavorite(id: scale.id, isFavorite: scale.favorite)
         scheduleSave()
     }
 
     func deleteScale(id: UUID) {
-        scales.removeValue(forKey: id)
+        let removed = scales.removeValue(forKey: id)
+        if removed?.provenance?.kind != .communityPack {
+            updateFavorite(id: id, isFavorite: false)
+        }
         scheduleSave()
     }
 
     func upsert(_ scale: TenneyScale) { updateScale(scale) }
     // Newer UI calls this name.
     func addScale(_ scale: TenneyScale) { updateScale(scale) }
+
+    func isFavorite(id: UUID) -> Bool {
+        favoriteIDs.contains(id)
+    }
+
+    @discardableResult
+    func toggleFavorite(id: UUID) -> Bool {
+        let isFavorite = !favoriteIDs.contains(id)
+        setFavorite(isFavorite, for: id)
+        return isFavorite
+    }
+
+    func setFavorite(_ isFavorite: Bool, for id: UUID) {
+        updateFavorite(id: id, isFavorite: isFavorite)
+        if var scale = scales[id] {
+            scale.favorite = isFavorite
+            scales[id] = scale
+            scheduleSave()
+        }
+    }
+
     // MARK: - Load / Save
 
     func load() {
@@ -103,6 +130,8 @@ final class ScaleLibraryStore: ObservableObject {
             self.scales = [:]
             self.sortKey = .recent
         }
+        loadFavorites()
+        syncFavoritesToScales()
     }
 
     func saveNow() {
@@ -124,6 +153,63 @@ final class ScaleLibraryStore: ObservableObject {
             try? await Task.sleep(nanoseconds: 350_000_000) // debounce
             guard !Task.isCancelled else { return }
             await self?.saveNow()
+        }
+    }
+
+    private func loadFavorites() {
+        guard let data = UserDefaults.standard.data(forKey: SettingsKeys.libraryFavoriteIDsJSON) else {
+            favoriteIDs = Set(scales.values.filter(\.favorite).map(\.id))
+            return
+        }
+        do {
+            let decoded = try JSONDecoder().decode([UUID].self, from: data)
+            favoriteIDs = Set(decoded)
+        } catch {
+            favoriteIDs = Set(scales.values.filter(\.favorite).map(\.id))
+        }
+    }
+
+    private func saveFavorites() {
+        do {
+            let data = try JSONEncoder().encode(Array(favoriteIDs))
+            UserDefaults.standard.set(data, forKey: SettingsKeys.libraryFavoriteIDsJSON)
+        } catch {
+            #if DEBUG
+            print("ScaleLibraryStore favorites save error:", error)
+            #endif
+        }
+    }
+
+    private func updateFavorite(id: UUID, isFavorite: Bool) {
+        if isFavorite {
+            favoriteIDs.insert(id)
+        } else {
+            favoriteIDs.remove(id)
+        }
+        saveFavorites()
+    }
+
+    private func syncFavoritesToScales() {
+        guard !scales.isEmpty else { return }
+        var updated = scales
+        var changed = false
+        for (id, scale) in scales {
+            let shouldFavorite = favoriteIDs.contains(id) || scale.favorite
+            if scale.favorite != shouldFavorite {
+                var updatedScale = scale
+                updatedScale.favorite = shouldFavorite
+                updated[id] = updatedScale
+                changed = true
+            }
+            if shouldFavorite && !favoriteIDs.contains(id) {
+                favoriteIDs.insert(id)
+                changed = true
+            }
+        }
+        if changed {
+            scales = updated
+            saveFavorites()
+            scheduleSave()
         }
     }
 }
