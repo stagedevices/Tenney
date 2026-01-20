@@ -93,6 +93,8 @@ enum SettingsKeys {
     static let latticeConnectionMode = "Tenney.Lattice.Connection.Mode" // String: chain|loop|gridPath
     static let builderExportCustomA4Hz = "Tenney.Builder.ExportCustomA4Hz"
     static let latticeSoundEnabled = "Tenney.Latticetice.SoundEnabled"
+    static let latticeMetalFXEnabled = "tenney.lattice.metalFX.enabled"
+    static let latticeMetalDebugOverlay = "tenney.lattice.metal.debugOverlay"
     
     // MARK: Learn Tenney
         static let learnLatticeTourCompleted = "Tenney.Learn.latticeTourCompleted" // Bool

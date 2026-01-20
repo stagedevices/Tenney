@@ -1,0 +1,126 @@
+//
+//  LatticeMetalView.swift
+//  Tenney
+//
+//  SwiftUI wrapper for MTKView lattice renderer.
+//
+
+import SwiftUI
+import Metal
+import MetalKit
+#if targetEnvironment(macCatalyst)
+import AppKit
+#endif
+
+final class LatticeMetalBridge: ObservableObject {
+    fileprivate weak var renderer: LatticeMetalRenderer?
+    var nodeLookup: [UInt32: LatticeMetalNodeInfo] = [:]
+
+    func attach(renderer: LatticeMetalRenderer) {
+        self.renderer = renderer
+    }
+
+    func requestPick(_ request: LatticeMetalPickRequest) {
+        renderer?.enqueuePick(request)
+    }
+}
+
+struct LatticeMetalView: UIViewRepresentable {
+    typealias UIViewType = MTKView
+
+    let snapshot: LatticeMetalSnapshot
+    let pickRequest: LatticeMetalPickRequest?
+    let onPick: (LatticeMetalPickResult) -> Void
+    @ObservedObject var bridge: LatticeMetalBridge
+
+    func makeUIView(context: Context) -> MTKView {
+        let view = MTKView(frame: .zero, device: MTLCreateSystemDefaultDevice())
+        view.isPaused = false
+        view.enableSetNeedsDisplay = false
+        view.framebufferOnly = false
+        view.clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
+        view.isOpaque = false
+        view.preferredFramesPerSecond = 120
+        view.colorPixelFormat = .bgra8Unorm
+        view.sampleCount = 1
+        view.isUserInteractionEnabled = false
+
+        let renderer = LatticeMetalRenderer(view: view)
+        renderer?.onPick = onPick
+        context.coordinator.renderer = renderer
+        if let renderer {
+            bridge.attach(renderer: renderer)
+            view.delegate = renderer
+            renderer.update(snapshot: snapshot)
+        }
+        return view
+    }
+
+    func updateUIView(_ uiView: MTKView, context: Context) {
+        guard let renderer = context.coordinator.renderer else { return }
+        renderer.onPick = onPick
+        renderer.update(snapshot: snapshot)
+        if let pickRequest {
+            renderer.enqueuePick(pickRequest)
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    final class Coordinator {
+        var renderer: LatticeMetalRenderer?
+    }
+}
+
+#if targetEnvironment(macCatalyst)
+struct LatticeMetalNSView: NSViewRepresentable {
+    typealias NSViewType = MTKView
+
+    let snapshot: LatticeMetalSnapshot
+    let pickRequest: LatticeMetalPickRequest?
+    let onPick: (LatticeMetalPickResult) -> Void
+    @ObservedObject var bridge: LatticeMetalBridge
+
+    func makeNSView(context: Context) -> MTKView {
+        let view = MTKView(frame: .zero, device: MTLCreateSystemDefaultDevice())
+        view.isPaused = false
+        view.enableSetNeedsDisplay = false
+        view.framebufferOnly = false
+        view.clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
+        view.isOpaque = false
+        view.preferredFramesPerSecond = 120
+        view.colorPixelFormat = .bgra8Unorm
+        view.sampleCount = 1
+        view.isUserInteractionEnabled = false
+
+        let renderer = LatticeMetalRenderer(view: view)
+        renderer?.onPick = onPick
+        context.coordinator.renderer = renderer
+        if let renderer {
+            bridge.attach(renderer: renderer)
+            view.delegate = renderer
+            renderer.update(snapshot: snapshot)
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: MTKView, context: Context) {
+        guard let renderer = context.coordinator.renderer else { return }
+        renderer.onPick = onPick
+        renderer.update(snapshot: snapshot)
+        if let pickRequest {
+            renderer.enqueuePick(pickRequest)
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    final class Coordinator {
+        var renderer: LatticeMetalRenderer?
+    }
+}
+#endif
