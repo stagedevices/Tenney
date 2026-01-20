@@ -11,10 +11,11 @@ import MetalKit
 #if targetEnvironment(macCatalyst)
 import AppKit
 #endif
+import Combine
 
 final class LatticeMetalBridge: ObservableObject {
     fileprivate weak var renderer: LatticeMetalRenderer?
-    var nodeLookup: [UInt32: LatticeMetalNodeInfo] = [:]
+    @Published var nodeLookup: [UInt32: LatticeMetalNodeInfo] = [:]
 
     func attach(renderer: LatticeMetalRenderer) {
         self.renderer = renderer

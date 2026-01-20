@@ -330,7 +330,6 @@ final class LatticeMetalRenderer: NSObject, MTKViewDelegate {
                 encoder.setFragmentBuffer(buffers.visibleIndexBuffer, offset: 0, index: 2)
                 encoder.drawIndexedPrimitives(
                     type: .triangle,
-                    indexCount: 6,
                     indexType: .uint16,
                     indexBuffer: buffers.quadIndexBuffer,
                     indexBufferOffset: 0,
@@ -343,14 +342,12 @@ final class LatticeMetalRenderer: NSObject, MTKViewDelegate {
         }
 
 #if canImport(MetalFX)
-        if let metalFXTexture = metalFXInputTexture, let scaler = metalFXScaler as? MTLFXSpatialScaler {
-            let descriptor = MTLRenderPassDescriptor()
-            descriptor.colorAttachments[0].texture = drawable.texture
-            if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: descriptor) {
-                encoder.endEncoding()
-            }
-            scaler.encode(commandBuffer: commandBuffer, sourceTexture: metalFXTexture, destinationTexture: drawable.texture)
-        }
+if let metalFXTexture = metalFXInputTexture,
+   let scaler = metalFXScaler as? any MTLFXSpatialScaler {
+    scaler.colorTexture = metalFXTexture
+    scaler.outputTexture = drawable.texture
+    scaler.encode(commandBuffer: commandBuffer)
+}
 #endif
 
         commandBuffer.addCompletedHandler { [weak self] buffer in
@@ -413,8 +410,7 @@ final class LatticeMetalRenderer: NSObject, MTKViewDelegate {
         fxDescriptor.outputWidth = Int(drawableSize.width)
         fxDescriptor.outputHeight = Int(drawableSize.height)
         fxDescriptor.colorTextureFormat = view.colorPixelFormat
-        fxDescriptor.depthTextureFormat = .invalid
-        fxDescriptor.motionTextureFormat = .invalid
+        fxDescriptor.colorProcessingMode = .perceptual
         fxDescriptor.outputTextureFormat = view.colorPixelFormat
         metalFXScaler = fxDescriptor.makeSpatialScaler(device: device)
 #else
