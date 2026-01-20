@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 enum CommunityPacksError: Error, LocalizedError {
     case schemaMismatch
@@ -71,6 +72,7 @@ struct CommunityIndexEntry: Decodable {
     let license: String?
     let tenneyPath: String?
     let usesFilesContract: Bool
+    let isFeatured: Bool
 
     enum CodingKeys: String, CodingKey {
         case packID
@@ -83,6 +85,7 @@ struct CommunityIndexEntry: Decodable {
         case authorUrl
         case license
         case files
+        case featured
     }
 
     init(from decoder: Decoder) throws {
@@ -101,6 +104,7 @@ struct CommunityIndexEntry: Decodable {
         self.license = try c.decodeIfPresent(String.self, forKey: .license)
         self.tenneyPath = files?.tenney
         self.usesFilesContract = (tenneyPath?.isEmpty == false)
+        self.isFeatured = try c.decodeIfPresent(Bool.self, forKey: .featured) ?? false
     }
 }
 
@@ -119,6 +123,9 @@ struct CommunityPack: Decodable {
     let license: String
     let author: CommunityAuthor
     let description: String
+    // Optional metadata reserved for future server wiring.
+    let summary: String?
+    let changelog: String?
     let scales: [CommunityPackScale]
 
     enum CodingKeys: String, CodingKey {
@@ -130,6 +137,8 @@ struct CommunityPack: Decodable {
         case license
         case author
         case description
+        case summary
+        case changelog
         case scales
     }
 
@@ -149,6 +158,8 @@ struct CommunityPack: Decodable {
         self.license = try c.decodeIfPresent(String.self, forKey: .license) ?? ""
         self.author = try c.decodeIfPresent(CommunityAuthor.self, forKey: .author) ?? CommunityAuthor(name: "Unknown", url: nil)
         self.description = try c.decodeIfPresent(String.self, forKey: .description) ?? ""
+        self.summary = try c.decodeIfPresent(String.self, forKey: .summary)
+        self.changelog = try c.decodeIfPresent(String.self, forKey: .changelog)
         self.scales = try c.decodeIfPresent([CommunityPackScale].self, forKey: .scales) ?? []
     }
 }
@@ -204,7 +215,10 @@ struct CommunityPackViewModel: Identifiable {
     let license: String
     let dateString: String
     let date: Date?
+    let lastUpdated: Date?
     let description: String
+    let summary: String
+    let changelog: String
     let version: String
     let scaleCount: Int
     let primeLimitMin: Int
@@ -212,6 +226,7 @@ struct CommunityPackViewModel: Identifiable {
     let scales: [CommunityPackScaleViewModel]
     let indexOrder: Int
     let contentHash: String
+    let isFeatured: Bool
 }
 
 func sanitizeCommunityDescription(_ text: String) -> String {
@@ -234,6 +249,22 @@ func sanitizeCommunityDescription(_ text: String) -> String {
     return output
         .replacingOccurrences(of: "  ", with: " ")
         .trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
+func communityScaleUUID(packID: String, scaleID: String) -> UUID {
+    if let uuid = UUID(uuidString: scaleID) {
+        return uuid
+    }
+    let data = Data((packID + ":" + scaleID).utf8)
+    let hash = SHA256.hash(data: data)
+    let bytes = Array(hash)
+    let tuple = (
+        bytes[0], bytes[1], bytes[2], bytes[3],
+        bytes[4], bytes[5], bytes[6], bytes[7],
+        bytes[8], bytes[9], bytes[10], bytes[11],
+        bytes[12], bytes[13], bytes[14], bytes[15]
+    )
+    return UUID(uuid: tuple)
 }
 
 func communityDate(from string: String) -> Date? {
