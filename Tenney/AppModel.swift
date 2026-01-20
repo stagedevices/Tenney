@@ -20,6 +20,12 @@ enum AppModelLocator {
 
 @MainActor
 final class AppModel: ObservableObject {
+    struct BuilderSessionState: Equatable {
+        var loadedScaleID: TenneyScale.ID? = nil
+        var isEdited: Bool = false
+        var pendingAddRefs: [RatioRef]? = nil
+    }
+
     private var micPCMTap: (([Float], Double) -> Void)?
     func attachMicPCMTap(_ tap: @escaping ([Float], Double) -> Void) {
         micPCMTap = tap
@@ -32,6 +38,7 @@ final class AppModel: ObservableObject {
     @AppStorage(SettingsKeys.latticeSoundEnabled)
     private var latticeSoundSetting: Bool = true
 
+    @Published var builderSession: BuilderSessionState = .init()
     @Published var builderPresented: Bool = false
     private var _recenterObserver: NSObjectProtocol?
     init() {
@@ -199,6 +206,9 @@ final class AppModel: ObservableObject {
         didSet {
             if builderLoadedScale?.id != oldValue?.id {
                 clearLoadedScaleMetadata()
+                builderSession.loadedScaleID = builderLoadedScale?.id
+                builderSession.isEdited = false
+                builderSession.pendingAddRefs = nil
             }
         }
     }
@@ -215,6 +225,18 @@ final class AppModel: ObservableObject {
         builderLoadedScale = nil
         builderStagingBaseCount = nil
         builderPresented = false
+        builderSession = .init()
+    }
+
+    func updateBuilderSessionEdited(loadedScaleEdited: Bool, metadataEdited: Bool) {
+        guard builderSession.loadedScaleID != nil else {
+            builderSession.isEdited = false
+            return
+        }
+        let nextValue = loadedScaleEdited || metadataEdited
+        if builderSession.isEdited != nextValue {
+            builderSession.isEdited = nextValue
+        }
     }
 
     func updateLoadedScaleMetadata(

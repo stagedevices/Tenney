@@ -502,6 +502,7 @@ private let libraryStore = ScaleLibraryStore.shared
     private func builderSheetDismiss() {
         LatticeStore().endStaging()
         app.builderPayload = nil
+        app.builderSession.pendingAddRefs = nil
         app.setMicActive(mode == .tuner)
     }
 
