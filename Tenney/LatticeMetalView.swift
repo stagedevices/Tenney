@@ -38,13 +38,12 @@ struct LatticeMetalView: UIViewRepresentable {
         let view = MTKView(frame: .zero, device: MTLCreateSystemDefaultDevice())
         view.isPaused = false
         view.enableSetNeedsDisplay = false
-        view.framebufferOnly = false
         view.clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
         view.isOpaque = false
         view.preferredFramesPerSecond = 120
         view.colorPixelFormat = .bgra8Unorm
-        view.sampleCount = 1
         view.isUserInteractionEnabled = false
+        configure(view: view, useMetalFX: snapshot.useMetalFX)
 
         let renderer = LatticeMetalRenderer(view: view)
         renderer?.onPick = onPick
@@ -59,6 +58,7 @@ struct LatticeMetalView: UIViewRepresentable {
 
     func updateUIView(_ uiView: MTKView, context: Context) {
         guard let renderer = context.coordinator.renderer else { return }
+        configure(view: uiView, useMetalFX: snapshot.useMetalFX)
         renderer.onPick = onPick
         renderer.update(snapshot: snapshot)
         if let pickRequest {
@@ -72,6 +72,13 @@ struct LatticeMetalView: UIViewRepresentable {
 
     final class Coordinator {
         var renderer: LatticeMetalRenderer?
+    }
+
+    private func configure(view: MTKView, useMetalFX: Bool) {
+        // MetalFX writes into the drawable; framebufferOnly must be false when enabled.
+        view.framebufferOnly = !useMetalFX
+        // MetalFX source textures are single-sampled; avoid MSAA resolve mismatches.
+        view.sampleCount = 1
     }
 }
 
@@ -88,13 +95,12 @@ struct LatticeMetalNSView: NSViewRepresentable {
         let view = MTKView(frame: .zero, device: MTLCreateSystemDefaultDevice())
         view.isPaused = false
         view.enableSetNeedsDisplay = false
-        view.framebufferOnly = false
         view.clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
         view.isOpaque = false
         view.preferredFramesPerSecond = 120
         view.colorPixelFormat = .bgra8Unorm
-        view.sampleCount = 1
         view.isUserInteractionEnabled = false
+        configure(view: view, useMetalFX: snapshot.useMetalFX)
 
         let renderer = LatticeMetalRenderer(view: view)
         renderer?.onPick = onPick
@@ -109,6 +115,7 @@ struct LatticeMetalNSView: NSViewRepresentable {
 
     func updateNSView(_ nsView: MTKView, context: Context) {
         guard let renderer = context.coordinator.renderer else { return }
+        configure(view: nsView, useMetalFX: snapshot.useMetalFX)
         renderer.onPick = onPick
         renderer.update(snapshot: snapshot)
         if let pickRequest {
@@ -122,6 +129,13 @@ struct LatticeMetalNSView: NSViewRepresentable {
 
     final class Coordinator {
         var renderer: LatticeMetalRenderer?
+    }
+
+    private func configure(view: MTKView, useMetalFX: Bool) {
+        // MetalFX writes into the drawable; framebufferOnly must be false when enabled.
+        view.framebufferOnly = !useMetalFX
+        // MetalFX source textures are single-sampled; avoid MSAA resolve mismatches.
+        view.sampleCount = 1
     }
 }
 #endif

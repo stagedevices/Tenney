@@ -57,6 +57,12 @@ final class LatticeMetalRenderer: NSObject, MTKViewDelegate {
     private var useMetalFX = true
     private var metalFXScaler: Any?
     private var metalFXInputTexture: MTLTexture?
+    private var metalFXSupported = true
+    private var lastFXInputWidth: Int?
+    private var lastFXInputHeight: Int?
+    private var lastFXOutputWidth: Int?
+    private var lastFXOutputHeight: Int?
+    private var lastFXPixelFormat: MTLPixelFormat?
 
     var onPick: ((LatticeMetalPickResult) -> Void)?
 
@@ -169,7 +175,11 @@ final class LatticeMetalRenderer: NSObject, MTKViewDelegate {
         snapshotLock.lock()
         self.snapshot = snapshot
         snapshotLock.unlock()
+        let wasUsingMetalFX = useMetalFX
         useMetalFX = snapshot.useMetalFX
+        if useMetalFX && !wasUsingMetalFX {
+            metalFXSupported = true
+        }
     }
 
     func enqueuePick(_ request: LatticeMetalPickRequest) {
@@ -192,8 +202,7 @@ final class LatticeMetalRenderer: NSObject, MTKViewDelegate {
     }
 
     func draw(in view: MTKView) {
-        guard let drawable = view.currentDrawable,
-              let renderPassDescriptor = view.currentRenderPassDescriptor else { return }
+        guard let drawable = view.currentDrawable else { return }
 
         snapshotLock.lock()
         guard var snapshot = snapshot else {
@@ -301,14 +310,20 @@ final class LatticeMetalRenderer: NSObject, MTKViewDelegate {
             rebuildMetalFXIfNeeded(view: view, drawableSize: view.drawableSize)
         }
 
-        let renderTarget: MTLTexture
+        let renderPassDescriptor: MTLRenderPassDescriptor
         if let metalFXTexture = metalFXInputTexture {
-            renderTarget = metalFXTexture
+            // MetalFX renders into an offscreen texture; do not mutate the view's descriptor.
+            let offscreenDescriptor = MTLRenderPassDescriptor()
+            let colorAttachment = offscreenDescriptor.colorAttachments[0]
+            colorAttachment.texture = metalFXTexture
+            colorAttachment.loadAction = .clear
+            colorAttachment.storeAction = .store
+            colorAttachment.clearColor = view.clearColor
+            renderPassDescriptor = offscreenDescriptor
         } else {
-            renderTarget = drawable.texture
+            guard let viewDescriptor = view.currentRenderPassDescriptor else { return }
+            renderPassDescriptor = viewDescriptor
         }
-
-        renderPassDescriptor.colorAttachments[0].texture = renderTarget
 
         if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) {
             if linkCount > 0 {
@@ -384,7 +399,7 @@ if let metalFXTexture = metalFXInputTexture,
 
     private func rebuildMetalFXIfNeeded(view: MTKView, drawableSize: CGSize) {
 #if canImport(MetalFX)
-        guard #available(iOS 26.0, macCatalyst 26.0, *), useMetalFX else {
+        guard #available(iOS 26.0, macCatalyst 26.0, *), useMetalFX, metalFXSupported else {
             metalFXScaler = nil
             metalFXInputTexture = nil
             return
@@ -393,9 +408,22 @@ if let metalFXTexture = metalFXInputTexture,
         let scale: Float = 0.82
         let width = max(1, Int(Float(drawableSize.width) * scale))
         let height = max(1, Int(Float(drawableSize.height) * scale))
+        let outputWidth = Int(drawableSize.width)
+        let outputHeight = Int(drawableSize.height)
+        let pixelFormat = view.colorPixelFormat
+
+        if metalFXInputTexture != nil,
+           metalFXScaler != nil,
+           lastFXInputWidth == width,
+           lastFXInputHeight == height,
+           lastFXOutputWidth == outputWidth,
+           lastFXOutputHeight == outputHeight,
+           lastFXPixelFormat == pixelFormat {
+            return
+        }
 
         let descriptor = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: view.colorPixelFormat,
+            pixelFormat: pixelFormat,
             width: width,
             height: height,
             mipmapped: false
@@ -407,12 +435,30 @@ if let metalFXTexture = metalFXInputTexture,
         let fxDescriptor = MTLFXSpatialScalerDescriptor()
         fxDescriptor.inputWidth = width
         fxDescriptor.inputHeight = height
-        fxDescriptor.outputWidth = Int(drawableSize.width)
-        fxDescriptor.outputHeight = Int(drawableSize.height)
-        fxDescriptor.colorTextureFormat = view.colorPixelFormat
+        fxDescriptor.outputWidth = outputWidth
+        fxDescriptor.outputHeight = outputHeight
+        fxDescriptor.colorTextureFormat = pixelFormat
         fxDescriptor.colorProcessingMode = .perceptual
-        fxDescriptor.outputTextureFormat = view.colorPixelFormat
+        fxDescriptor.outputTextureFormat = pixelFormat
         metalFXScaler = fxDescriptor.makeSpatialScaler(device: device)
+        if metalFXScaler == nil {
+#if DEBUG
+            print("[LatticeMetal] MetalFX scaler unavailable; falling back to non-MetalFX rendering.")
+#endif
+            metalFXSupported = false
+            metalFXInputTexture = nil
+            lastFXInputWidth = nil
+            lastFXInputHeight = nil
+            lastFXOutputWidth = nil
+            lastFXOutputHeight = nil
+            lastFXPixelFormat = nil
+            return
+        }
+        lastFXInputWidth = width
+        lastFXInputHeight = height
+        lastFXOutputWidth = outputWidth
+        lastFXOutputHeight = outputHeight
+        lastFXPixelFormat = pixelFormat
 #else
         metalFXScaler = nil
         metalFXInputTexture = nil
