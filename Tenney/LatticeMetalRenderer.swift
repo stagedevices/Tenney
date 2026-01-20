@@ -64,6 +64,7 @@ final class LatticeMetalRenderer: NSObject, MTKViewDelegate {
     private var lastFXOutputWidth: Int?
     private var lastFXOutputHeight: Int?
     private var lastFXPixelFormat: MTLPixelFormat?
+    private var lastIndirectArgsLogTime: CFTimeInterval = 0
 
     var onPick: ((LatticeMetalPickResult) -> Void)?
 
@@ -311,20 +312,37 @@ final class LatticeMetalRenderer: NSObject, MTKViewDelegate {
             rebuildMetalFXIfNeeded(view: view, drawableSize: view.drawableSize)
         }
 
-        let renderPassDescriptor: MTLRenderPassDescriptor
-        if let metalFXTexture = metalFXInputTexture {
-            // MetalFX renders into an offscreen texture; do not mutate the view's descriptor.
-            let offscreenDescriptor = MTLRenderPassDescriptor()
-            guard let colorAttachment = offscreenDescriptor.colorAttachments[0] else { return }
-            colorAttachment.texture = metalFXTexture
-            colorAttachment.loadAction = .clear
-            colorAttachment.storeAction = .store
-            colorAttachment.clearColor = view.clearColor
-            renderPassDescriptor = offscreenDescriptor
+        let renderTarget: MTLTexture
+#if canImport(MetalFX)
+        let canUseMetalFX = useMetalFX
+            && metalFXInputTexture != nil
+            && metalFXOutputTexture != nil
+            && (metalFXScaler as? any MTLFXSpatialScaler) != nil
+#else
+        let canUseMetalFX = false
+#endif
+        if canUseMetalFX, let metalFXTexture = metalFXInputTexture {
+            renderTarget = metalFXTexture
         } else {
-            guard let viewDescriptor = view.currentRenderPassDescriptor else { return }
-            renderPassDescriptor = viewDescriptor
+            renderTarget = drawable.texture
         }
+
+        let renderPassDescriptor = MTLRenderPassDescriptor()
+        guard let colorAttachment = renderPassDescriptor.colorAttachments[0] else { return }
+        colorAttachment.texture = renderTarget
+        colorAttachment.loadAction = .clear
+        colorAttachment.storeAction = .store
+#if DEBUG
+        if snapshot.debugFlags != 0 {
+            colorAttachment.clearColor = canUseMetalFX
+                ? MTLClearColor(red: 1, green: 0, blue: 0, alpha: 1)
+                : MTLClearColor(red: 0, green: 1, blue: 0, alpha: 1)
+        } else {
+            colorAttachment.clearColor = view.clearColor
+        }
+#else
+        colorAttachment.clearColor = view.clearColor
+#endif
 
         if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) {
             if linkCount > 0 {
@@ -359,7 +377,8 @@ final class LatticeMetalRenderer: NSObject, MTKViewDelegate {
         }
 
 #if canImport(MetalFX)
-        if let metalFXTexture = metalFXInputTexture,
+        if canUseMetalFX,
+           let metalFXTexture = metalFXInputTexture,
            let metalFXOutput = metalFXOutputTexture,
            let scaler = metalFXScaler as? any MTLFXSpatialScaler {
             scaler.colorTexture = metalFXTexture
@@ -383,22 +402,33 @@ final class LatticeMetalRenderer: NSObject, MTKViewDelegate {
         }
 #endif
 
+        let debugFlags = snapshot.debugFlags
         commandBuffer.addCompletedHandler { [weak self] buffer in
             guard let self else { return }
-            guard pickToken != nil else { return }
-            let pointer = self.buffers.pickBuffer.contents().bindMemory(to: LatticeMetalPickResult.self, capacity: 1)
-            let result = pointer.pointee
             let visibleCount = Int(self.buffers.visibleCountBuffer.contents().bindMemory(to: UInt32.self, capacity: 1).pointee)
-            let gpuTimeMs = (buffer.gpuEndTime - buffer.gpuStartTime) * 1000
-            if let pickRequestFrame {
-                self.diagnostics.lastPickLatencyFrames = max(0, self.frameIndex - pickRequestFrame)
-            }
             self.diagnostics.lastVisibleCount = visibleCount
-            if buffer.gpuStartTime > 0 && buffer.gpuEndTime > buffer.gpuStartTime {
-                self.diagnostics.lastGPUTimeMs = gpuTimeMs
+#if DEBUG
+            let now = CACurrentMediaTime()
+            if debugFlags != 0 || now - self.lastIndirectArgsLogTime >= 1.0 {
+                let argsPointer = self.buffers.indirectArgsBuffer.contents().bindMemory(to: MTLDrawIndexedPrimitivesIndirectArguments.self, capacity: 1)
+                let args = argsPointer.pointee
+                print("[LatticeMetal] indirect instanceCount=\(args.instanceCount) visibleCount=\(visibleCount)")
+                self.lastIndirectArgsLogTime = now
             }
-            DispatchQueue.main.async {
-                self.onPick?(result)
+#endif
+            if pickToken != nil {
+                let pointer = self.buffers.pickBuffer.contents().bindMemory(to: LatticeMetalPickResult.self, capacity: 1)
+                let result = pointer.pointee
+                let gpuTimeMs = (buffer.gpuEndTime - buffer.gpuStartTime) * 1000
+                if let pickRequestFrame {
+                    self.diagnostics.lastPickLatencyFrames = max(0, self.frameIndex - pickRequestFrame)
+                }
+                if buffer.gpuStartTime > 0 && buffer.gpuEndTime > buffer.gpuStartTime {
+                    self.diagnostics.lastGPUTimeMs = gpuTimeMs
+                }
+                DispatchQueue.main.async {
+                    self.onPick?(result)
+                }
             }
         }
 
