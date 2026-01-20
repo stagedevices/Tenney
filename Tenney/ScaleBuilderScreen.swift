@@ -251,6 +251,17 @@ struct ScaleBuilderScreen: View {
     
     @State private var exportURLs: [URL] = []
     @State private var isPresentingShareSheet = false
+    @State private var lastHydratedLoadedScaleID: TenneyScale.ID? = nil
+
+    private enum BuilderTextField: Hashable {
+        case name
+        case description
+    }
+
+    @FocusState private var focusedField: BuilderTextField?
+    private var isNameEditing: Bool { focusedField == .name }
+    private var isDescEditing: Bool { focusedField == .description }
+    private var isUserEditingText: Bool { isNameEditing || isDescEditing }
     
     
     private func notePadOn(_ idx: Int) {
@@ -269,6 +280,17 @@ struct ScaleBuilderScreen: View {
         for idx in latched where !activePadOrder.contains(idx) {
             activePadOrder.append(idx)
         }
+    }
+
+    private func hydrateExistingScaleIfNeeded(_ existing: TenneyScale) {
+        guard !isUserEditingText else { return }
+        guard existing.id != lastHydratedLoadedScaleID else { return }
+        store.name = existing.name
+        store.descriptionText = existing.descriptionText
+        store.payload.rootHz = existing.referenceHz
+        store.payload.items = existing.degrees
+        store.rebuild()
+        lastHydratedLoadedScaleID = existing.id
     }
 
     
@@ -339,11 +361,7 @@ struct ScaleBuilderScreen: View {
                 
                 // If opening an existing saved scale, load it now
                 if let s = store.payload.existing {
-                    store.name = s.name
-                    store.descriptionText = s.descriptionText
-                    store.payload.rootHz = s.referenceHz
-                    store.payload.items = s.degrees
-                    store.rebuild()
+                    hydrateExistingScaleIfNeeded(s)
                 }
                 syncLoadedScaleMetadata()
                 applyPendingAddsIfNeeded()
@@ -392,6 +410,17 @@ struct ScaleBuilderScreen: View {
             .onChange(of: store.descriptionText) { _ in
                 syncLoadedScaleMetadata()
                 syncBuilderSessionPayload()
+            }
+            .onChange(of: store.payload.existing?.id) { _ in
+                guard let existing = store.payload.existing else {
+                    lastHydratedLoadedScaleID = nil
+                    return
+                }
+                hydrateExistingScaleIfNeeded(existing)
+            }
+            .onChange(of: focusedField) { _ in
+                guard !isUserEditingText, let existing = store.payload.existing else { return }
+                hydrateExistingScaleIfNeeded(existing)
             }
             .onChange(of: store.payload.items) { _ in
                 syncLoadedScaleMetadata()
@@ -518,12 +547,14 @@ struct ScaleBuilderScreen: View {
                         .font(.system(size: 30, weight: .bold, design: .rounded))
                         .textInputAutocapitalization(.words)
                         .disableAutocorrection(true)
+                        .focused($focusedField, equals: .name)
                     Spacer()
                 }
                 
                 TextField("Description / notes", text: $store.descriptionText, axis: .vertical)
                     .font(.callout)
                     .lineLimit(1...3)
+                    .focused($focusedField, equals: .description)
                 
                 HStack(spacing: 8) {
                     // Auto-filled prime limit chip (non-interactive)
