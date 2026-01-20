@@ -381,24 +381,9 @@ final class LatticeMetalRenderer: NSObject, MTKViewDelegate {
            let metalFXTexture = metalFXInputTexture,
            let metalFXOutput = metalFXOutputTexture,
            let scaler = metalFXScaler as? any MTLFXSpatialScaler {
-            scaler.colorTexture = metalFXTexture
-            scaler.outputTexture = metalFXOutput
+            scaler.inputTexture = metalFXTexture
+            scaler.outputTexture = drawable.texture
             scaler.encode(commandBuffer: commandBuffer)
-            if let blit = commandBuffer.makeBlitCommandEncoder() {
-                let size = MTLSize(width: metalFXOutput.width, height: metalFXOutput.height, depth: 1)
-                blit.copy(
-                    from: metalFXOutput,
-                    sourceSlice: 0,
-                    sourceLevel: 0,
-                    sourceOrigin: .init(),
-                    sourceSize: size,
-                    to: drawable.texture,
-                    destinationSlice: 0,
-                    destinationLevel: 0,
-                    destinationOrigin: .init()
-                )
-                blit.endEncoding()
-            }
         }
 #endif
 
