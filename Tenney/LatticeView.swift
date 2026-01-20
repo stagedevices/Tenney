@@ -2470,18 +2470,22 @@ struct LatticeView: View {
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
         @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
         @Environment(\.colorScheme) private var colorScheme
-        @AppStorage(SettingsKeys.selectionTrayClearBehavior)
-        private var clearBehaviorRaw: String = SelectionTrayClearBehavior.contextual.rawValue
         @Namespace private var addNS
 
-        private var clearBehaviorOverride: SelectionTrayClearBehavior {
-            SelectionTrayClearBehavior(rawValue: clearBehaviorRaw) ?? .contextual
-        }
-        
         private var hasDelta: Bool { store.additionsSinceBaseline > 0 }
-        private var hasLoadedBuilderSession: Bool { app.builderSession.savedScaleID != nil }
         private var hasBuilderSession: Bool { app.builderSessionExists }
-        private var isScaleLoaded: Bool { hasLoadedBuilderSession }
+        private var sessionLoaded: Bool { app.builderSessionExists }
+        private var sessionDirty: Bool { app.builderSession.isEdited }
+        private var stagingActive: Bool {
+            store.selectedCount > 0
+                || store.additionsSinceBaseline > 0
+                || !(app.builderSession.pendingAddRefs?.isEmpty ?? true)
+        }
+        private var sessionDisplayName: String {
+            let trimmed = app.builderSession.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? "Untitled Scale" : trimmed
+        }
+        private var sessionStateText: String { sessionDirty ? "Edited" : "Clean" }
 
         // Only show the word when (a) not compact by selectionCount, and (b) no delta flag
         private var addShowsWord: Bool { !addIsCompact && !hasDelta }
@@ -2643,9 +2647,8 @@ struct LatticeView: View {
         @State private var keepTrayOpenAfterClear: Bool = false
 
         private var isActive: Bool {
-            store.selectedCount > 0
-                || store.additionsSinceBaseline > 0
-                || isScaleLoaded
+            stagingActive
+                || sessionLoaded
                 || keepTrayOpenAfterClear
         }
 
@@ -2781,29 +2784,14 @@ struct LatticeView: View {
         }
 
         // Truth table (SelectionTray status):
-        // loadedSession? (savedScaleID != nil), edited? (builderSession.isEdited), delta?, selectedCount
-        // -> xmark: red when loaded+edited, neutral when loaded+clean, amber when no loaded and (delta/selection).
-        // -> "+" label: word shown only when !hasDelta && selectedCount <= 1. Word = Add if session exists else New.
-        // -> "+" action: session exists -> reopen/append; no session -> new builder.
-        // Edge case: selection empty + delta present + sustaining audio -> amber without loaded session;
-        // loaded+edited -> red; loaded+clean -> neutral (amber clear must not flip to red).
-        private var baseClearState: ClearState {
-            if isScaleLoaded && app.builderSession.isEdited { return .red }
-            if isScaleLoaded { return .neutral }
-            if hasDelta || store.selectedCount > 0 { return .amber }
-            return .neutral
-        }
-
+        // 1) sessionLoaded=true,  stagingActive=false, sessionDirty=false -> red,   "Unload scale"
+        // 2) sessionLoaded=true,  stagingActive=false, sessionDirty=true  -> red,   "Discard changes and unload scale"
+        // 3) sessionLoaded=true,  stagingActive=true                     -> amber, "Clear selection and staging"
+        // 4) sessionLoaded=false, stagingActive=true                     -> amber
+        // 5) sessionLoaded=false, stagingActive=false                    -> neutral/disabled
         private var effectiveClearState: ClearState {
-            switch clearBehaviorOverride {
-            case .contextual:
-                return baseClearState
-            case .neverUnload:
-                return baseClearState == .red ? .amber : baseClearState
-            case .alwaysUnloadWhenLoaded:
-                if isScaleLoaded { return .red }
-                return baseClearState
-            }
+            if sessionLoaded { return stagingActive ? .amber : .red }
+            return stagingActive ? .amber : .neutral
         }
 
         private var clearAccessibilityLabel: String {
@@ -2811,20 +2799,23 @@ struct LatticeView: View {
             case .neutral:
                 return "Clear selection"
             case .amber:
-                return "Clear selection and reset changes"
+                return "Clear selection and staging"
             case .red:
-                return "Discard changes and unload scale"
+                return sessionDirty ? "Discard changes and unload scale" : "Unload scale"
             }
         }
 
         private var clearHelpText: String {
             switch effectiveClearState {
             case .neutral:
-                return "Clears selection. Keeps loaded scale."
+                return "Clears selection."
             case .amber:
-                return "Clears selection and resets Δ."
+                if sessionLoaded {
+                    return "\(sessionDisplayName) — \(sessionStateText)"
+                }
+                return "Staging — \(sessionStateText)"
             case .red:
-                return "Discards edits, unloads the current scale."
+                return "\(sessionDisplayName) — \(sessionStateText)"
             }
         }
 
@@ -2839,43 +2830,33 @@ struct LatticeView: View {
             }
         }
 
-        private func performClearTransientState() {
+        private func clearStagingNonDestructive() {
             stopInfoPreview(true)
             store.stopSelectionAudio(hard: true)
-            withAnimation(.snappy) { store.clearSelection() }
             store.resetStagingDelta()
+            withAnimation(.snappy) { store.clearSelection() }
             keepTrayOpenAfterClear = true
         }
 
-        private func performDiscardAndUnload() {
+        private func unloadSessionDestructive() {
             stopInfoPreview(true)
             store.stopSelectionAudio(hard: true)
-            if app.builderPresented {
-                ToneOutputEngine.shared.builderDidDismiss()
-            }
-            withAnimation(.snappy) { store.clearSelection() }
+            store.stopAllLatticeVoices(hard: true)
+            ToneOutputEngine.shared.builderDidDismiss()
             store.resetStagingDelta()
+            withAnimation(.snappy) { store.clearSelection() }
             app.unloadBuilderScale()
             keepTrayOpenAfterClear = false
         }
 
         private func performClearAction(state: ClearState) {
-            let selectionExists = store.selectedCount > 0
-
             switch state {
             case .neutral:
-                guard selectionExists else { return }
-                store.stopSelectionAudio(hard: true)
-                withAnimation(.snappy) { store.clearSelection() }
+                return
             case .amber:
-                performClearTransientState()
+                clearStagingNonDestructive()
             case .red:
-#if DEBUG
-                if clearBehaviorOverride == .neverUnload {
-                    assertionFailure("SelectionTray red clear should never run when 'Never unload' is enabled.")
-                }
-#endif
-                performDiscardAndUnload()
+                unloadSessionDestructive()
             }
         }
 
@@ -2905,6 +2886,7 @@ struct LatticeView: View {
                 clearButtonLabel(for: state)
             }
             .buttonStyle(.plain)
+            .disabled(state == .neutral)
             .accessibilityLabel(clearAccessibilityLabel)
 #if os(macOS) || targetEnvironment(macCatalyst)
             .help(clearHelpText)
