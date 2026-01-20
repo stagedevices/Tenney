@@ -89,7 +89,11 @@ struct ScaleBuilderScreen: View {
         guard let pending = app.builderSession.pendingAddRefs, !pending.isEmpty else { return }
         store.payload.items.append(contentsOf: pending)
         store.rebuild()
-        app.builderSession.pendingAddRefs = nil
+        DispatchQueue.main.async {
+                    if app.builderPayload == nil {
+                        app.builderSession.pendingAddRefs = nil
+                    }
+                }
         if app.builderSession.loadedScaleID != nil {
             app.builderSession.isEdited = true
         }
