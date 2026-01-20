@@ -15,7 +15,7 @@ import Combine
 
 final class LatticeMetalBridge: ObservableObject {
     fileprivate weak var renderer: LatticeMetalRenderer?
-    @Published var nodeLookup: [UInt32: LatticeMetalNodeInfo] = [:]
+    var nodeLookup: [UInt32: LatticeMetalNodeInfo] = [:]
 
     func attach(renderer: LatticeMetalRenderer) {
         self.renderer = renderer
@@ -58,6 +58,11 @@ struct LatticeMetalView: UIViewRepresentable {
 
     func updateUIView(_ uiView: MTKView, context: Context) {
         guard let renderer = context.coordinator.renderer else { return }
+#if DEBUG
+        if LatticeStore.publishTraceEnabled {
+            print("[LatticeMetal] updateUIView snapshot useMetalFX=\(snapshot.useMetalFX)")
+        }
+#endif
         configure(view: uiView, useMetalFX: snapshot.useMetalFX)
         renderer.onPick = onPick
         renderer.update(snapshot: snapshot)
@@ -115,6 +120,11 @@ struct LatticeMetalNSView: NSViewRepresentable {
 
     func updateNSView(_ nsView: MTKView, context: Context) {
         guard let renderer = context.coordinator.renderer else { return }
+#if DEBUG
+        if LatticeStore.publishTraceEnabled {
+            print("[LatticeMetal] updateNSView snapshot useMetalFX=\(snapshot.useMetalFX)")
+        }
+#endif
         configure(view: nsView, useMetalFX: snapshot.useMetalFX)
         renderer.onPick = onPick
         renderer.update(snapshot: snapshot)
