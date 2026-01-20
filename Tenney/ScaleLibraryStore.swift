@@ -93,6 +93,16 @@ final class ScaleLibraryStore: ObservableObject {
         scheduleSave()
     }
 
+    func removeScales(forPackID packID: String) {
+        let idsToRemove = scales.values.compactMap { scale in
+            scale.provenance?.packID == packID ? scale.id : nil
+        }
+        guard !idsToRemove.isEmpty else { return }
+        for id in idsToRemove {
+            deleteScale(id: id)
+        }
+    }
+
     func upsert(_ scale: TenneyScale) { updateScale(scale) }
     // Newer UI calls this name.
     func addScale(_ scale: TenneyScale) { updateScale(scale) }

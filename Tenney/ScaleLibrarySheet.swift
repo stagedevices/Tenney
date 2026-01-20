@@ -951,6 +951,7 @@ private struct ScaleActionsSheet: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var library = ScaleLibraryStore.shared
     @ObservedObject private var tagStore = TagStore.shared
+    @ObservedObject private var communityPacks = CommunityPacksStore.shared
     @AppStorage(SettingsKeys.staffA4Hz) private var staffA4Hz: Double = 440
     @AppStorage(SettingsKeys.builderExportFormats) private var exportFormatsRaw: Int = ExportFormat.default.rawValue
     @AppStorage(SettingsKeys.builderExportRootMode) private var exportA4ModeRaw: String = ExportA4Mode.appDefault.rawValue
@@ -970,6 +971,7 @@ private struct ScaleActionsSheet: View {
     @State private var isPresentingShareSheet = false
     @State private var showTagsSheet = false
     @State private var showDeleteConfirm = false
+    @State private var showUninstallConfirm = false
     @State private var copyMessage: String? = nil
     
     @AppStorage(SettingsKeys.lissaDotSize) private var lissaDotSize: Double = 4
@@ -1053,6 +1055,21 @@ private struct ScaleActionsSheet: View {
     
     private var currentScale: TenneyScale {
         library.scales[scale.id] ?? scale
+    }
+
+    private var communityPackID: String? {
+        guard currentScale.provenance?.kind == .communityPack else { return nil }
+        return currentScale.provenance?.packID
+    }
+
+    private var communityPackTitle: String {
+        let raw = currentScale.provenance?.packName.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return raw.isEmpty ? "this pack" : raw
+    }
+
+    private var shouldOfferUninstall: Bool {
+        guard let packID = communityPackID else { return false }
+        return communityPacks.isInstalled(packID)
     }
 
     private var exportFormats: ExportFormat {
@@ -1163,7 +1180,14 @@ private struct ScaleActionsSheet: View {
                                 onCopySCL: { copySCL() },
                                 onCommitTitle: { commitScaleRename($0) },
                                 onTags: { showTagsSheet = true },
-                                onDelete: { showDeleteConfirm = true }
+                                onDelete: {
+                                    if shouldOfferUninstall {
+                                        showUninstallConfirm = true
+                                    } else {
+                                        showDeleteConfirm = true
+                                    }
+                                },
+                                destructiveTitle: shouldOfferUninstall ? "Uninstall Pack" : "Delete"
                             )
                             .tag(0)
 
@@ -1284,6 +1308,18 @@ private struct ScaleActionsSheet: View {
             Button("Cancel", role: .cancel) { }
         } message: {
             Text("This will remove “\(currentScale.name)” from your Library.")
+        }
+        .alert("Uninstall “\(communityPackTitle)”?", isPresented: $showUninstallConfirm) {
+            Button("Uninstall Pack", role: .destructive) {
+                guard let packID = communityPackID else { return }
+                Task {
+                    await communityPacks.uninstallPack(packID: packID)
+                    dismiss()
+                }
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Removes this pack’s scales from this device. You can reinstall later.")
         }
         .onDisappear {
             playback.stop()
@@ -2322,6 +2358,7 @@ private struct OverviewPage: View {
     let onCommitTitle: (String) -> Void
     let onTags: () -> Void
     let onDelete: () -> Void
+    let destructiveTitle: String
 
     private func beginTitleEdit(current: String) {
         titleDraft = current
@@ -2490,7 +2527,7 @@ private struct OverviewPage: View {
                     }
                     Button(action: onDelete) {
                         ActionTile(
-                            title: "Delete",
+                            title: destructiveTitle,
                             systemImage: "trash",
                             style: .destructive
                         )
