@@ -34,6 +34,9 @@ final class CommunityPacksStore: ObservableObject {
         } catch is CancellationError {
             setState(.idle)
             return
+        } catch let error as URLError where error.code == .cancelled {
+            setState(.idle)
+            return
         } catch CommunityPacksError.schemaMismatch {
             setState(.schemaMismatch)
             return
@@ -120,7 +123,7 @@ final class CommunityPacksStore: ObservableObject {
                     let scaleURL = CommunityPacksEndpoints.url(base: CommunityPacksEndpoints.rawBase, path: scalePath)
                     let scaleCDN = CommunityPacksEndpoints.url(base: CommunityPacksEndpoints.cdnBase, path: scalePath)
                     let (data, _, _) = try await fetchData(primary: scaleURL, fallback: scaleCDN, label: scalePath)
-                    _ = try decodeSchema(CommunityScaleBuilderEnvelope.self, data: data, label: scalePath)
+                    _ = try decodeScalePayload(data: data, label: scalePath)
                     scaleDataByPath[scale.path] = data
                 }
 
@@ -184,7 +187,7 @@ final class CommunityPacksStore: ObservableObject {
                     guard let data = cachedPack.scaleDataByPath[key] ?? cachedPack.scaleDataByPath[scale.path] else {
                         throw CommunityPacksError.cacheUnavailable
                     }
-                    _ = try decodeSchema(CommunityScaleBuilderEnvelope.self, data: data, label: "cached \(entry.path)/\(scale.path)")
+                    _ = try decodeScalePayload(data: data, label: "cached \(entry.path)/\(scale.path)")
                     scaleDataByPath[scale.path] = data
                 }
 
@@ -227,17 +230,17 @@ final class CommunityPacksStore: ObservableObject {
             guard let data = scaleDataByPath[scale.path] else {
                 throw CommunityPacksError.cacheUnavailable
             }
-            let envelope = try decodeSchema(CommunityScaleBuilderEnvelope.self, data: data, label: "scale-builder.json")
-            let limit = TenneyScale.detectedLimit(for: envelope.payload.refs)
+            let payload = try decodeScalePayload(data: data, label: "scale-builder.json")
+            let limit = TenneyScale.detectedLimit(for: payload.refs)
             minLimit = min(minLimit, limit)
             maxLimit = max(maxLimit, limit)
             scales.append(
                 CommunityPackScaleViewModel(
                     id: scale.id,
                     title: scale.title.isEmpty ? "Untitled Scale" : scale.title,
-                    payload: envelope.payload,
+                    payload: payload,
                     primeLimit: limit,
-                    size: envelope.payload.refs.count
+                    size: payload.refs.count
                 )
             )
         }
@@ -278,7 +281,7 @@ final class CommunityPacksStore: ObservableObject {
         let scaleURL = CommunityPacksEndpoints.url(base: CommunityPacksEndpoints.rawBase, path: tenneyPath)
         let scaleCDN = CommunityPacksEndpoints.url(base: CommunityPacksEndpoints.cdnBase, path: tenneyPath)
         let (scaleData, _, _) = try await fetchData(primary: scaleURL, fallback: scaleCDN, label: tenneyPath)
-        _ = try decodeSchema(CommunityScaleBuilderEnvelope.self, data: scaleData, label: tenneyPath)
+        _ = try decodeScalePayload(data: scaleData, label: tenneyPath)
 
         let packData = try synthesizePackData(entry: entry, scalePathComponent: scalePathComponent)
         let viewModel = try buildViewModel(
@@ -394,6 +397,28 @@ final class CommunityPacksStore: ObservableObject {
         }
     }
 
+    private func decodeScalePayload(data: Data, label: String) throws -> ScaleBuilderPayload {
+        do {
+            let envelope = try decodeSchema(CommunityScaleBuilderEnvelope.self, data: data, label: label)
+            return envelope.payload
+        } catch CommunityPacksError.schemaMismatch {
+            if hasSchemaVersion(data: data) {
+                throw CommunityPacksError.schemaMismatch
+            }
+            do {
+                let payload = try JSONDecoder().decode(ScaleBuilderPayload.self, from: data)
+                logFetch("CommunityPacks \(label) decoded legacy scale payload without schemaVersion.")
+                return payload
+            } catch let error as DecodingError {
+                logDecodingError(label: label, error: error, data: data)
+                throw CommunityPacksError.decoding("\(label) failed to decode.")
+            } catch {
+                logFetch("CommunityPacks \(label) decode error: \(error.localizedDescription)")
+                throw CommunityPacksError.decoding("\(label) failed to decode.")
+            }
+        }
+    }
+
     private func sha256Hex(for packData: Data, scaleData: [Data]) -> String {
         var combined = Data()
         combined.append(packData)
@@ -489,6 +514,14 @@ final class CommunityPacksStore: ObservableObject {
             path = []
         }
         return path.map(\.stringValue).joined(separator: ".")
+    }
+
+    private func hasSchemaVersion(data: Data) -> Bool {
+        guard let object = try? JSONSerialization.jsonObject(with: data),
+              let dict = object as? [String: Any] else {
+            return false
+        }
+        return dict["schemaVersion"] != nil
     }
 }
 
