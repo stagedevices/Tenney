@@ -23,7 +23,6 @@ struct ScaleLibrarySheet: View {
     @EnvironmentObject private var model: AppModel
     @ObservedObject private var library = ScaleLibraryStore.shared
     @ObservedObject private var tagStore = TagStore.shared
-    @StateObject private var community = CommunityPacksStore.shared
     @State private var showOnlyFavorites = false
     @Environment(\.colorScheme) private var scheme
     @State private var actionTarget: TenneyScale? = nil   // ← selected row for the action sheet
@@ -178,17 +177,6 @@ struct ScaleLibrarySheet: View {
                 showOnlyFavorites = true
             }
         }
-        .onAppear {
-            if libraryPage == 2 {
-                Task { await community.refresh(force: true) }
-            }
-        }
-        .onChange(of: libraryPage) { page in
-            if page == 2 {
-                Task { await community.refresh(force: true) }
-            }
-        }
-
     }
     @ViewBuilder
     private var libraryGlassBackground: some View {

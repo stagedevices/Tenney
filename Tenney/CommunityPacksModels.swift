@@ -65,6 +65,47 @@ struct CommunityIndexEntry: Decodable {
     let packID: String
     let path: String
     let title: String?
+    let description: String?
+    let authorName: String?
+    let authorURLString: String?
+    let license: String?
+    let tenneyPath: String?
+    let usesFilesContract: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case packID
+        case path
+        case slug
+        case title
+        case description
+        case descr
+        case author
+        case authorUrl
+        case license
+        case files
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let files = try c.decodeIfPresent(CommunityIndexFiles.self, forKey: .files)
+        let packID = try c.decodeIfPresent(String.self, forKey: .packID)
+        let path = try c.decodeIfPresent(String.self, forKey: .path)
+        let slug = try c.decodeIfPresent(String.self, forKey: .slug)
+        self.packID = packID ?? slug ?? path ?? ""
+        self.path = path ?? slug ?? packID ?? ""
+        self.title = try c.decodeIfPresent(String.self, forKey: .title)
+        self.description = try c.decodeIfPresent(String.self, forKey: .description)
+            ?? c.decodeIfPresent(String.self, forKey: .descr)
+        self.authorName = try c.decodeIfPresent(String.self, forKey: .author)
+        self.authorURLString = try c.decodeIfPresent(String.self, forKey: .authorUrl)
+        self.license = try c.decodeIfPresent(String.self, forKey: .license)
+        self.tenneyPath = files?.tenney
+        self.usesFilesContract = (tenneyPath?.isEmpty == false)
+    }
+}
+
+struct CommunityIndexFiles: Decodable {
+    let tenney: String?
 }
 
 struct CommunityPack: Decodable {
