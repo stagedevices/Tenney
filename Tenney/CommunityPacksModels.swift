@@ -66,6 +66,7 @@ struct CommunityIndexEntry: Decodable {
     let path: String
     let title: String?
     let description: String?
+    let usesFilesContract: Bool
 
     enum CodingKeys: String, CodingKey {
         case packID
@@ -74,10 +75,12 @@ struct CommunityIndexEntry: Decodable {
         case title
         case description
         case descr
+        case files
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        let files = try c.decodeIfPresent(CommunityIndexFiles.self, forKey: .files)
         let packID = try c.decodeIfPresent(String.self, forKey: .packID)
         let path = try c.decodeIfPresent(String.self, forKey: .path)
         let slug = try c.decodeIfPresent(String.self, forKey: .slug)
@@ -86,7 +89,12 @@ struct CommunityIndexEntry: Decodable {
         self.title = try c.decodeIfPresent(String.self, forKey: .title)
         self.description = try c.decodeIfPresent(String.self, forKey: .description)
             ?? c.decodeIfPresent(String.self, forKey: .descr)
+        self.usesFilesContract = (files?.tenney?.isEmpty == false)
     }
+}
+
+struct CommunityIndexFiles: Decodable {
+    let tenney: String?
 }
 
 struct CommunityPack: Decodable {

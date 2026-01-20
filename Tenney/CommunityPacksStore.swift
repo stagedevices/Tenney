@@ -93,6 +93,11 @@ final class CommunityPacksStore: ObservableObject {
         var viewModels: [CommunityPackViewModel] = []
         var sawSchemaMismatch = false
         for (offset, entry) in index.packs.enumerated() {
+            if entry.usesFilesContract {
+                sawSchemaMismatch = true
+                logFetch("CommunityPacks index entry uses files contract (packID=\(entry.packID)); app update required.")
+                continue
+            }
             guard !entry.path.isEmpty else {
                 logFetch("CommunityPacks index entry missing path (packID=\(entry.packID)); skipping.")
                 continue
@@ -149,6 +154,11 @@ final class CommunityPacksStore: ObservableObject {
         var viewModels: [CommunityPackViewModel] = []
         var sawSchemaMismatch = false
         for (offset, entry) in index.packs.enumerated() {
+            if entry.usesFilesContract {
+                sawSchemaMismatch = true
+                logFetch("CommunityPacks cached entry uses files contract (packID=\(entry.packID)); app update required.")
+                continue
+            }
             guard !entry.path.isEmpty else {
                 logFetch("CommunityPacks cached entry missing path (packID=\(entry.packID)); skipping.")
                 continue
