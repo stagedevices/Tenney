@@ -46,6 +46,8 @@ struct ScaleBuilderScreen: View {
         }
     }
     private func finishBuilder() {
+        persistBuilderDraftToSession(reason: "done")
+        didPersistOnDismiss = true
         // 1) De-load the current scale if loaded
         if store.payload.existing != nil {
             store.payload.existing = nil
@@ -89,14 +91,17 @@ struct ScaleBuilderScreen: View {
         guard let pending = app.builderSession.pendingAddRefs, !pending.isEmpty else { return }
         store.payload.items.append(contentsOf: pending)
         store.rebuild()
-        DispatchQueue.main.async {
-                    if app.builderPayload == nil {
-                        app.builderSession.pendingAddRefs = nil
-                    }
-                }
-        if app.builderSession.loadedScaleID != nil {
-            app.builderSession.isEdited = true
-        }
+#if DEBUG
+        let draftHash = AppModel.debugDegreeHash(store.degrees)
+        print("[BuilderHydrate] appendingPendingRefs count=\(pending.count) storeCount=\(store.degrees.count) draftHash=\(draftHash)")
+#endif
+        app.builderSession.pendingAddRefs = nil
+        app.updateBuilderDraft(
+            name: store.name,
+            description: store.descriptionText,
+            rootHz: store.payload.rootHz,
+            degrees: store.degrees
+        )
         syncLoadedScaleMetadata()
         syncBuilderSessionPayload()
     }
@@ -234,6 +239,7 @@ struct ScaleBuilderScreen: View {
     @State private var activePadOrder: [Int] = []
     @State private var enteredWithSoundOn: Bool = true
     @State private var pausedMicForBuilder = false
+    @State private var didPersistOnDismiss = false
     @Namespace private var saveSlot
     @Namespace private var exportSlot
     
@@ -291,6 +297,56 @@ struct ScaleBuilderScreen: View {
         store.payload.items = existing.degrees
         store.rebuild()
         lastHydratedLoadedScaleID = existing.id
+#if DEBUG
+        let draftHash = AppModel.debugDegreeHash(store.degrees)
+        print("[BuilderHydrate] source=payloadExisting storeCount=\(store.degrees.count) draftHash=\(draftHash)")
+#endif
+    }
+
+    private func hydrateDraftIfNeeded() {
+        guard !isUserEditingText else { return }
+        if app.builderSession.draftInitialized {
+            if app.builderSession.loadedScaleID != nil, app.builderSession.loadedScaleID == lastHydratedLoadedScaleID {
+                return
+            }
+            store.name = app.builderSession.draftName
+            store.descriptionText = app.builderSession.draftDescription
+            store.payload.rootHz = app.builderSession.draftRootHz
+            store.payload.items = app.builderSession.draftDegrees
+            store.rebuild()
+            lastHydratedLoadedScaleID = app.builderSession.loadedScaleID
+#if DEBUG
+            let draftHash = AppModel.debugDegreeHash(store.degrees)
+            print("[BuilderHydrate] source=sessionDraft storeCount=\(store.degrees.count) draftHash=\(draftHash)")
+#endif
+        } else if let existing = store.payload.existing {
+            hydrateExistingScaleIfNeeded(existing)
+        } else {
+#if DEBUG
+            let draftHash = AppModel.debugDegreeHash(store.degrees)
+            print("[BuilderHydrate] source=new storeCount=\(store.degrees.count) draftHash=\(draftHash)")
+#endif
+        }
+    }
+
+    private func persistBuilderDraftToSession(reason: String) {
+        let degrees = store.degrees
+        app.updateBuilderDraft(
+            name: store.name,
+            description: store.descriptionText,
+            rootHz: store.payload.rootHz,
+            degrees: degrees
+        )
+        if let existing = store.payload.existing {
+            app.updateBuilderSessionEdited(
+                loadedScaleEdited: store.makeScaleSnapshot() != existing,
+                metadataEdited: app.loadedScaleMetadataEdited
+            )
+        }
+#if DEBUG
+        let draftHash = AppModel.debugDegreeHash(degrees)
+        print("[BuilderDismiss] reason=\(reason) persisted=true draftCount=\(degrees.count) draftHash=\(draftHash)")
+#endif
     }
 
     
@@ -352,6 +408,7 @@ struct ScaleBuilderScreen: View {
                 LearnEventBus.shared.send(.builderPadOctaveChanged(idx, delta))
             }
             .onAppear {
+                didPersistOnDismiss = false
                 reconcileActivePadOrderWithLatched()
                 // Pause tuner mic while in Builder (restored on exit)
                 app.builderPresented = true
@@ -360,9 +417,7 @@ struct ScaleBuilderScreen: View {
                 pausedMicForBuilder = true
                 
                 // If opening an existing saved scale, load it now
-                if let s = store.payload.existing {
-                    hydrateExistingScaleIfNeeded(s)
-                }
+                hydrateDraftIfNeeded()
                 syncLoadedScaleMetadata()
                 applyPendingAddsIfNeeded()
                 syncBuilderSessionPayload()
@@ -393,6 +448,9 @@ struct ScaleBuilderScreen: View {
             }
             // Release all latched voices when the sheet closes
             .onDisappear {
+                if !didPersistOnDismiss, app.builderPayload != nil {
+                    persistBuilderDraftToSession(reason: "dragDismiss")
+                }
                 ToneOutputEngine.shared.builderDidDismiss()
                 app.builderPresented = false
                 stopAllPadVoices()
@@ -416,11 +474,11 @@ struct ScaleBuilderScreen: View {
                     lastHydratedLoadedScaleID = nil
                     return
                 }
-                hydrateExistingScaleIfNeeded(existing)
+                hydrateDraftIfNeeded()
             }
             .onChange(of: focusedField) { _ in
                 guard !isUserEditingText, let existing = store.payload.existing else { return }
-                hydrateExistingScaleIfNeeded(existing)
+                hydrateDraftIfNeeded()
             }
             .onChange(of: store.payload.items) { _ in
                 syncLoadedScaleMetadata()
@@ -584,6 +642,8 @@ struct ScaleBuilderScreen: View {
                     
                     Button {
                         app.builderStagingBaseCount = store.degrees.count
+                        persistBuilderDraftToSession(reason: "addMore")
+                        didPersistOnDismiss = true
                         dismiss()
                     } label: {
                         Image(systemName: "plus")
@@ -1057,6 +1117,10 @@ struct ScaleBuilderScreen: View {
         private func performSave() {
             let base = store.makeScaleSnapshot()
             let adj = adjustedDegreesForSave()
+#if DEBUG
+            let draftHash = AppModel.debugDegreeHash(adj)
+            print("[BuilderSave] source=storeDegrees count=\(adj.count) draftHash=\(draftHash)")
+#endif
             if let existing = library.scales.values.first(where: { $0.name == base.name }) {
                 // Prepare a pending snapshot that already carries adjusted degrees
                 pendingSnapshot = TenneyScale(

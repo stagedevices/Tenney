@@ -1833,7 +1833,12 @@ struct LatticeView: View {
         )
         let payload: ScaleBuilderPayload
         if app.builderSessionPayload != nil || app.builderSession.loadedScaleID != nil {
-            app.builderSession.pendingAddRefs = [ref]
+#if DEBUG
+            let draftHash = AppModel.debugDegreeHash(app.builderSession.draftDegrees)
+            let pendingCount = app.builderSession.pendingAddRefs?.count ?? 0
+            print("[Builder+Context] loadedScaleID=\(app.builderSession.loadedScaleID?.uuidString ?? "nil") draftCount=\(app.builderSession.draftDegrees.count) draftHash=\(draftHash) payloadRefs=1 pendingAddRefs=\(pendingCount)")
+#endif
+            app.appendBuilderDraftRefs([ref])
             if let sessionPayload = app.builderSessionPayload {
                 payload = sessionPayload
             } else if let existing = app.builderLoadedScale {
@@ -3071,8 +3076,13 @@ struct LatticeView: View {
             Button {
                 let refs = store.selectionRefs(pivot: store.pivot, axisShift: store.axisShift)
                 let payload: ScaleBuilderPayload
+#if DEBUG
+                let draftHash = AppModel.debugDegreeHash(app.builderSession.draftDegrees)
+                let pendingCount = app.builderSession.pendingAddRefs?.count ?? 0
+                print("[Builder+Tray] loadedScaleID=\(app.builderSession.loadedScaleID?.uuidString ?? "nil") draftCount=\(app.builderSession.draftDegrees.count) draftHash=\(draftHash) payloadRefs=\(refs.count) pendingAddRefs=\(pendingCount)")
+#endif
                 if hasBuilderSession {
-                    app.builderSession.pendingAddRefs = refs
+                    app.appendBuilderDraftRefs(refs)
                     if let sessionPayload = app.builderSessionPayload {
                         payload = sessionPayload
                     } else if let existing = app.builderLoadedScale {

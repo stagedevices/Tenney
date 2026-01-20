@@ -12,6 +12,9 @@ import Combine
 import Accelerate
 import SwiftUI
 import UIKit
+#if DEBUG
+import CryptoKit
+#endif
 
 // Lightweight global read-only handle so non-View code can read rootHz safely.
 enum AppModelLocator {
@@ -24,6 +27,11 @@ final class AppModel: ObservableObject {
         var loadedScaleID: TenneyScale.ID? = nil
         var isEdited: Bool = false
         var pendingAddRefs: [RatioRef]? = nil
+        var draftInitialized: Bool = false
+        var draftName: String = ""
+        var draftDescription: String = ""
+        var draftRootHz: Double = 440.0
+        var draftDegrees: [RatioRef] = []
     }
 
     private var micPCMTap: (([Float], Double) -> Void)?
@@ -201,6 +209,7 @@ final class AppModel: ObservableObject {
                 builderLoadedScale = nil
             }
             builderSessionPayload = payload
+            seedBuilderDraftFromPayloadIfNeeded(payload)
         }
     }
 
@@ -211,6 +220,11 @@ final class AppModel: ObservableObject {
                 builderSession.loadedScaleID = builderLoadedScale?.id
                 builderSession.isEdited = false
                 builderSession.pendingAddRefs = nil
+                if let existing = builderLoadedScale {
+                    seedBuilderDraft(from: existing)
+                } else {
+                    builderSession = .init()
+                }
             }
         }
     }
@@ -229,6 +243,78 @@ final class AppModel: ObservableObject {
         builderPresented = false
         builderSessionPayload = nil
         builderSession = .init()
+    }
+
+    func appendBuilderDraftRefs(_ refs: [RatioRef]) {
+        guard !refs.isEmpty else { return }
+        if !builderSession.draftInitialized {
+            if let existing = builderLoadedScale ?? builderSessionPayload?.existing {
+                seedBuilderDraft(from: existing)
+            } else if let payload = builderSessionPayload ?? builderPayload {
+                seedBuilderDraft(from: payload)
+            } else {
+                builderSession.draftInitialized = true
+                builderSession.draftName = "Untitled Scale"
+                builderSession.draftDescription = ""
+                builderSession.draftRootHz = rootHz
+                builderSession.draftDegrees = []
+            }
+        }
+        builderSession.draftDegrees.append(contentsOf: refs)
+        builderSession.pendingAddRefs = nil
+        if builderSession.loadedScaleID != nil {
+            builderSession.isEdited = true
+        }
+        syncBuilderSessionPayloadFromDraft()
+    }
+
+    func updateBuilderDraft(
+        name: String,
+        description: String,
+        rootHz: Double,
+        degrees: [RatioRef]
+    ) {
+        builderSession.draftInitialized = true
+        builderSession.draftName = name
+        builderSession.draftDescription = description
+        builderSession.draftRootHz = rootHz
+        builderSession.draftDegrees = degrees
+        syncBuilderSessionPayloadFromDraft()
+    }
+
+    private func seedBuilderDraft(from scale: TenneyScale) {
+        builderSession.draftInitialized = true
+        builderSession.draftName = scale.name
+        builderSession.draftDescription = scale.descriptionText
+        builderSession.draftRootHz = scale.referenceHz
+        builderSession.draftDegrees = scale.degrees
+    }
+
+    private func seedBuilderDraft(from payload: ScaleBuilderPayload) {
+        builderSession.draftInitialized = true
+        builderSession.draftName = payload.existing?.name ?? payload.title
+        builderSession.draftDescription = payload.existing?.descriptionText ?? payload.notes
+        builderSession.draftRootHz = payload.rootHz
+        builderSession.draftDegrees = payload.items
+    }
+
+    private func seedBuilderDraftFromPayloadIfNeeded(_ payload: ScaleBuilderPayload) {
+        guard !builderSession.draftInitialized else { return }
+        if let existing = payload.existing {
+            seedBuilderDraft(from: existing)
+        } else {
+            seedBuilderDraft(from: payload)
+        }
+    }
+
+    private func syncBuilderSessionPayloadFromDraft() {
+        guard let payload = builderSessionPayload ?? builderPayload else { return }
+        var next = payload
+        next.title = builderSession.draftName
+        next.notes = builderSession.draftDescription
+        next.rootHz = builderSession.draftRootHz
+        next.items = builderSession.draftDegrees
+        builderSessionPayload = next
     }
 
     func updateBuilderSessionEdited(loadedScaleEdited: Bool, metadataEdited: Bool) {
@@ -579,3 +665,13 @@ private func zeroCrossHz(_ x: [Float], sr: Double) -> Double? {
     guard mid > 0 else { return nil }
     return sr / Double(mid)
 }
+
+#if DEBUG
+extension AppModel {
+    static func debugDegreeHash(_ refs: [RatioRef]) -> String {
+        let body = refs.map { "\($0.p)/\($0.q)@\($0.octave)" }.joined(separator: "|")
+        let digest = SHA256.hash(data: Data(body.utf8))
+        return digest.map { String(format: "%02x", $0) }.joined()
+    }
+}
+#endif
