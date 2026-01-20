@@ -2674,7 +2674,7 @@ struct LatticeView: View {
             case .neutral:
                 return colorScheme == .dark ? .white : .black
             case .amber:
-                return colorScheme == .dark ? .white : .black
+                return colorScheme == .dark ? .white : .white
             case .red:
                 return .white
             }

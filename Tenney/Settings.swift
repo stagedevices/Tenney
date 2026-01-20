@@ -4244,9 +4244,8 @@ private struct GlassNavTile<Destination: View>: View {
             title: "Selection Clear Button",
             subtitle: "Unload behavior"
         ) {
-            Picker("Clear behavior", selection: $selectionTrayClearBehavior) {
-                ForEach(SelectionTrayClearBehavior.allCases) { behavior in
-                    Text(behavior.title).tag(behavior)
+            Picker("Clear behavior", selection: $selectionTrayClearBehaviorRaw) {                ForEach(SelectionTrayClearBehavior.allCases) { behavior in
+                Text(behavior.title).tag(behavior.rawValue)
                 }
             }
             .pickerStyle(.menu)
