@@ -376,7 +376,7 @@ final class CommunityPacksStore: ObservableObject {
     }
 
     private func logDecodingError(label: String, error: DecodingError, data: Data) {
-        let path = error.codingPath.map(\.stringValue).joined(separator: ".")
+        let path = decodingPath(from: error)
         logFetch("CommunityPacks \(label) decode error at \(path.isEmpty ? "<root>" : path): \(error.localizedDescription)")
         if let object = try? JSONSerialization.jsonObject(with: data) {
             if let dict = object as? [String: Any] {
@@ -386,6 +386,23 @@ final class CommunityPacksStore: ObservableObject {
                 logFetch("CommunityPacks \(label) top-level JSON is an array.")
             }
         }
+    }
+
+    private func decodingPath(from error: DecodingError) -> String {
+        let path: [CodingKey]
+        switch error {
+        case .typeMismatch(_, let context):
+            path = context.codingPath
+        case .valueNotFound(_, let context):
+            path = context.codingPath
+        case .keyNotFound(_, let context):
+            path = context.codingPath
+        case .dataCorrupted(let context):
+            path = context.codingPath
+        @unknown default:
+            path = []
+        }
+        return path.map(\.stringValue).joined(separator: ".")
     }
 }
 
