@@ -1,6 +1,50 @@
 import SwiftUI
 import CryptoKit
 
+private func communityScaleUUID(packID: String, scaleID: String) -> UUID {
+    if let uuid = UUID(uuidString: scaleID) {
+        return uuid
+    }
+    let data = Data((packID + ":" + scaleID).utf8)
+    let hash = SHA256.hash(data: data)
+    let bytes = Array(hash)
+    let tuple = (
+        bytes[0], bytes[1], bytes[2], bytes[3],
+        bytes[4], bytes[5], bytes[6], bytes[7],
+        bytes[8], bytes[9], bytes[10], bytes[11],
+        bytes[12], bytes[13], bytes[14], bytes[15]
+    )
+    return UUID(uuid: tuple)
+}
+
+private func communityScaleForFiltering(pack: CommunityPackViewModel, scale: CommunityPackScaleViewModel) -> TenneyScale {
+    let provenance = TenneyScale.Provenance(
+        kind: .communityPack,
+        packID: pack.packID,
+        packName: pack.title,
+        authorName: pack.authorName,
+        installedVersion: pack.version
+    )
+    let title = scale.payload.title.trimmingCharacters(in: .whitespacesAndNewlines)
+    let resolvedName = title.isEmpty ? scale.title : title
+    return TenneyScale(
+        id: communityScaleUUID(packID: pack.packID, scaleID: scale.id),
+        name: resolvedName,
+        descriptionText: scale.payload.notes,
+        degrees: scale.payload.refs,
+        tagIDs: [],
+        favorite: false,
+        lastPlayed: nil,
+        referenceHz: scale.payload.rootHz,
+        rootLabel: nil,
+        detectedLimit: TenneyScale.detectedLimit(for: scale.payload.refs),
+        periodRatio: 2.0,
+        maxTenneyHeight: TenneyScale.maxTenneyHeight(for: scale.payload.refs),
+        author: pack.authorName,
+        provenance: provenance
+    )
+}
+
 struct CommunityPackBadge: View {
     let packName: String
 
@@ -19,90 +63,15 @@ struct CommunityPackBadge: View {
     }
 }
 
-struct CommunityControlsCard: View {
-    @Binding var sortKey: CommunityPackSortKey
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            CommunitySortPills(selection: $sortKey)
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(cardBackground)
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
-        )
-    }
-
-    @ViewBuilder private var cardBackground: some View {
-        let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
-        if #available(iOS 26.0, *) {
-            Color.clear.glassEffect(.regular, in: shape)
-        } else {
-            shape.fill(.ultraThinMaterial)
-        }
-    }
-}
-
-private struct CommunitySortPills: View {
-    @Binding var selection: CommunityPackSortKey
-
-    var body: some View {
-        HStack(spacing: 8) {
-            pill(.featured, icon: "sparkles")
-            pill(.newest, icon: "clock")
-            pill(.alpha, icon: "textformat")
-            pill(.primeLimit, icon: "dial.min")
-        }
-        .padding(4)
-        .background {
-            let shape = Capsule()
-            if #available(iOS 26.0, *) { Color.clear.glassEffect(.regular, in: shape) }
-            else { shape.fill(.thinMaterial) }
-        }
-        .overlay(Capsule().stroke(Color.secondary.opacity(0.18), lineWidth: 1))
-    }
-
-    private func pill(_ key: CommunityPackSortKey, icon: String) -> some View {
-        let isSelected = (selection == key)
-
-        return Button {
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.9)) {
-                selection = key
-            }
-            #if canImport(UIKit)
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            #endif
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: icon)
-                    .font(.system(size: 13, weight: .semibold))
-                if isSelected {
-                    Text(key.label)
-                        .font(.caption.weight(.semibold))
-                        .lineLimit(1)
-                }
-            }
-            .foregroundStyle(isSelected ? Color.accentColor : .primary)
-            .padding(.horizontal, isSelected ? 14 : 10)
-            .padding(.vertical, 8)
-            .frame(minHeight: 34)
-            .frame(maxWidth: isSelected ? .infinity : nil)
-            .layoutPriority(isSelected ? 1 : 0)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .background(
-            Capsule().fill(isSelected ? Color.accentColor.opacity(0.18) : Color.clear)
-        )
-    }
-}
-
 struct CommunityPacksPageList: View {
-    @Binding var sortKey: CommunityPackSortKey
+    let sortKey: ScaleLibraryStore.SortKey
+    let filters: LibraryFilters
+    let favoritesOnly: Bool
+    let searchText: String
+    let onClearFilters: () -> Void
     @ObservedObject private var store = CommunityPacksStore.shared
     @ObservedObject private var library = ScaleLibraryStore.shared
+    @ObservedObject private var tagStore = TagStore.shared
     @State private var didTriggerRefresh = false
 
     var body: some View {
@@ -135,13 +104,19 @@ struct CommunityPacksPageList: View {
                     ProgressView("Loading Community Packs…")
                         .padding(.top, 20)
                 } else {
-                    let packs = store.filteredPacks(searchText: library.searchText, sortKey: sortKey)
+                    let packs = filteredPacks()
                     if packs.isEmpty {
-                        ContentUnavailableView(
-                            "No matching packs",
-                            systemImage: "magnifyingglass",
-                            description: Text("Try clearing your search.")
-                        )
+                        VStack(spacing: 12) {
+                            ContentUnavailableView(
+                                "No matching scales",
+                                systemImage: "magnifyingglass",
+                                description: Text("Try clearing filters or adjusting your search.")
+                            )
+                            Button("Clear filters") {
+                                onClearFilters()
+                            }
+                            .buttonStyle(.bordered)
+                        }
                     } else {
                         ForEach(packs) { pack in
                             NavigationLink {
@@ -167,6 +142,38 @@ struct CommunityPacksPageList: View {
             didTriggerRefresh = true
             await store.refresh(force: false)
         }
+    }
+
+    private func filteredPacks() -> [CommunityPackViewModel] {
+        var output: [CommunityPackViewModel] = []
+        for pack in store.packs {
+            let matches = pack.scales.contains { scale in
+                let tenneyScale = communityScaleForFiltering(pack: pack, scale: scale)
+                return filters.matches(
+                    scale: tenneyScale,
+                    tagStore: tagStore,
+                    favoritesOnly: favoritesOnly,
+                    searchText: searchText,
+                    favoriteIDs: library.favoriteIDs
+                )
+            }
+            if matches {
+                output.append(pack)
+            }
+        }
+
+        switch sortKey {
+        case .recent:
+            output.sort { ($0.date ?? .distantPast) > ($1.date ?? .distantPast) }
+        case .alpha:
+            output.sort { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+        case .size:
+            output.sort { $0.scaleCount > $1.scaleCount }
+        case .limit:
+            output.sort { $0.primeLimitMin < $1.primeLimitMin }
+        }
+
+        return output
     }
 }
 
@@ -313,7 +320,7 @@ private struct CommunityPackDetailView: View {
                     Text("Scales")
                         .font(.headline)
                     ForEach(pack.scales) { scale in
-                        CommunityScaleRow(scale: scale)
+                        CommunityScaleRow(scale: scale, packID: pack.packID)
                     }
                 }
 
@@ -445,7 +452,7 @@ private struct CommunityPackDetailView: View {
 
     private func findCollisions() -> [UUID] {
         pack.scales.compactMap { scale in
-            let id = stableScaleUUID(for: scale.id)
+            let id = communityScaleUUID(packID: pack.packID, scaleID: scale.id)
             return library.scales[id] != nil ? id : nil
         }
     }
@@ -453,7 +460,7 @@ private struct CommunityPackDetailView: View {
     private func performInstall(resolution: ConflictResolution) {
         let existingIDs = Set(library.scales.keys)
         var imported: [TenneyScale] = []
-        let newIDs = Set(pack.scales.map { stableScaleUUID(for: $0.id) })
+        let newIDs = Set(pack.scales.map { communityScaleUUID(packID: pack.packID, scaleID: $0.id) })
 
         if pendingAction == .update, resolution == .overwrite {
             for scale in library.scales.values where scale.provenance?.packID == pack.packID && !newIDs.contains(scale.id) {
@@ -462,7 +469,7 @@ private struct CommunityPackDetailView: View {
         }
 
         for scale in pack.scales {
-            let stableID = stableScaleUUID(for: scale.id)
+            let stableID = communityScaleUUID(packID: pack.packID, scaleID: scale.id)
             let collision = existingIDs.contains(stableID)
             switch resolution {
             case .overwrite:
@@ -538,27 +545,15 @@ private struct CommunityPackDetailView: View {
         )
     }
 
-    private func stableScaleUUID(for scaleID: String) -> UUID {
-        if let uuid = UUID(uuidString: scaleID) {
-            return uuid
-        }
-        let data = Data((pack.packID + ":" + scaleID).utf8)
-        let hash = SHA256.hash(data: data)
-        var bytes = Array(hash)
-        let tuple = (
-            bytes[0], bytes[1], bytes[2], bytes[3],
-            bytes[4], bytes[5], bytes[6], bytes[7],
-            bytes[8], bytes[9], bytes[10], bytes[11],
-            bytes[12], bytes[13], bytes[14], bytes[15]
-        )
-        return UUID(uuid: tuple)
-    }
 }
 
 private struct CommunityScaleRow: View {
     let scale: CommunityPackScaleViewModel
+    let packID: String
+    @ObservedObject private var library = ScaleLibraryStore.shared
 
     var body: some View {
+        let isFavorite = library.isFavorite(id: communityScaleUUID(packID: packID, scaleID: scale.id))
         HStack(spacing: 12) {
             ZStack {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -580,6 +575,10 @@ private struct CommunityScaleRow: View {
                 }
             }
             Spacer()
+            if isFavorite {
+                Image(systemName: "star.fill")
+                    .foregroundStyle(.yellow)
+            }
         }
         .padding(10)
         .background(

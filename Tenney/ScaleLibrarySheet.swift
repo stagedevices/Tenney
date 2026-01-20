@@ -14,6 +14,18 @@ import UIKit
 import AppKit
 #endif
 
+private func recentlyPlayedChipLabel(_ filter: LibraryFilters.RecentlyPlayed) -> String {
+    switch filter {
+    case .any:
+        return "Played"
+    case .days7:
+        return "Played 7d"
+    case .days30:
+        return "Played 30d"
+    case .days90:
+        return "Played 90d"
+    }
+}
 
 struct ScaleLibrarySheet: View {
     @State private var libraryPage: Int = 0
@@ -23,30 +35,26 @@ struct ScaleLibrarySheet: View {
     @EnvironmentObject private var model: AppModel
     @ObservedObject private var library = ScaleLibraryStore.shared
     @ObservedObject private var tagStore = TagStore.shared
-    @State private var showOnlyFavorites = false
-    @Environment(\.colorScheme) private var scheme
+    @AppStorage(SettingsKeys.libraryFiltersJSON) private var libraryFiltersJSON: String = ""
+    @AppStorage(SettingsKeys.librarySearchText) private var librarySearchText: String = ""
+    @AppStorage(SettingsKeys.libraryFavoritesOnly) private var libraryFavoritesOnly: Bool = false
+    @AppStorage(SettingsKeys.librarySortKey) private var librarySortKeyRaw: String = ScaleLibraryStore.SortKey.recent.rawValue
+    @State private var filters: LibraryFilters = .defaultValue
+    @State private var showFilterSheet = false
+    @State private var didLoadFilters = false
     @State private var actionTarget: TenneyScale? = nil   // ← selected row for the action sheet
-    @State private var showTagFilterSheet = false
-    @State private var selectedTagIDs: Set<TagID> = []
-    @State private var communitySortKey: CommunityPackSortKey = .featured
 
     // simple sort/local filter
     private var filteredScales: [TenneyScale] {
         var items = Array(library.scales.values)
-        if !selectedTagIDs.isEmpty {
-            items = items.filter { scale in
-                let scaleTagIDs = Set(scale.tagIDs)
-                return selectedTagIDs.allSatisfy { scaleTagIDs.contains($0) }
-            }
-        }
-        if showOnlyFavorites { items = items.filter { $0.favorite } }
-        let q = library.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !q.isEmpty {
-            items = items.filter {
-                $0.name.localizedCaseInsensitiveContains(q) ||
-                (!$0.descriptionText.isEmpty && $0.descriptionText.localizedCaseInsensitiveContains(q)) ||
-                scaleTagsMatchQuery(scale: $0, query: q)
-            }
+        items = items.filter { scale in
+            filters.matches(
+                scale: scale,
+                tagStore: tagStore,
+                favoritesOnly: libraryFavoritesOnly,
+                searchText: librarySearchText,
+                favoriteIDs: library.favoriteIDs
+            )
         }
         switch library.sortKey {
         case .recent:
@@ -62,12 +70,96 @@ struct ScaleLibrarySheet: View {
     }
 
     private var selectedTagRefs: [TagRef] {
-        tagStore.tags(for: Array(selectedTagIDs)).sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        tagStore.tags(for: Array(filters.selectedTagIDs))
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    private var activeFilterChips: [FilterChipItem] {
+        var chips: [FilterChipItem] = []
+
+        if libraryFavoritesOnly {
+            chips.append(
+                FilterChipItem(
+                    id: "favorites",
+                    label: "Favorites",
+                    systemImage: "star.fill",
+                    action: { libraryFavoritesOnly = false }
+                )
+            )
+        }
+
+        if filters.source != .all {
+            chips.append(
+                FilterChipItem(
+                    id: "source",
+                    label: "Source \(filters.source.label)",
+                    systemImage: "tray",
+                    action: { filters.source = .all }
+                )
+            )
+        }
+
+        if filters.maxLimit != .none {
+            chips.append(
+                FilterChipItem(
+                    id: "limit",
+                    label: "\(filters.maxLimit.label) limit",
+                    systemImage: "dial.min",
+                    action: { filters.maxLimit = .none }
+                )
+            )
+        }
+
+        if filters.sizeRange != .any {
+            chips.append(
+                FilterChipItem(
+                    id: "size",
+                    label: filters.sizeRange.label,
+                    systemImage: "number",
+                    action: { filters.sizeRange = .any }
+                )
+            )
+        }
+
+        if filters.rootHzRange != .any {
+            chips.append(
+                FilterChipItem(
+                    id: "root",
+                    label: "Root \(filters.rootHzRange.label)",
+                    systemImage: "waveform",
+                    action: { filters.rootHzRange = .any }
+                )
+            )
+        }
+
+        if filters.notesFilter == .hasNotes {
+            chips.append(
+                FilterChipItem(
+                    id: "notes",
+                    label: "Has notes",
+                    systemImage: "note.text",
+                    action: { filters.notesFilter = .any }
+                )
+            )
+        }
+
+        if filters.recentlyPlayed != .any {
+            chips.append(
+                FilterChipItem(
+                    id: "recent",
+                    label: recentlyPlayedChipLabel(filters.recentlyPlayed),
+                    systemImage: "clock",
+                    action: { filters.recentlyPlayed = .any }
+                )
+            )
+        }
+
+        return chips
     }
 
     private let limits = [3,5,7,11,13,17,19]
     private func count(for limit: Int) -> Int {
-        Array(library.scales.values).filter { $0.detectedLimit <= limit }.count
+        filteredScales.filter { $0.detectedLimit <= limit }.count
     }
 
     var body: some View {
@@ -78,19 +170,14 @@ struct ScaleLibrarySheet: View {
                 VStack(spacing: 0) {
                     
                     // card below the search bar
-                    Group {
-                        if libraryPage == 2 {
-                            CommunityControlsCard(sortKey: $communitySortKey)
-                        } else {
-                            LibraryControlsCard(
-                                sortKey: $library.sortKey,
-                                showOnlyFavorites: $showOnlyFavorites,
-                                showTagFilterSheet: $showTagFilterSheet,
-                                selectedTagRefs: selectedTagRefs,
-                                onRemoveTag: { selectedTagIDs.remove($0) }
-                            )
-                        }
-                    }
+                    LibraryControlsCard(
+                        sortKey: $library.sortKey,
+                        showOnlyFavorites: $libraryFavoritesOnly,
+                        showFilterSheet: $showFilterSheet,
+                        selectedTagRefs: selectedTagRefs,
+                        filterChips: activeFilterChips,
+                        onRemoveTag: { filters.selectedTagIDs.remove($0) }
+                    )
                     .padding(.horizontal, 12)
                     .padding(.top, 8)
                     .padding(.bottom, 10)
@@ -103,18 +190,32 @@ struct ScaleLibrarySheet: View {
                                 onPickScale: { actionTarget = $0 },
                                 openInBuilder: openInBuilder,
                                 addToBuilder: addToBuilder,
-                                playScalePreview: playScalePreview
+                                playScalePreview: playScalePreview,
+                                onClearFilters: clearAllFilters
                             )
                             .tag(0)
                             
                             CollectionsByLimitPageList(
                                 limits: limits,
                                 countForLimit: { count(for: $0) },
+                                filteredSavedScales: filteredScales,
+                                hasResults: !filteredScales.isEmpty,
+                                isFiltering: filters.isFiltering(
+                                    searchText: librarySearchText,
+                                    favoritesOnly: libraryFavoritesOnly
+                                ),
+                                onClearFilters: clearAllFilters,
                                 onChooseScale: { chosen in addToBuilder(chosen) }
                             )
                             .tag(1)
 
-                            CommunityPacksPageList(sortKey: $communitySortKey)
+                            CommunityPacksPageList(
+                                sortKey: library.sortKey,
+                                filters: filters,
+                                favoritesOnly: libraryFavoritesOnly,
+                                searchText: librarySearchText,
+                                onClearFilters: clearAllFilters
+                            )
                                 .tag(2)
                         }
                         .tabViewStyle(.page(indexDisplayMode: .never))
@@ -128,7 +229,7 @@ struct ScaleLibrarySheet: View {
             }
             .listStyle(.insetGrouped)
             .navigationTitle("Library")
-            .searchable(text: $library.searchText, placement: .navigationBarDrawer(displayMode: .automatic))
+            .searchable(text: $librarySearchText, placement: .navigationBarDrawer(displayMode: .automatic))
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Cancel") { dismiss() }
@@ -144,22 +245,26 @@ struct ScaleLibrarySheet: View {
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
             }
-            .sheet(isPresented: $showTagFilterSheet) {
-                NavigationStack {
-                    TagFilterSheet(selectedTagIDs: $selectedTagIDs)
-                        .navigationTitle("Filter Tags")
-                        .toolbar {
-                            ToolbarItem(placement: .confirmationAction) {
-                                Button("Done") { showTagFilterSheet = false }
-                            }
-                        }
-                }
+            .sheet(isPresented: $showFilterSheet) {
+                LibraryFilterSheet(
+                    filters: $filters,
+                    favoritesOnly: $libraryFavoritesOnly,
+                    onClearAll: clearAllFilters,
+                    onDone: { showFilterSheet = false }
+                )
                 .presentationDetents([.medium, .large])
             }
         }
         .toolbarBackground(.hidden, for: .navigationBar)
         .presentationBackground(.clear)
         .onAppear {
+            loadFiltersIfNeeded()
+            if let storedSort = ScaleLibraryStore.SortKey(rawValue: librarySortKeyRaw) {
+                library.sortKey = storedSort
+            } else {
+                library.sortKey = .recent
+                librarySortKeyRaw = library.sortKey.rawValue
+            }
             guard !didApplyLaunchMode else { return }
             didApplyLaunchMode = true
 
@@ -172,10 +277,16 @@ struct ScaleLibrarySheet: View {
 
             switch mode {
             case .recents:
-                showOnlyFavorites = false
+                libraryFavoritesOnly = false
             case .favorites:
-                showOnlyFavorites = true
+                libraryFavoritesOnly = true
             }
+        }
+        .onChange(of: filters) { _ in
+            persistFilters()
+        }
+        .onChange(of: library.sortKey) { newValue in
+            librarySortKeyRaw = newValue.rawValue
         }
     }
     @ViewBuilder
@@ -193,8 +304,9 @@ struct ScaleLibrarySheet: View {
 private struct LibraryControlsCard: View {
     @Binding var sortKey: ScaleLibraryStore.SortKey
     @Binding var showOnlyFavorites: Bool
-    @Binding var showTagFilterSheet: Bool
+    @Binding var showFilterSheet: Bool
     let selectedTagRefs: [TagRef]
+    let filterChips: [FilterChipItem]
     let onRemoveTag: (TagID) -> Void
 
     var body: some View {
@@ -206,7 +318,7 @@ private struct LibraryControlsCard: View {
             // B) Filter + star row (star moved here, right side)
             HStack(spacing: 10) {
                 Button {
-                    showTagFilterSheet = true
+                    showFilterSheet = true
                 } label: {
                     Label("Filter", systemImage: "line.3.horizontal.decrease.circle")
                         .font(.caption.weight(.semibold))
@@ -234,13 +346,21 @@ private struct LibraryControlsCard: View {
             }
 
             // C) Selected tag chips row (same logic as before)
-            if selectedTagRefs.isEmpty {
-                Text("All tags")
+            if selectedTagRefs.isEmpty && filterChips.isEmpty {
+                Text("All filters")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
+                        ForEach(filterChips) { chip in
+                            Button {
+                                chip.action()
+                            } label: {
+                                FilterChip(label: chip.label, systemImage: chip.systemImage)
+                            }
+                            .buttonStyle(.plain)
+                        }
                         ForEach(selectedTagRefs, id: \TagRef.id) { tag in
                             Button { onRemoveTag(tag.id) } label: {
                                 TagChip(tag: tag, size: .small)
@@ -280,6 +400,254 @@ private struct LibraryControlsCard: View {
     }
 }
 
+private struct FilterChipItem: Identifiable {
+    let id: String
+    let label: String
+    let systemImage: String?
+    let action: () -> Void
+}
+
+private struct FilterChip: View {
+    let label: String
+    var systemImage: String? = nil
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if let systemImage {
+                Image(systemName: systemImage)
+                    .font(.caption2.weight(.semibold))
+            }
+            Text(label)
+                .font(.caption2.weight(.semibold).monospaced())
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(chipBackground)
+        .overlay(
+            Capsule()
+                .stroke(Color.secondary.opacity(0.35), lineWidth: 1)
+        )
+        .clipShape(Capsule())
+    }
+
+    @ViewBuilder
+    private var chipBackground: some View {
+        if #available(iOS 26.0, *) {
+            Color.clear
+                .glassEffect(.regular, in: Capsule())
+        } else {
+            Capsule().fill(.thinMaterial)
+        }
+    }
+}
+
+private struct LibraryFilterSheet: View {
+    @Binding var filters: LibraryFilters
+    @Binding var favoritesOnly: Bool
+    let onClearAll: () -> Void
+    let onDone: () -> Void
+    @ObservedObject private var tagStore = TagStore.shared
+
+    private var selectedTagRefs: [TagRef] {
+        tagStore.tags(for: Array(filters.selectedTagIDs))
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    private var hasActiveFilters: Bool {
+        !filters.isDefault || favoritesOnly
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    if hasActiveFilters {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 6) {
+                                if favoritesOnly {
+                                    FilterChip(label: "Favorites", systemImage: "star.fill")
+                                }
+                                if filters.source != .all {
+                                    FilterChip(label: "Source \(filters.source.label)", systemImage: "tray")
+                                }
+                                if filters.maxLimit != .none {
+                                    FilterChip(label: "\(filters.maxLimit.label) limit", systemImage: "dial.min")
+                                }
+                                if filters.sizeRange != .any {
+                                    FilterChip(label: filters.sizeRange.label, systemImage: "number")
+                                }
+                                if filters.rootHzRange != .any {
+                                    FilterChip(label: "Root \(filters.rootHzRange.label)", systemImage: "waveform")
+                                }
+                                if filters.notesFilter == .hasNotes {
+                                    FilterChip(label: "Has notes", systemImage: "note.text")
+                                }
+                                if filters.recentlyPlayed != .any {
+                                    FilterChip(label: recentlyPlayedChipLabel(filters.recentlyPlayed), systemImage: "clock")
+                                }
+                                ForEach(selectedTagRefs, id: \TagRef.id) { tag in
+                                    TagChip(tag: tag, size: .small)
+                                }
+                            }
+                            .padding(.vertical, 2)
+                        }
+                    } else {
+                        Text("No active filters")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Button("Clear All") {
+                        onClearAll()
+                    }
+                    .disabled(!hasActiveFilters)
+                } header: {
+                    Text("Active Filters")
+                }
+
+                Section("Filter by") {
+                    NavigationLink {
+                        TagFilterSheet(selectedTagIDs: selectedTagBinding)
+                            .navigationTitle("Tags")
+                    } label: {
+                        FilterRow(title: "Tags", value: tagSummary)
+                    }
+
+                    NavigationLink {
+                        LibraryFilterPicker(
+                            title: "Source",
+                            selection: $filters.source,
+                            resetValue: .all,
+                            label: { $0.label }
+                        )
+                    } label: {
+                        FilterRow(title: "Source", value: filters.source.label)
+                    }
+
+                    NavigationLink {
+                        LibraryFilterPicker(
+                            title: "Max prime limit",
+                            selection: $filters.maxLimit,
+                            resetValue: .none,
+                            label: { $0.label }
+                        )
+                    } label: {
+                        FilterRow(title: "Max prime limit", value: filters.maxLimit.label)
+                    }
+
+                    NavigationLink {
+                        LibraryFilterPicker(
+                            title: "Size",
+                            selection: $filters.sizeRange,
+                            resetValue: .any,
+                            label: { $0.label }
+                        )
+                    } label: {
+                        FilterRow(title: "Size", value: filters.sizeRange.label)
+                    }
+
+                    NavigationLink {
+                        LibraryFilterPicker(
+                            title: "Root Hz",
+                            selection: $filters.rootHzRange,
+                            resetValue: .any,
+                            label: { $0.label }
+                        )
+                    } label: {
+                        FilterRow(title: "Root Hz", value: filters.rootHzRange.label)
+                    }
+
+                    NavigationLink {
+                        LibraryFilterPicker(
+                            title: "Has notes",
+                            selection: $filters.notesFilter,
+                            resetValue: .any,
+                            label: { $0.label }
+                        )
+                    } label: {
+                        FilterRow(title: "Has notes", value: filters.notesFilter.label)
+                    }
+
+                    NavigationLink {
+                        LibraryFilterPicker(
+                            title: "Recently played",
+                            selection: $filters.recentlyPlayed,
+                            resetValue: .any,
+                            label: { $0.label }
+                        )
+                    } label: {
+                        FilterRow(title: "Recently played", value: filters.recentlyPlayed.label)
+                    }
+                }
+            }
+            .navigationTitle("Filters")
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        onDone()
+                    }
+                }
+            }
+        }
+    }
+
+    private var selectedTagBinding: Binding<Set<TagID>> {
+        Binding(
+            get: { filters.selectedTagIDs },
+            set: { filters.selectedTagIDs = $0 }
+        )
+    }
+
+    private var tagSummary: String {
+        let count = filters.selectedTagIDs.count
+        if count == 0 { return "Any" }
+        if count == 1, let tag = selectedTagRefs.first { return tag.name }
+        return "\(count) tags"
+    }
+}
+
+private struct FilterRow: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        HStack {
+            Text(title)
+            Spacer()
+            Text(value)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+private struct LibraryFilterPicker<Option: Hashable & CaseIterable & Identifiable>: View {
+    let title: String
+    @Binding var selection: Option
+    let resetValue: Option
+    let label: (Option) -> String
+
+    var body: some View {
+        List {
+            Section {
+                Picker(title, selection: $selection) {
+                    ForEach(Array(Option.allCases)) { option in
+                        Text(label(option))
+                            .tag(option)
+                    }
+                }
+                .pickerStyle(.inline)
+            }
+
+            Section {
+                Button("Reset") {
+                    selection = resetValue
+                }
+            }
+        }
+        .navigationTitle(title)
+    }
+}
+
 
 private struct MyScalesPageList: View {
     @ObservedObject private var library = ScaleLibraryStore.shared
@@ -290,6 +658,7 @@ private struct MyScalesPageList: View {
     let openInBuilder: (TenneyScale) -> Void
     let addToBuilder: (TenneyScale) -> Void
     let playScalePreview: (TenneyScale) -> Void
+    let onClearFilters: () -> Void
 
     var body: some View {
         if #available(iOS 16.0, *) {
@@ -313,11 +682,17 @@ private struct MyScalesPageList: View {
                 }
             } else if filteredScales.isEmpty {
                 Section {
-                    ContentUnavailableView(
-                        "No matching scales",
-                        systemImage: "magnifyingglass",
-                        description: Text("Try clearing filters or adjusting your search.")
-                    )
+                    VStack(spacing: 12) {
+                        ContentUnavailableView(
+                            "No matching scales",
+                            systemImage: "magnifyingglass",
+                            description: Text("Try clearing filters or adjusting your search.")
+                        )
+                        Button("Clear filters") {
+                            onClearFilters()
+                        }
+                        .buttonStyle(.bordered)
+                    }
                 }
             } else {
                 Section("My Scales (\(filteredScales.count))") {
@@ -336,7 +711,7 @@ private struct MyScalesPageList: View {
                         }
                         .swipeActions(edge: .leading, allowsFullSwipe: false) {
                             Button {
-                                var t = s; t.favorite.toggle(); library.updateScale(t)
+                                library.toggleFavorite(id: s.id)
                             } label: {
                                 Label(
                                     s.favorite ? "Unfavorite" : "Favorite",
@@ -364,6 +739,10 @@ private struct MyScalesPageList: View {
 private struct CollectionsByLimitPageList: View {
     let limits: [Int]
     let countForLimit: (Int) -> Int
+    let filteredSavedScales: [TenneyScale]
+    let hasResults: Bool
+    let isFiltering: Bool
+    let onClearFilters: () -> Void
     let onChooseScale: (TenneyScale) -> Void
 
     var body: some View {
@@ -378,24 +757,40 @@ private struct CollectionsByLimitPageList: View {
 
     private var listBody: some View {
         List {
-            Section("Collections by Limit") {
-                ForEach(limits, id: \.self) { p in
-                    NavigationLink {
-                        ScaleLimitBrowserView(limit: p) { chosen in
-                            onChooseScale(chosen)
+            if isFiltering && !hasResults {
+                Section {
+                    VStack(spacing: 12) {
+                        ContentUnavailableView(
+                            "No matching scales",
+                            systemImage: "magnifyingglass",
+                            description: Text("Try clearing filters or adjusting your search.")
+                        )
+                        Button("Clear filters") {
+                            onClearFilters()
                         }
-                    } label: {
-                        HStack {
-                            Text("\(p)-limit")
-                            Spacer()
-                            let c = countForLimit(p)
-                            if c > 0 {
-                                Text("\(c)")
-                                    .font(.caption2.monospacedDigit())
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(Color.secondary.opacity(0.15))
-                                    .clipShape(Capsule())
+                        .buttonStyle(.bordered)
+                    }
+                }
+            } else {
+                Section("Collections by Limit") {
+                    ForEach(limits, id: \.self) { p in
+                        NavigationLink {
+                            ScaleLimitBrowserView(limit: p, filteredSavedScales: filteredSavedScales) { chosen in
+                                onChooseScale(chosen)
+                            }
+                        } label: {
+                            HStack {
+                                Text("\(p)-limit")
+                                Spacer()
+                                let c = countForLimit(p)
+                                if c > 0 {
+                                    Text("\(c)")
+                                        .font(.caption2.monospacedDigit())
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Color.secondary.opacity(0.15))
+                                        .clipShape(Capsule())
+                                }
                             }
                         }
                     }
@@ -522,9 +917,27 @@ private extension ScaleLibrarySheet {
         var x = f; while x < minHz { x *= 2 }; while x > maxHz { x *= 0.5 }; return x
     }
 
-    func scaleTagsMatchQuery(scale: TenneyScale, query: String) -> Bool {
-        tagStore.tags(for: scale.tagIDs).contains { tag in
-            tag.name.localizedCaseInsensitiveContains(query)
+    func clearAllFilters() {
+        filters = .defaultValue
+        libraryFavoritesOnly = false
+        librarySearchText = ""
+    }
+
+    func loadFiltersIfNeeded() {
+        guard !didLoadFilters else { return }
+        didLoadFilters = true
+        guard !libraryFiltersJSON.isEmpty,
+              let data = libraryFiltersJSON.data(using: .utf8)
+        else { return }
+        if let decoded = try? JSONDecoder().decode(LibraryFilters.self, from: data) {
+            filters = decoded
+        }
+    }
+
+    func persistFilters() {
+        if let data = try? JSONEncoder().encode(filters),
+           let json = String(data: data, encoding: .utf8) {
+            libraryFiltersJSON = json
         }
     }
 }

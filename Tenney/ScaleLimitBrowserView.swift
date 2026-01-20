@@ -15,11 +15,11 @@ import SwiftUI
 /// ScaleLibrarySheet -> NavigationLink(limit) -> ScaleLimitBrowserView(limit) -> onSelect(scale)
 struct ScaleLimitBrowserView: View {
     let limit: Int
+    let filteredSavedScales: [TenneyScale]
     let onSelect: (TenneyScale) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var model: AppModel
-    @ObservedObject private var library = ScaleLibraryStore.shared
 
     @State private var search = ""
     @State private var includeSaved = true
@@ -119,7 +119,7 @@ struct ScaleLimitBrowserView: View {
     }
 
     private var filteredSaved: [TenneyScale] {
-        var items = library.scales.values
+        var items = filteredSavedScales
             .filter { $0.detectedLimit <= limit }
 
         if !search.isEmpty {
