@@ -512,20 +512,37 @@ private let libraryStore = ScaleLibraryStore.shared
 
     @ViewBuilder
     private func builderSheet<Payload>(payload: Payload, startInLibrary: Bool) -> some View {
-        let store = ScaleBuilderStore(payload: payload)
-        ScaleBuilderScreen(store: store)
+        BuilderSheetView(payload: payload, startInLibrary: startInLibrary)
             .environmentObject(libraryStore)
-            .onAppear {
-                app.setMicActive(false)
-                if startInLibrary {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                        NotificationCenter.default.post(name: .tenneyOpenLibraryInBuilder, object: nil)
+    }
+
+    private struct BuilderSheetView<Payload>: View {
+        let payload: Payload
+        let startInLibrary: Bool
+
+        @EnvironmentObject private var app: AppModel
+        @StateObject private var store: ScaleBuilderStore
+
+        init(payload: Payload, startInLibrary: Bool) {
+            self.payload = payload
+            self.startInLibrary = startInLibrary
+            _store = StateObject(wrappedValue: ScaleBuilderStore(payload: payload))
+        }
+
+        var body: some View {
+            ScaleBuilderScreen(store: store)
+                .onAppear {
+                    app.setMicActive(false)
+                    if startInLibrary {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                            NotificationCenter.default.post(name: .tenneyOpenLibraryInBuilder, object: nil)
+                        }
                     }
                 }
-            }
-            .presentationDetents([.large])
-            .presentationDragIndicator(.visible)
-            .presentationBackground(.ultraThinMaterial)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(.ultraThinMaterial)
+        }
     }
 
 
@@ -580,23 +597,6 @@ private let libraryStore = ScaleLibraryStore.shared
             }
     }
 
-    @ViewBuilder
-    private func builderSheetContent(payload: Any, startInLibrary: Bool) -> some View {
-        let store = ScaleBuilderStore(payload: payload)
-        ScaleBuilderScreen(store: store)
-            .environmentObject(libraryStore)
-            .onAppear {
-                app.setMicActive(false)
-                if startInLibrary {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                        NotificationCenter.default.post(name: .tenneyOpenLibraryInBuilder, object: nil)
-                    }
-                }
-            }
-            .presentationDetents([.large])
-            .presentationDragIndicator(.visible)
-            .presentationBackground(.ultraThinMaterial)
-    }
     private var scaleLibraryDetent: some View {
         ScaleLibrarySheet()
             .environmentObject(libraryStore)
