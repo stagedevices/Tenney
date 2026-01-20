@@ -654,7 +654,6 @@ private struct CommunityPackDetailView: View {
     @State private var showChangelog = false
     @State private var heroVisible = false
     @State private var contentVisible = false
-    @State private var closeSymbolVisible = false
 
     private var isInstalled: Bool {
         store.isInstalled(pack.packID)
@@ -677,7 +676,7 @@ private struct CommunityPackDetailView: View {
 
     private var detailContent: some View {
         ZStack {
-            detailBackdrop
+            sheetBackground
                 .ignoresSafeArea()
 
             ScrollView {
@@ -880,7 +879,12 @@ private struct CommunityPackDetailView: View {
         store.enqueueInstall(pack: pack, action: action, resolution: resolution)
     }
 
-    private var detailBackdrop: LinearGradient {
+    private var sheetBackground: some View {
+        Color(.systemBackground)
+            .overlay(detailGradient.opacity(0.35))
+    }
+
+    private var detailGradient: LinearGradient {
         LinearGradient(
             colors: [
                 Color(.systemBackground),
@@ -905,14 +909,17 @@ private struct CommunityPackDetailView: View {
             Spacer()
             Button(action: { dismiss() }) {
                 closeSymbol
-                    .frame(width: 28, height: 28)
-                    .background(.ultraThinMaterial, in: Circle())
-                    .overlay(
+                    .frame(width: 44, height: 44)
+                    .background(
                         Circle()
-                            .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
+                            .fill(Color.primary.opacity(0.06))
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.secondary.opacity(0.22), lineWidth: 1)
+                            )
+                            .overlay(closeGlassOverlay)
                     )
-                    .padding(8)
-                    .contentShape(Rectangle())
+                    .contentShape(Circle())
                     .accessibilityLabel("Close")
             }
             .buttonStyle(.plain)
@@ -920,28 +927,24 @@ private struct CommunityPackDetailView: View {
         .padding(.horizontal, 16)
         .padding(.top, 10)
         .padding(.bottom, 12)
-        .background(
-            PackCardSurface(cornerRadius: 0)
-                .overlay(
-                    Rectangle()
-                        .fill(Color.secondary.opacity(0.12))
-                        .frame(height: 1),
-                    alignment: .bottom
-                )
-        )
+        .background(barBackground(separatorEdge: .bottom))
         .opacity(heroVisible ? 1 : 0)
         .zIndex(1000)
     }
 
-    @ViewBuilder
     private var closeSymbol: some View {
+        Image(systemName: "xmark")
+            .font(.system(size: 16, weight: .semibold))
+            .symbolRenderingMode(.hierarchical)
+            .foregroundStyle(.primary)
+    }
+
+    @ViewBuilder
+    private var closeGlassOverlay: some View {
         if #available(iOS 26.0, *) {
-            Image(systemName: "xmark")
-                .font(.caption.weight(.semibold))
-                .symbolEffect(.drawOn, isActive: closeSymbolVisible)
-        } else {
-            Image(systemName: "xmark")
-                .font(.caption.weight(.semibold))
+            Circle()
+                .fill(.clear)
+                .glassEffect(.regular, in: Circle())
         }
     }
 
@@ -1032,16 +1035,32 @@ private struct CommunityPackDetailView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .background(
-            PackCardSurface(cornerRadius: 0)
-                .overlay(
-                    Rectangle()
-                        .fill(Color.secondary.opacity(0.12))
-                        .frame(height: 1),
-                    alignment: .top
-                )
-        )
+        .background(barBackground(separatorEdge: .top))
         .opacity(contentVisible ? 1 : 0)
+    }
+
+    private func barBackground(separatorEdge: VerticalEdge) -> some View {
+        sheetBackground
+            .overlay(barGlassOverlay)
+            .overlay(
+                Rectangle()
+                    .fill(Color.secondary.opacity(0.12))
+                    .frame(height: 1),
+                alignment: separatorEdge == .top ? .top : .bottom
+            )
+    }
+
+    @ViewBuilder
+    private var barGlassOverlay: some View {
+        if #available(iOS 26.0, *) {
+            Rectangle()
+                .fill(.clear)
+                .glassEffect(.regular, in: Rectangle())
+        } else {
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .opacity(0.6)
+        }
     }
 
     private var trimmedChangelog: String {
@@ -1127,7 +1146,6 @@ private struct CommunityPackDetailView: View {
             withAnimation(.easeOut(duration: 0.2)) {
                 heroVisible = true
                 contentVisible = true
-                closeSymbolVisible = true
             }
             return
         }
@@ -1139,7 +1157,6 @@ private struct CommunityPackDetailView: View {
             await MainActor.run {
                 withAnimation(.easeOut(duration: 0.4)) {
                     contentVisible = true
-                    closeSymbolVisible = true
                 }
             }
         }
