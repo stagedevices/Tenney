@@ -155,23 +155,31 @@ final class CommunityPacksStore: ObservableObject {
     }
 
     func uninstall(pack: CommunityPackViewModel) {
+        Task {
+            await uninstallPack(packID: pack.packID)
+        }
+    }
+
+    func uninstallPack(packID: String) async {
         let library = ScaleLibraryStore.shared
         let registry = CommunityInstallRegistryStore.shared
-        let installedIDs = registry.record(for: pack.packID)?.installedScaleIDs ?? []
-        for id in installedIDs {
-            if let scale = library.scales[id], scale.provenance?.packID == pack.packID {
-                library.deleteScale(id: id)
-            }
+
+        do {
+            try CommunityPacksCache.removePack(packID: packID)
+        } catch {
+            logFetch("CommunityPacks uninstall failed to remove cache for \(packID): \(error.localizedDescription)")
         }
-        registry.removeInstalled(packID: pack.packID)
-        deletedPackIDs.insert(pack.packID)
-        removeFromInstallQueue(packID: pack.packID)
-        installedPackIDs.remove(pack.packID)
-        updateAvailablePackIDs.remove(pack.packID)
+
+        library.removeScales(forPackID: packID)
+        registry.removeInstalled(packID: packID)
+        deletedPackIDs.insert(packID)
+        removeFromInstallQueue(packID: packID)
+        installedPackIDs.remove(packID)
+        updateAvailablePackIDs.remove(packID)
         updateInstallState()
         #if DEBUG
-        assert(!installedPackIDs.contains(pack.packID))
-        assert(!updateAvailablePackIDs.contains(pack.packID))
+        assert(!installedPackIDs.contains(packID))
+        assert(!updateAvailablePackIDs.contains(packID))
         #endif
     }
 

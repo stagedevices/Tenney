@@ -95,4 +95,12 @@ enum CommunityPacksCache {
 
         return CommunityCachedPayload(indexData: indexData, packs: packs)
     }
+
+    static func removePack(packID: String) throws {
+        let fm = FileManager.default
+        let dir = cacheDirectory
+        let packDir = dir.appendingPathComponent(safePathComponent(packID), isDirectory: true)
+        guard fm.fileExists(atPath: packDir.path) else { return }
+        try fm.removeItem(at: packDir)
+    }
 }
