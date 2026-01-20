@@ -1831,11 +1831,35 @@ struct LatticeView: View {
             octave: 0,
             monzo: target.monzo
         )
-        let payload = ScaleBuilderPayload(
-            rootHz: app.rootHz,
-            primeLimit: app.primeLimit,
-            refs: [ref]
-        )
+        let payload: ScaleBuilderPayload
+        if app.builderSessionPayload != nil || app.builderSession.loadedScaleID != nil {
+            app.builderSession.pendingAddRefs = [ref]
+            if let sessionPayload = app.builderSessionPayload {
+                payload = sessionPayload
+            } else if let existing = app.builderLoadedScale {
+                payload = ScaleBuilderPayload(
+                    rootHz: existing.referenceHz,
+                    primeLimit: existing.detectedLimit,
+                    axisShift: [:],
+                    items: existing.degrees,
+                    autoplayAll: app.latticeAuditionOn,
+                    startInLibrary: false,
+                    existing: existing
+                )
+            } else {
+                payload = ScaleBuilderPayload(
+                    rootHz: app.rootHz,
+                    primeLimit: app.primeLimit,
+                    refs: [ref]
+                )
+            }
+        } else {
+            payload = ScaleBuilderPayload(
+                rootHz: app.rootHz,
+                primeLimit: app.primeLimit,
+                refs: [ref]
+            )
+        }
         store.beginStaging()
         app.builderPayload = payload
     }
@@ -2450,15 +2474,14 @@ struct LatticeView: View {
         }
         
         private var hasDelta: Bool { store.additionsSinceBaseline > 0 }
-        private var isScaleLoaded: Bool { app.builderLoadedScale != nil }
-
-        // “open sheet” = ScaleBuilder is currently presented (you already set this in ScaleBuilderScreen)
-        private var isAddingToOpenSheet: Bool { app.builderPresented }
+        private var hasLoadedBuilderSession: Bool { app.builderSession.loadedScaleID != nil }
+        private var hasBuilderSession: Bool { app.builderSessionPayload != nil }
+        private var isScaleLoaded: Bool { hasLoadedBuilderSession }
 
         // Only show the word when (a) not compact by selectionCount, and (b) no delta flag
         private var addShowsWord: Bool { !addIsCompact && !hasDelta }
 
-        private var addWord: String { isAddingToOpenSheet ? "Add" : "New" }
+        private var addWord: String { hasBuilderSession ? "Add" : "New" }
 
         private var addIsCompact: Bool {
             store.selectedCount > 1
@@ -2479,7 +2502,7 @@ struct LatticeView: View {
         }
 
         private var loadedScaleStatus: LoadedScaleStatus {
-            guard let existing = app.builderLoadedScale else {
+            guard hasLoadedBuilderSession, let existing = app.builderLoadedScale else {
                 return LoadedScaleStatus(isLoaded: false, displayName: "", provenanceText: nil, isEdited: false)
             }
             let rawName = app.loadedScaleDisplayNameOverride ?? existing.name
@@ -2491,7 +2514,7 @@ struct LatticeView: View {
             } else {
                 provenanceText = nil
             }
-            let isEdited = store.loadedScaleEdited || app.loadedScaleMetadataEdited
+            let isEdited = app.builderSession.isEdited
             return LoadedScaleStatus(
                 isLoaded: true,
                 displayName: displayName,
@@ -2781,8 +2804,15 @@ struct LatticeView: View {
             case red
         }
 
+        // Truth table (SelectionTray status):
+        // loadedSession? (loadedScaleID != nil), edited? (builderSession.isEdited), delta?, selectedCount
+        // -> xmark: red when loaded+edited, neutral when loaded+clean, amber when no loaded and (delta/selection).
+        // -> "+" label: word shown only when !hasDelta && selectedCount <= 1. Word = Add if session exists else New.
+        // -> "+" action: session exists -> reopen/append; no session -> new builder.
+        // Edge case: selection empty + delta present + sustaining audio -> amber without loaded session;
+        // loaded+edited -> red; loaded+clean -> neutral (amber clear must not flip to red).
         private var baseClearState: ClearState {
-            if isScaleLoaded && hasDelta { return .red }
+            if isScaleLoaded && app.builderSession.isEdited { return .red }
             if isScaleLoaded { return .neutral }
             if hasDelta || store.selectedCount > 0 { return .amber }
             return .neutral
@@ -3040,11 +3070,35 @@ struct LatticeView: View {
         private var addButton: some View {
             Button {
                 let refs = store.selectionRefs(pivot: store.pivot, axisShift: store.axisShift)
-                let payload = ScaleBuilderPayload(
-                    rootHz: app.rootHz,
-                    primeLimit: app.primeLimit,
-                    refs: refs
-                )
+                let payload: ScaleBuilderPayload
+                if hasBuilderSession {
+                    app.builderSession.pendingAddRefs = refs
+                    if let sessionPayload = app.builderSessionPayload {
+                        payload = sessionPayload
+                    } else if let existing = app.builderLoadedScale {
+                        payload = ScaleBuilderPayload(
+                            rootHz: existing.referenceHz,
+                            primeLimit: existing.detectedLimit,
+                            axisShift: [:],
+                            items: existing.degrees,
+                            autoplayAll: app.latticeAuditionOn,
+                            startInLibrary: false,
+                            existing: existing
+                        )
+                    } else {
+                        payload = ScaleBuilderPayload(
+                            rootHz: app.rootHz,
+                            primeLimit: app.primeLimit,
+                            refs: refs
+                        )
+                    }
+                } else {
+                    payload = ScaleBuilderPayload(
+                        rootHz: app.rootHz,
+                        primeLimit: app.primeLimit,
+                        refs: refs
+                    )
+                }
 
                 // Trigger feedback *first* so it has a chance to render even if Builder presents immediately.
                 if !reduceMotion {
@@ -4016,6 +4070,22 @@ struct LatticeView: View {
                     } else {
                         store.clearLoadedScaleBaseline()
                     }
+                    app.updateBuilderSessionEdited(
+                        loadedScaleEdited: store.loadedScaleEdited,
+                        metadataEdited: app.loadedScaleMetadataEdited
+                    )
+                }
+                .onChange(of: store.loadedScaleEdited) { edited in
+                    app.updateBuilderSessionEdited(
+                        loadedScaleEdited: edited,
+                        metadataEdited: app.loadedScaleMetadataEdited
+                    )
+                }
+                .onChange(of: app.loadedScaleMetadataEdited) { edited in
+                    app.updateBuilderSessionEdited(
+                        loadedScaleEdited: store.loadedScaleEdited,
+                        metadataEdited: edited
+                    )
                 }
 
                 .onChange(of: store.selected) { newValue in

@@ -15,8 +15,8 @@ final class ScaleBuilderStore: ObservableObject {
 
     init(payload: ScaleBuilderPayload) {
         self.payload = payload
-        self.name = payload.existing?.name ?? "Untitled Scale"
-        self.descriptionText = payload.existing?.descriptionText ?? ""
+        self.name = payload.existing?.name ?? payload.title
+        self.descriptionText = payload.existing?.descriptionText ?? payload.notes
         rebuild()
     }
 
