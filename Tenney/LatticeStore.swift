@@ -12,6 +12,18 @@ import UIKit
 
 @MainActor
 final class LatticeStore: ObservableObject {
+#if DEBUG
+    static var publishTraceEnabled = false
+
+    private func tracePublish(_ name: String, details: String? = nil) {
+        guard Self.publishTraceEnabled else { return }
+        if let details {
+            print("[LatticeStore] publish \(name): \(details)")
+        } else {
+            print("[LatticeStore] publish \(name)")
+        }
+    }
+#endif
     @Published private(set) var canUndo: Bool = false
     @Published private(set) var canRedo: Bool = false
 
@@ -39,25 +51,67 @@ final class LatticeStore: ObservableObject {
     static var overlayMonzoForCoord: (@Sendable (LatticeCoord) -> [Int:Int]?)?
 
     // MARK: - Model
-    @Published var camera = LatticeCamera()
-    @Published var pivot = LatticeCoord(e3: 0, e5: 0)
+    @Published var camera = LatticeCamera() {
+        didSet {
+#if DEBUG
+            tracePublish("camera", details: "translation=\(camera.translation) scale=\(camera.appliedScale)")
+#endif
+        }
+    }
+    @Published var pivot = LatticeCoord(e3: 0, e5: 0) {
+        didSet {
+#if DEBUG
+            tracePublish("pivot", details: "e3=\(pivot.e3) e5=\(pivot.e5)")
+#endif
+        }
+    }
 
     // Plane (3×5) selection
-    @Published var selected: Set<LatticeCoord> = []
-    @Published var selectionOrder: [LatticeCoord] = []
+    @Published var selected: Set<LatticeCoord> = [] {
+        didSet {
+#if DEBUG
+            tracePublish("selected", details: "count=\(selected.count)")
+#endif
+        }
+    }
+    @Published var selectionOrder: [LatticeCoord] = [] {
+        didSet {
+#if DEBUG
+            tracePublish("selectionOrder", details: "count=\(selectionOrder.count)")
+#endif
+        }
+    }
     @Published private var octaveOffsetByCoord: [LatticeCoord: Int] = [:]
 
     // Overlay (higher-prime) selections: absolute world monzos
     struct GhostMonzo: Hashable {
         let e3: Int, e5: Int, p: Int, eP: Int   // monzo {3:e3, 5:e5, p:eP}
     }
-    @Published var selectedGhosts: Set<GhostMonzo> = []
-    @Published var selectionOrderGhosts: [GhostMonzo] = []
+    @Published var selectedGhosts: Set<GhostMonzo> = [] {
+        didSet {
+#if DEBUG
+            tracePublish("selectedGhosts", details: "count=\(selectedGhosts.count)")
+#endif
+        }
+    }
+    @Published var selectionOrderGhosts: [GhostMonzo] = [] {
+        didSet {
+#if DEBUG
+            tracePublish("selectionOrderGhosts", details: "count=\(selectionOrderGhosts.count)")
+#endif
+        }
+    }
     @Published private var octaveOffsetByGhost: [GhostMonzo: Int] = [:]
 
     @Published var auditionEnabled: Bool = true
     @Published private var latticeSoundEnabled: Bool = true
-    @Published var guidesOn: Bool = true
+    @Published var guidesOn: Bool = true {
+        didSet {
+#if DEBUG
+            tracePublish("guidesOn", details: "value=\(guidesOn)")
+#endif
+        }
+    }
     @Published var labelMode: JILabelMode = .ratio
     @Published var showHelp: Bool = false
     
@@ -68,7 +122,13 @@ final class LatticeStore: ObservableObject {
     private let auditionMinInterval: TimeInterval = 0.12
 
     /// Which higher primes are visible as overlays (defaults: 7 & 11 on)
-    @Published var visiblePrimes: Set<Int> = [7, 11]
+    @Published var visiblePrimes: Set<Int> = [7, 11] {
+        didSet {
+#if DEBUG
+            tracePublish("visiblePrimes", details: "values=\(visiblePrimes.sorted())")
+#endif
+        }
+    }
     
     // MARK: - Overlay “Ink” toggle animation (7–31)
 
@@ -100,11 +160,23 @@ final class LatticeStore: ObservableObject {
     private var suppressPersist: Bool = false
 
     /// Axis shifts (transpositions) along any prime axis (includes 3 and 5)
-    @Published var axisShift: [Int:Int] = [3:0, 5:0, 7:0, 11:0, 13:0, 17:0, 19:0, 23:0, 29:0, 31:0]
+    @Published var axisShift: [Int:Int] = [3:0, 5:0, 7:0, 11:0, 13:0, 17:0, 19:0, 23:0, 29:0, 31:0] {
+        didSet {
+#if DEBUG
+            tracePublish("axisShift", details: "count=\(axisShift.count)")
+#endif
+        }
+    }
 
     // v0.3
     enum LatticeMode: String, CaseIterable, Identifiable { case explore, select; var id: String { rawValue } }
-    @Published var mode: LatticeMode = .explore
+    @Published var mode: LatticeMode = .explore {
+        didSet {
+#if DEBUG
+            tracePublish("mode", details: "value=\(mode.rawValue)")
+#endif
+        }
+    }
 
     // Brush selection de-bounce (session-only)
     @Published var brushVisited: Set<LatticeCoord> = []
