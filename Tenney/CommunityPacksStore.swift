@@ -50,6 +50,12 @@ final class CommunityPacksStore: ObservableObject {
         let exponent: Int
     }
 
+    private struct IndexScaleInfo {
+        let id: String
+        let title: String
+        let path: String
+    }
+
     enum InstallAction {
         case install
         case update
@@ -417,6 +423,35 @@ final class CommunityPacksStore: ObservableObject {
                     try? CommunityPacksCache.save(indexData: indexData, packs: cachedPacks)
                     continue
                 }
+                if index.schemaVersion >= 2,
+                   let indexScales = entry.indexScales,
+                   !indexScales.isEmpty {
+                    let scaleInfos = try makeIndexScaleInfos(indexScales: indexScales)
+                    let (packData, scaleDataByPath) = try await fetchIndexScaleData(
+                        entry: entry,
+                        scaleInfos: scaleInfos,
+                        assumedSchemaVersion: assumedSchemaVersion,
+                        indexSchemaVersion: index.schemaVersion
+                    )
+                    let viewModel = try buildViewModel(
+                        indexEntry: entry,
+                        indexOrder: offset,
+                        packData: packData,
+                        scaleDataByPath: scaleDataByPath,
+                        assumedSchemaVersion: assumedSchemaVersion,
+                        indexSchemaVersion: index.schemaVersion
+                    )
+                    viewModels.append(viewModel)
+                    let resolvedPackID = entry.packID.isEmpty ? entry.path : entry.packID
+                    let cachedPack = CommunityCachedPack(
+                        packID: resolvedPackID,
+                        packData: packData,
+                        scaleDataByPath: scaleDataByPath
+                    )
+                    cachedPacks = upsertCachedPack(cachedPacks, with: cachedPack)
+                    try? CommunityPacksCache.save(indexData: indexData, packs: cachedPacks)
+                    continue
+                }
                 guard !entry.path.isEmpty else {
                     logFetch("CommunityPacks index entry missing path (packID=\(entry.packID)); skipping.")
                     continue
@@ -435,7 +470,7 @@ final class CommunityPacksStore: ObservableObject {
 
                 var scaleDataByPath: [String: Data] = [:]
                 for scale in pack.scales {
-                    let scalePath = "\(entry.path)/\(scale.path)"
+                    let scalePath = resolvedScalePath(entryPath: entry.path, scalePath: scale.path)
                     let scaleURL = CommunityPacksEndpoints.url(base: CommunityPacksEndpoints.rawBase, path: scalePath)
                     let scaleCDN = CommunityPacksEndpoints.url(base: CommunityPacksEndpoints.cdnBase, path: scalePath)
                     let (data, _, _) = try await fetchData(primary: scaleURL, fallback: scaleCDN, label: scalePath)
@@ -523,9 +558,10 @@ final class CommunityPacksStore: ObservableObject {
                     guard let data = cachedPack.scaleDataByPath[key] ?? cachedPack.scaleDataByPath[scale.path] else {
                         throw CommunityPacksError.cacheUnavailable
                     }
+                    let scaleLabel = resolvedScalePath(entryPath: entry.path, scalePath: scale.path)
                     _ = try decodeScalePayload(
                         data: data,
-                        label: "cached \(entry.path)/\(scale.path)",
+                        label: "cached \(scaleLabel)",
                         assumedSchemaVersion: assumedSchemaVersion,
                         indexSchemaVersion: index.schemaVersion
                     )
@@ -700,6 +736,37 @@ final class CommunityPacksStore: ObservableObject {
                     "path": scalePathComponent
                 ]
             ]
+        ]
+        return try JSONSerialization.data(withJSONObject: payload)
+    }
+
+    private func synthesizePackData(entry: CommunityIndexEntry, scaleInfos: [IndexScaleInfo]) throws -> Data {
+        let resolvedPackID = entry.packID.isEmpty ? entry.path : entry.packID
+        let title = entry.title ?? "Untitled Pack"
+        let authorName = entry.authorName ?? "Unknown"
+        let description = entry.description ?? ""
+        let license = entry.license ?? ""
+        var author: [String: Any] = ["name": authorName]
+        if let url = entry.authorURLString, !url.isEmpty {
+            author["url"] = url
+        }
+        let scalesPayload = scaleInfos.map { scale in
+            [
+                "id": scale.id,
+                "title": scale.title,
+                "path": scale.path
+            ]
+        }
+        let payload: [String: Any] = [
+            "schemaVersion": CommunityPack.supportedSchemaVersion,
+            "packID": resolvedPackID,
+            "title": title,
+            "version": "1",
+            "date": "",
+            "license": license,
+            "author": author,
+            "description": description,
+            "scales": scalesPayload
         ]
         return try JSONSerialization.data(withJSONObject: payload)
     }
@@ -971,8 +1038,77 @@ final class CommunityPacksStore: ObservableObject {
     }
 
     private func assumedSchemaVersion(from indexSchemaVersion: Int) -> Int? {
-        guard indexSchemaVersion == CommunityIndex.supportedSchemaVersion else { return nil }
-        return CommunityIndex.supportedSchemaVersion
+        guard indexSchemaVersion == 1 else { return nil }
+        return 1
+    }
+
+    private func resolvedScalePath(entryPath: String, scalePath: String) -> String {
+        if scalePath.hasPrefix("packs/") { return scalePath }
+        if entryPath.isEmpty { return scalePath }
+        return "\(entryPath)/\(scalePath)"
+    }
+
+    private func makeIndexScaleInfos(
+        indexScales: [CommunityIndexScale]
+    ) throws -> [IndexScaleInfo] {
+        let infos: [IndexScaleInfo] = try indexScales.map { scale in
+            guard let tenneyPath = scale.files?.tenney, !tenneyPath.isEmpty else {
+                throw CommunityPacksError.decoding("INDEX.json is missing a tenney file path.")
+            }
+            let scaleID = deriveScaleID(from: tenneyPath)
+            let title = scale.title?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let resolvedTitle = (title?.isEmpty == false) ? title! : scaleID
+            return IndexScaleInfo(id: scaleID, title: resolvedTitle, path: tenneyPath)
+        }
+        guard !infos.isEmpty else {
+            throw CommunityPacksError.decoding("INDEX.json is missing scale manifests.")
+        }
+        return infos
+    }
+
+    private func deriveScaleID(from tenneyPath: String) -> String {
+        let components = (tenneyPath as NSString).pathComponents
+        if let tenneyIndex = components.firstIndex(of: "tenney"),
+           tenneyIndex + 1 < components.count {
+            let candidate = components[tenneyIndex + 1]
+            if !candidate.isEmpty && candidate != "scale-builder.json" {
+                return candidate
+            }
+        }
+        let lastComponent = (tenneyPath as NSString).lastPathComponent
+        if lastComponent == "scale-builder.json" {
+            let parent = (tenneyPath as NSString).deletingLastPathComponent
+            let parentName = (parent as NSString).lastPathComponent
+            if !parentName.isEmpty {
+                return parentName
+            }
+        }
+        let base = (tenneyPath as NSString).deletingPathExtension
+        return (base as NSString).lastPathComponent
+    }
+
+    private func fetchIndexScaleData(
+        entry: CommunityIndexEntry,
+        scaleInfos: [IndexScaleInfo],
+        assumedSchemaVersion: Int?,
+        indexSchemaVersion: Int
+    ) async throws -> (Data, [String: Data]) {
+        let packData = try synthesizePackData(entry: entry, scaleInfos: scaleInfos)
+        var scaleDataByPath: [String: Data] = [:]
+        for scale in scaleInfos {
+            let resolvedPath = resolvedScalePath(entryPath: entry.path, scalePath: scale.path)
+            let scaleURL = CommunityPacksEndpoints.url(base: CommunityPacksEndpoints.rawBase, path: resolvedPath)
+            let scaleCDN = CommunityPacksEndpoints.url(base: CommunityPacksEndpoints.cdnBase, path: resolvedPath)
+            let (data, _, _) = try await fetchData(primary: scaleURL, fallback: scaleCDN, label: resolvedPath)
+            _ = try decodeScalePayload(
+                data: data,
+                label: resolvedPath,
+                assumedSchemaVersion: assumedSchemaVersion,
+                indexSchemaVersion: indexSchemaVersion
+            )
+            scaleDataByPath[scale.path] = data
+        }
+        return (packData, scaleDataByPath)
     }
 
     private func communityPacksDecoder() -> JSONDecoder {
