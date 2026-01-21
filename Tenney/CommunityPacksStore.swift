@@ -56,6 +56,12 @@ final class CommunityPacksStore: ObservableObject {
         let path: String
     }
 
+    private struct IndexFetchResult {
+        let data: Data
+        let metadata: CommunityIndexMetadata?
+        let wasNotModified: Bool
+    }
+
     enum InstallAction {
         case install
         case update
@@ -90,8 +96,14 @@ final class CommunityPacksStore: ObservableObject {
 
     func refresh(force: Bool) async {
         guard state != .loading else { return }
-        setState(.loading)
         showingCachedBanner = false
+        let shouldHydrateCache = packs.isEmpty
+        if shouldHydrateCache {
+            if let cached = try? await loadCached() {
+                setPacks(cached)
+            }
+        }
+        setState(.loading)
 
         do {
             let result = try await fetchRemote()
@@ -111,7 +123,7 @@ final class CommunityPacksStore: ObservableObject {
         } catch {
             let remoteError = error
             do {
-                let cached = try loadCached()
+                let cached = try await loadCached()
                 setPacks(cached)
                 setState(.loaded)
                 showingCachedBanner = true
@@ -395,12 +407,19 @@ final class CommunityPacksStore: ObservableObject {
 
     private func fetchRemote() async throws -> [CommunityPackViewModel] {
         let indexPath = CommunityPacksEndpoints.indexPath
-        let (indexData, _, _) = try await fetchData(
+        let indexResult = try await fetchIndexData(
             primary: CommunityPacksEndpoints.url(base: CommunityPacksEndpoints.rawBase, path: indexPath),
             fallback: CommunityPacksEndpoints.url(base: CommunityPacksEndpoints.cdnBase, path: indexPath),
             label: indexPath
         )
-        let index = try decodeSchema(CommunityIndex.self, data: indexData, label: indexPath)
+        if indexResult.wasNotModified {
+            if !packs.isEmpty {
+                return packs
+            }
+            return try await loadCached()
+        }
+        let indexData = indexResult.data
+        let index = try await Self.decodeSchemaOffMain(CommunityIndex.self, data: indexData, label: indexPath)
 
         let existingPacks = (try? CommunityPacksCache.load().packs) ?? []
         var cachedPacks: [CommunityCachedPack] = existingPacks
@@ -420,7 +439,7 @@ final class CommunityPacksStore: ObservableObject {
                     )
                     viewModels.append(viewModel)
                     cachedPacks = upsertCachedPack(cachedPacks, with: cachedPack)
-                    try? CommunityPacksCache.save(indexData: indexData, packs: cachedPacks)
+                    try? CommunityPacksCache.save(indexData: indexData, packs: cachedPacks, metadata: indexResult.metadata)
                     continue
                 }
                 if index.schemaVersion >= 2,
@@ -433,7 +452,7 @@ final class CommunityPacksStore: ObservableObject {
                         assumedSchemaVersion: assumedSchemaVersion,
                         indexSchemaVersion: index.schemaVersion
                     )
-                    let viewModel = try buildViewModel(
+                    let viewModel = try await buildViewModel(
                         indexEntry: entry,
                         indexOrder: offset,
                         packData: packData,
@@ -449,7 +468,7 @@ final class CommunityPacksStore: ObservableObject {
                         scaleDataByPath: scaleDataByPath
                     )
                     cachedPacks = upsertCachedPack(cachedPacks, with: cachedPack)
-                    try? CommunityPacksCache.save(indexData: indexData, packs: cachedPacks)
+                    try? CommunityPacksCache.save(indexData: indexData, packs: cachedPacks, metadata: indexResult.metadata)
                     continue
                 }
                 guard !entry.path.isEmpty else {
@@ -460,7 +479,7 @@ final class CommunityPacksStore: ObservableObject {
                 let packURL = CommunityPacksEndpoints.url(base: CommunityPacksEndpoints.rawBase, path: packPath)
                 let packCDN = CommunityPacksEndpoints.url(base: CommunityPacksEndpoints.cdnBase, path: packPath)
                 let (packData, _, _) = try await fetchData(primary: packURL, fallback: packCDN, label: packPath)
-                let pack = try decodeSchema(
+                let pack = try await Self.decodeSchemaOffMain(
                     CommunityPack.self,
                     data: packData,
                     label: packPath,
@@ -474,7 +493,7 @@ final class CommunityPacksStore: ObservableObject {
                     let scaleURL = CommunityPacksEndpoints.url(base: CommunityPacksEndpoints.rawBase, path: scalePath)
                     let scaleCDN = CommunityPacksEndpoints.url(base: CommunityPacksEndpoints.cdnBase, path: scalePath)
                     let (data, _, _) = try await fetchData(primary: scaleURL, fallback: scaleCDN, label: scalePath)
-                    _ = try decodeScalePayload(
+                    _ = try await Self.decodeScalePayloadOffMain(
                         data: data,
                         label: scalePath,
                         assumedSchemaVersion: assumedSchemaVersion,
@@ -483,7 +502,7 @@ final class CommunityPacksStore: ObservableObject {
                     scaleDataByPath[scale.path] = data
                 }
 
-                let viewModel = try buildViewModel(
+                let viewModel = try await buildViewModel(
                     indexEntry: entry,
                     indexOrder: offset,
                     packData: packData,
@@ -496,7 +515,7 @@ final class CommunityPacksStore: ObservableObject {
                 let cacheID = pack.packID.isEmpty ? resolvedPackID : pack.packID
                 let cachedPack = CommunityCachedPack(packID: cacheID, packData: packData, scaleDataByPath: scaleDataByPath)
                 cachedPacks = upsertCachedPack(cachedPacks, with: cachedPack)
-                try? CommunityPacksCache.save(indexData: indexData, packs: cachedPacks)
+                try? CommunityPacksCache.save(indexData: indexData, packs: cachedPacks, metadata: indexResult.metadata)
             } catch CommunityPacksError.schemaMismatch {
                 sawSchemaMismatch = true
                 schemaMismatchPacks += 1
@@ -517,9 +536,9 @@ final class CommunityPacksStore: ObservableObject {
         return viewModels
     }
 
-    private func loadCached() throws -> [CommunityPackViewModel] {
+    private func loadCached() async throws -> [CommunityPackViewModel] {
         let cached = try CommunityPacksCache.load()
-        let index = try decodeSchema(CommunityIndex.self, data: cached.indexData, label: "cached INDEX.json")
+        let index = try await Self.decodeSchemaOffMain(CommunityIndex.self, data: cached.indexData, label: "cached INDEX.json")
 
         var viewModels: [CommunityPackViewModel] = []
         var sawSchemaMismatch = false
@@ -545,7 +564,7 @@ final class CommunityPacksStore: ObservableObject {
 
             do {
                 let packData = cachedPack.packData
-                let pack = try decodeSchema(
+                let pack = try await Self.decodeSchemaOffMain(
                     CommunityPack.self,
                     data: packData,
                     label: "cached \(entry.path)/pack.json",
@@ -559,7 +578,7 @@ final class CommunityPacksStore: ObservableObject {
                         throw CommunityPacksError.cacheUnavailable
                     }
                     let scaleLabel = resolvedScalePath(entryPath: entry.path, scalePath: scale.path)
-                    _ = try decodeScalePayload(
+                    _ = try await Self.decodeScalePayloadOffMain(
                         data: data,
                         label: "cached \(scaleLabel)",
                         assumedSchemaVersion: assumedSchemaVersion,
@@ -568,7 +587,7 @@ final class CommunityPacksStore: ObservableObject {
                     scaleDataByPath[scale.path] = data
                 }
 
-                let viewModel = try buildViewModel(
+                let viewModel = try await buildViewModel(
                     indexEntry: entry,
                     indexOrder: offset,
                     packData: packData,
@@ -604,8 +623,8 @@ final class CommunityPacksStore: ObservableObject {
         scaleDataByPath: [String: Data],
         assumedSchemaVersion: Int?,
         indexSchemaVersion: Int
-    ) throws -> CommunityPackViewModel {
-        let pack = try decodeSchema(
+    ) async throws -> CommunityPackViewModel {
+        let pack = try await Self.decodeSchemaOffMain(
             CommunityPack.self,
             data: packData,
             label: "pack.json",
@@ -620,7 +639,7 @@ final class CommunityPacksStore: ObservableObject {
             guard let data = scaleDataByPath[scale.path] else {
                 throw CommunityPacksError.cacheUnavailable
             }
-            let payload = try decodeScalePayload(
+            let payload = try await Self.decodeScalePayloadOffMain(
                 data: data,
                 label: "scale-builder.json",
                 assumedSchemaVersion: assumedSchemaVersion,
@@ -685,7 +704,7 @@ final class CommunityPacksStore: ObservableObject {
         let scaleURL = CommunityPacksEndpoints.url(base: CommunityPacksEndpoints.rawBase, path: tenneyPath)
         let scaleCDN = CommunityPacksEndpoints.url(base: CommunityPacksEndpoints.cdnBase, path: tenneyPath)
         let (scaleData, _, _) = try await fetchData(primary: scaleURL, fallback: scaleCDN, label: tenneyPath)
-        _ = try decodeScalePayload(
+        _ = try await Self.decodeScalePayloadOffMain(
             data: scaleData,
             label: tenneyPath,
             assumedSchemaVersion: assumedSchemaVersion,
@@ -693,7 +712,7 @@ final class CommunityPacksStore: ObservableObject {
         )
 
         let packData = try synthesizePackData(entry: entry, scalePathComponent: scalePathComponent)
-        let viewModel = try buildViewModel(
+        let viewModel = try await buildViewModel(
             indexEntry: entry,
             indexOrder: indexOrder,
             packData: packData,
@@ -781,6 +800,91 @@ final class CommunityPacksStore: ObservableObject {
         }
     }
 
+    private func fetchIndexData(primary: URL, fallback: URL, label: String) async throws -> IndexFetchResult {
+        let cachedIndex = try? CommunityPacksCache.loadIndexCache()
+        let attempts = 2
+        for attempt in 0..<attempts {
+            do {
+                do {
+                    return try await fetchIndexData(url: primary, source: .raw, cachedIndex: cachedIndex, label: label)
+                } catch {
+                    return try await fetchIndexData(url: fallback, source: .cdn, cachedIndex: cachedIndex, label: label)
+                }
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch let error as URLError where error.code == .cancelled {
+                throw error
+            } catch {
+                if attempt + 1 < attempts {
+                    try? await Task.sleep(nanoseconds: 350_000_000)
+                    continue
+                }
+                throw error
+            }
+        }
+        throw CommunityPacksError.network("\(label) failed to load.")
+    }
+
+    private func fetchIndexData(
+        url: URL,
+        source: CommunityPacksSource,
+        cachedIndex: CommunityCachedIndex?,
+        label: String
+    ) async throws -> IndexFetchResult {
+        if url.path.hasSuffix("/") {
+            logFetch("CommunityPacks \(label) [\(source.rawValue)] invalid URL (directory): \(url.absoluteString)")
+            throw CommunityPacksError.network("\(label) URL is invalid.")
+        }
+        var request = URLRequest(url: url)
+        request.cachePolicy = .useProtocolCachePolicy
+        request.timeoutInterval = 10
+        if let etag = cachedIndex?.metadata?.etag {
+            request.setValue(etag, forHTTPHeaderField: "If-None-Match")
+        }
+        if let lastModified = cachedIndex?.metadata?.lastModified {
+            request.setValue(lastModified, forHTTPHeaderField: "If-Modified-Since")
+        }
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                logFetch("CommunityPacks \(label) [\(source.rawValue)] \(url.absoluteString) invalid response")
+                throw CommunityPacksError.network("\(label) returned an invalid response.")
+            }
+            let status = httpResponse.statusCode
+            if status == 304 {
+                #if DEBUG
+                logFetch("CommunityPacks \(label) [\(source.rawValue)] \(url.absoluteString) status=304 Not Modified")
+                #endif
+                if let cachedData = cachedIndex?.indexData {
+                    return IndexFetchResult(data: cachedData, metadata: cachedIndex?.metadata, wasNotModified: true)
+                }
+                throw CommunityPacksError.cacheUnavailable
+            }
+            let mimeType = httpResponse.mimeType ?? "unknown"
+            let preview = payloadPreview(data)
+            let firstByte = firstNonWhitespaceByte(in: data)
+            let isJSON = isJSONPayload(firstByte: firstByte)
+            let firstChar = firstByte.map { nonWhitespaceDescription(for: $0) } ?? "none"
+            let jsonNote = isJSON ? "" : " non-JSON payload firstChar=\(firstChar)"
+            logFetch("CommunityPacks \(label) [\(source.rawValue)] \(url.absoluteString) status=\(status) mimeType=\(mimeType) bytes=\(data.count) preview=\"\(preview)\"\(jsonNote)")
+            guard (200...299).contains(status) else {
+                throw CommunityPacksError.network("\(label) returned HTTP \(status).")
+            }
+            guard isJSON else {
+                throw CommunityPacksError.decoding("\(label) returned non-JSON payload.")
+            }
+            let responseMetadata = CommunityIndexMetadata(
+                etag: httpResponse.value(forHTTPHeaderField: "ETag"),
+                lastModified: httpResponse.value(forHTTPHeaderField: "Last-Modified"),
+                cachedAt: Date()
+            )
+            return IndexFetchResult(data: data, metadata: responseMetadata, wasNotModified: false)
+        } catch {
+            logFetch("CommunityPacks \(label) [\(source.rawValue)] \(url.absoluteString) error: \(error.localizedDescription)")
+            throw error
+        }
+    }
+
     private func fetchData(url: URL, source: CommunityPacksSource, label: String) async throws -> (Data, HTTPURLResponse) {
         if url.path.hasSuffix("/") {
             logFetch("CommunityPacks \(label) [\(source.rawValue)] invalid URL (directory): \(url.absoluteString)")
@@ -817,51 +921,53 @@ final class CommunityPacksStore: ObservableObject {
     }
 
     #if DEBUG
-    private func logFetch(_ message: String) { print(message) }
+    private static func logFetch(_ message: String) { print(message) }
     #else
-    private func logFetch(_ message: String) { }
+    private static func logFetch(_ message: String) { }
     #endif
 
-    private func decodeSchema<T: Decodable>(
+    private func logFetch(_ message: String) { Self.logFetch(message) }
+
+    private static func decodeSchema<T: Decodable>(
         _ type: T.Type,
         data: Data,
         label: String,
         assumedSchemaVersion: Int? = nil,
         indexSchemaVersion: Int? = nil
     ) throws -> T {
-        let workingData = injectSchemaVersionIfNeeded(
+        let workingData = Self.injectSchemaVersionIfNeeded(
             data: data,
             label: label,
             assumedSchemaVersion: assumedSchemaVersion,
             indexSchemaVersion: indexSchemaVersion
         )
-        let decoder = communityPacksDecoder()
+        let decoder = Self.communityPacksDecoder()
         do {
             let decoded = try decoder.decode(T.self, from: workingData)
-            logFetch("CommunityPacks \(label) decoded successfully.")
+            Self.logFetch("CommunityPacks \(label) decoded successfully.")
             return decoded
         } catch CommunityPacksError.schemaMismatch {
-            logSchemaMismatch(label: label, data: data)
+            Self.logSchemaMismatch(label: label, data: data)
             throw CommunityPacksError.schemaMismatch
         } catch let error as CommunityPacksError {
             throw error
         } catch let error as DecodingError {
-            logDecodingError(label: label, error: error, data: data)
+            Self.logDecodingError(label: label, error: error, data: data)
             throw CommunityPacksError.decoding("\(label) failed to decode.")
         } catch {
-            logFetch("CommunityPacks \(label) decode error: \(error.localizedDescription)")
+            Self.logFetch("CommunityPacks \(label) decode error: \(error.localizedDescription)")
             throw CommunityPacksError.decoding("\(label) failed to decode.")
         }
     }
 
-    private func decodeScalePayload(
+    private static func decodeScalePayload(
         data: Data,
         label: String,
         assumedSchemaVersion: Int?,
         indexSchemaVersion: Int
     ) throws -> ScaleBuilderPayload {
         do {
-            let envelope = try decodeSchema(
+            let envelope = try Self.decodeSchema(
                 CommunityScaleBuilderEnvelope.self,
                 data: data,
                 label: label,
@@ -870,6 +976,40 @@ final class CommunityPacksStore: ObservableObject {
             )
             return envelope.payload
         }
+    }
+
+    private static func decodeSchemaOffMain<T: Decodable>(
+        _ type: T.Type,
+        data: Data,
+        label: String,
+        assumedSchemaVersion: Int? = nil,
+        indexSchemaVersion: Int? = nil
+    ) async throws -> T {
+        try await Task.detached(priority: .utility) {
+            try Self.decodeSchema(
+                type,
+                data: data,
+                label: label,
+                assumedSchemaVersion: assumedSchemaVersion,
+                indexSchemaVersion: indexSchemaVersion
+            )
+        }.value
+    }
+
+    private static func decodeScalePayloadOffMain(
+        data: Data,
+        label: String,
+        assumedSchemaVersion: Int?,
+        indexSchemaVersion: Int
+    ) async throws -> ScaleBuilderPayload {
+        try await Task.detached(priority: .utility) {
+            try Self.decodeScalePayload(
+                data: data,
+                label: label,
+                assumedSchemaVersion: assumedSchemaVersion,
+                indexSchemaVersion: indexSchemaVersion
+            )
+        }.value
     }
 
     private func contentSignatureHash(packID: String, scales: [CommunityPackScaleViewModel]) -> String {
@@ -976,7 +1116,7 @@ final class CommunityPacksStore: ObservableObject {
         return String(format: "0x%02x", byte)
     }
 
-    private func logSchemaMismatch(label: String, data: Data) {
+    private static func logSchemaMismatch(label: String, data: Data) {
         var versionDescription = "missing"
         if let object = try? JSONSerialization.jsonObject(with: data),
            let dict = object as? [String: Any] {
@@ -984,23 +1124,23 @@ final class CommunityPacksStore: ObservableObject {
                 versionDescription = "\(version)"
             }
         }
-        logFetch("CommunityPacks \(label) schema mismatch (schemaVersion: \(versionDescription)).")
+        Self.logFetch("CommunityPacks \(label) schema mismatch (schemaVersion: \(versionDescription)).")
     }
 
-    private func logDecodingError(label: String, error: DecodingError, data: Data) {
-        let path = decodingPath(from: error)
-        logFetch("CommunityPacks \(label) decode error at \(path.isEmpty ? "<root>" : path): \(error.localizedDescription)")
+    private static func logDecodingError(label: String, error: DecodingError, data: Data) {
+        let path = Self.decodingPath(from: error)
+        Self.logFetch("CommunityPacks \(label) decode error at \(path.isEmpty ? "<root>" : path): \(error.localizedDescription)")
         if let object = try? JSONSerialization.jsonObject(with: data) {
             if let dict = object as? [String: Any] {
                 let keys = dict.keys.sorted().joined(separator: ", ")
-                logFetch("CommunityPacks \(label) top-level keys: [\(keys)]")
+                Self.logFetch("CommunityPacks \(label) top-level keys: [\(keys)]")
             } else if object is [Any] {
-                logFetch("CommunityPacks \(label) top-level JSON is an array.")
+                Self.logFetch("CommunityPacks \(label) top-level JSON is an array.")
             }
         }
     }
 
-    private func decodingPath(from error: DecodingError) -> String {
+    private static func decodingPath(from error: DecodingError) -> String {
         let path: [CodingKey]
         switch error {
         case .typeMismatch(_, let context):
@@ -1017,7 +1157,7 @@ final class CommunityPacksStore: ObservableObject {
         return path.map(\.stringValue).joined(separator: ".")
     }
 
-    private func injectSchemaVersionIfNeeded(
+    private static func injectSchemaVersionIfNeeded(
         data: Data,
         label: String,
         assumedSchemaVersion: Int?,
@@ -1028,12 +1168,12 @@ final class CommunityPacksStore: ObservableObject {
             return data
         }
         if let version = dict["schemaVersion"] as? Int {
-            logFetch("CommunityPacks \(label) schemaVersion=\(version)")
+            Self.logFetch("CommunityPacks \(label) schemaVersion=\(version)")
             return data
         }
         guard let assumedSchemaVersion, let indexSchemaVersion else { return data }
         dict["schemaVersion"] = assumedSchemaVersion
-        logFetch("CommunityPacks \(label) schemaVersion missing; assuming v\(assumedSchemaVersion) (index schemaVersion=\(indexSchemaVersion))")
+        Self.logFetch("CommunityPacks \(label) schemaVersion missing; assuming v\(assumedSchemaVersion) (index schemaVersion=\(indexSchemaVersion))")
         return (try? JSONSerialization.data(withJSONObject: dict)) ?? data
     }
 
@@ -1142,7 +1282,7 @@ final class CommunityPacksStore: ObservableObject {
             let scaleURL = CommunityPacksEndpoints.url(base: CommunityPacksEndpoints.rawBase, path: resolvedPath)
             let scaleCDN = CommunityPacksEndpoints.url(base: CommunityPacksEndpoints.cdnBase, path: resolvedPath)
             let (data, _, _) = try await fetchData(primary: scaleURL, fallback: scaleCDN, label: resolvedPath)
-            _ = try decodeScalePayload(
+            _ = try await Self.decodeScalePayloadOffMain(
                 data: data,
                 label: resolvedPath,
                 assumedSchemaVersion: assumedSchemaVersion,
@@ -1153,7 +1293,7 @@ final class CommunityPacksStore: ObservableObject {
         return (packData, scaleDataByPath)
     }
 
-    private func communityPacksDecoder() -> JSONDecoder {
+    private static func communityPacksDecoder() -> JSONDecoder {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .custom { decoder in
             let container = try decoder.singleValueContainer()

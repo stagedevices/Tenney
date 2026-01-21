@@ -6,13 +6,26 @@ struct CommunityCachedPack {
     let scaleDataByPath: [String: Data]
 }
 
+struct CommunityIndexMetadata: Codable {
+    let etag: String?
+    let lastModified: String?
+    let cachedAt: Date
+}
+
 struct CommunityCachedPayload {
     let indexData: Data
     let packs: [CommunityCachedPack]
+    let metadata: CommunityIndexMetadata?
+}
+
+struct CommunityCachedIndex {
+    let indexData: Data
+    let metadata: CommunityIndexMetadata?
 }
 
 enum CommunityPacksCache {
     private static let cacheFolderName = "CommunityPacks"
+    private static let indexMetadataFilename = "index-metadata.json"
 
     private static var cacheDirectory: URL {
         let fm = FileManager.default
@@ -34,11 +47,16 @@ enum CommunityPacksCache {
         return String(filtered)
     }
 
-    static func save(indexData: Data, packs: [CommunityCachedPack]) throws {
+    static func save(indexData: Data, packs: [CommunityCachedPack], metadata: CommunityIndexMetadata? = nil) throws {
         let fm = FileManager.default
         let dir = cacheDirectory
         let indexURL = dir.appendingPathComponent("index.json")
         try indexData.write(to: indexURL, options: [.atomic])
+        if let metadata {
+            let metadataURL = dir.appendingPathComponent(indexMetadataFilename)
+            let data = try JSONEncoder().encode(metadata)
+            try data.write(to: metadataURL, options: [.atomic])
+        }
 
         for pack in packs {
             let packDir = dir.appendingPathComponent(safePathComponent(pack.packID), isDirectory: true)
@@ -68,6 +86,7 @@ enum CommunityPacksCache {
             throw CommunityPacksError.cacheUnavailable
         }
         let indexData = try Data(contentsOf: indexURL)
+        let metadata = loadMetadata(from: dir)
 
         let packDirs = (try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
         var packs: [CommunityCachedPack] = []
@@ -93,7 +112,19 @@ enum CommunityPacksCache {
             throw CommunityPacksError.cacheUnavailable
         }
 
-        return CommunityCachedPayload(indexData: indexData, packs: packs)
+        return CommunityCachedPayload(indexData: indexData, packs: packs, metadata: metadata)
+    }
+
+    static func loadIndexCache() throws -> CommunityCachedIndex {
+        let fm = FileManager.default
+        let dir = cacheDirectory
+        let indexURL = dir.appendingPathComponent("index.json")
+        guard fm.fileExists(atPath: indexURL.path) else {
+            throw CommunityPacksError.cacheUnavailable
+        }
+        let indexData = try Data(contentsOf: indexURL)
+        let metadata = loadMetadata(from: dir)
+        return CommunityCachedIndex(indexData: indexData, metadata: metadata)
     }
 
     static func removePack(packID: String) throws {
@@ -102,5 +133,14 @@ enum CommunityPacksCache {
         let packDir = dir.appendingPathComponent(safePathComponent(packID), isDirectory: true)
         guard fm.fileExists(atPath: packDir.path) else { return }
         try fm.removeItem(at: packDir)
+    }
+
+    private static func loadMetadata(from dir: URL) -> CommunityIndexMetadata? {
+        let metadataURL = dir.appendingPathComponent(indexMetadataFilename)
+        guard FileManager.default.fileExists(atPath: metadataURL.path),
+              let data = try? Data(contentsOf: metadataURL) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(CommunityIndexMetadata.self, from: data)
     }
 }

@@ -78,6 +78,198 @@ struct CommunityPackBadge: View {
     }
 }
 
+struct CommunityPacksLoadingView: View {
+    var isFeaturedStyle: Bool = false
+    var symbolName: String = "shippingbox"
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isVisible = false
+
+    var body: some View {
+        VStack(spacing: 16) {
+            SpotlitPackSigil(
+                symbolName: symbolName,
+                isFeaturedStyle: isFeaturedStyle
+            )
+            VStack(spacing: 6) {
+                Text("Loading Community Packs")
+                    .font(.headline.weight(.semibold))
+                LoadingMicrocopy()
+            }
+            .foregroundStyle(.secondary)
+        }
+        .opacity(isVisible ? 1 : 0)
+        .onAppear {
+            guard !isVisible else { return }
+            if reduceMotion {
+                isVisible = true
+            } else {
+                withAnimation(.easeIn(duration: 0.22)) {
+                    isVisible = true
+                }
+            }
+        }
+    }
+}
+
+private struct SpotlitPackSigil: View {
+    let symbolName: String
+    let isFeaturedStyle: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var haloScale: CGFloat = 0.96
+    @State private var haloOpacity: Double = 0.28
+    @State private var ringRotation: Angle = .degrees(0)
+    @State private var shimmerPhase: CGFloat = 0
+
+    var body: some View {
+        ZStack {
+            halo
+            tickRing
+            disc
+            glyph
+        }
+        .frame(width: 92, height: 92)
+        .onAppear {
+            let haloDuration = reduceMotion ? 1.4 : 2.1
+            withAnimation(.easeInOut(duration: haloDuration).repeatForever(autoreverses: true)) {
+                haloScale = 1.05
+                haloOpacity = 0.42
+            }
+            if !reduceMotion {
+                withAnimation(.linear(duration: 3.2).repeatForever(autoreverses: false)) {
+                    ringRotation = .degrees(360)
+                }
+            }
+            let shimmerDuration = reduceMotion ? 1.6 : 2.2
+            withAnimation(.linear(duration: shimmerDuration).repeatForever(autoreverses: false)) {
+                shimmerPhase = 1.0
+            }
+        }
+    }
+
+    private var disc: some View {
+        ZStack {
+            if #available(iOS 26.0, macOS 15.0, *) {
+                Color.clear.glassEffect(.regular, in: Circle())
+            } else {
+                Circle().fill(.ultraThinMaterial)
+            }
+            shimmer
+        }
+        .overlay(
+            Circle()
+                .stroke(Color.white.opacity(colorScheme == .dark ? 0.12 : 0.18), lineWidth: 1)
+        )
+        .clipShape(Circle())
+    }
+
+    private var halo: some View {
+        Circle()
+            .strokeBorder(Color.white.opacity(haloOpacity), lineWidth: isFeaturedStyle ? 2.4 : 2.0)
+            .blur(radius: 6)
+            .scaleEffect(haloScale)
+    }
+
+    private var tickRing: some View {
+        TickRing(count: 72)
+            .rotationEffect(reduceMotion ? .degrees(0) : ringRotation)
+    }
+
+    private var shimmer: some View {
+        GeometryReader { proxy in
+            let width = proxy.size.width
+            let offset = (shimmerPhase * (width * 1.6)) - (width * 0.8)
+            Rectangle()
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0),
+                            Color.white.opacity(0.35),
+                            Color.white.opacity(0)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .rotationEffect(.degrees(-20))
+                .offset(x: offset)
+                .blendMode(.screen)
+                .opacity(0.7)
+        }
+        .allowsHitTesting(false)
+        .mask(Circle())
+    }
+
+    private var glyph: some View {
+        Image(systemName: symbolName)
+            .font(.system(size: 28, weight: .semibold))
+            .foregroundStyle(Color.primary.opacity(colorScheme == .dark ? 0.9 : 0.75))
+            .shadow(color: Color.black.opacity(0.2), radius: 2, x: 0, y: 1)
+            .blur(radius: 0.2)
+    }
+}
+
+private struct TickRing: View {
+    let count: Int
+
+    var body: some View {
+        Canvas { context, size in
+            let center = CGPoint(x: size.width / 2, y: size.height / 2)
+            let radius = min(size.width, size.height) / 2
+            let tickLength = radius * 0.12
+            for index in 0..<count {
+                let progress = Double(index) / Double(count)
+                let angle = progress * Double.pi * 2
+                let start = CGPoint(
+                    x: center.x + cos(angle) * (radius * 0.72),
+                    y: center.y + sin(angle) * (radius * 0.72)
+                )
+                let end = CGPoint(
+                    x: center.x + cos(angle) * (radius * 0.72 + tickLength),
+                    y: center.y + sin(angle) * (radius * 0.72 + tickLength)
+                )
+                var path = Path()
+                path.move(to: start)
+                path.addLine(to: end)
+                let intensity = 0.24 + 0.26 * (0.5 + 0.5 * sin(progress * Double.pi * 2))
+                context.stroke(
+                    path,
+                    with: .color(Color.white.opacity(intensity)),
+                    style: StrokeStyle(lineWidth: 1, lineCap: .round)
+                )
+            }
+        }
+        .frame(width: 86, height: 86)
+    }
+}
+
+private struct LoadingMicrocopy: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var index = 0
+    private let messages = [
+        "Fetching index…",
+        "Resolving pack metadata…",
+        "Preparing previews…"
+    ]
+    private let timer = Timer.publish(every: 1.2, on: .main, in: .common).autoconnect()
+
+    var body: some View {
+        Text(messages[index])
+            .font(.footnote.monospacedDigit())
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: index)
+            .onReceive(timer) { _ in
+                let next = (index + 1) % messages.count
+                if reduceMotion {
+                    index = next
+                } else {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        index = next
+                    }
+                }
+            }
+    }
+}
+
 struct CommunityPacksPageList: View {
     let sortKey: ScaleLibraryStore.SortKey
     let filters: LibraryFilters
@@ -128,8 +320,9 @@ struct CommunityPacksPageList: View {
                         }
                         .padding(.top, 12)
                     } else if store.packs.isEmpty, case .loading = store.state {
-                        ProgressView("Loading Community Packs…")
-                            .padding(.top, 20)
+                        CommunityPacksLoadingView()
+                            .frame(maxWidth: .infinity)
+                            .frame(minHeight: proxy.size.height * 0.65)
                     } else {
                         let filteredPacks = filteredPacks()
                         if filteredPacks.isEmpty {
@@ -202,6 +395,14 @@ struct CommunityPacksPageList: View {
     }
 
     private func packMatchesGlobalFilters(_ pack: CommunityPackViewModel) -> Bool {
+        let trimmedQuery = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !filters.isFiltering(searchText: trimmedQuery, favoritesOnly: favoritesOnly) {
+            return true
+        }
+        let metadataMatch = packMatchesMetadata(pack)
+        if !trimmedQuery.isEmpty, metadataMatch {
+            return true
+        }
         let scaleMatch = pack.scales.contains { scale in
             let tenneyScale = communityScaleForFiltering(pack: pack, scale: scale)
             return filters.matches(
@@ -212,8 +413,7 @@ struct CommunityPacksPageList: View {
                 favoriteIDs: library.favoriteIDs
             )
         }
-        let metadataMatch = packMatchesMetadata(pack)
-        if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if trimmedQuery.isEmpty {
             return scaleMatch
         }
         return scaleMatch || metadataMatch
