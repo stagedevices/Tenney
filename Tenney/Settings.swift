@@ -2781,11 +2781,13 @@ struct StudioConsoleView: View {
                 .overlay(alignment: .topTrailing) {
                     if activeCategory == nil {
                         GlassDismissCircleButton { dismiss() }
-                        .padding(.top, 20)
-                        .padding(.trailing, 20)
-                        .transition(.opacity)
+                            .padding(.top, 20)
+                            .padding(.trailing, 20)
+                            .environment(\.colorScheme, .dark) // ⬅️ isolates symbol + glass
+                            .transition(.opacity)
                     }
                 }
+
 
                 .overlay(alignment: .topTrailing) {
                     if let cat = activeCategory {
@@ -3696,23 +3698,6 @@ private struct GlassNavTile<Destination: View>: View {
             .buttonStyle(PressScalePlainStyle())
         }
     }
-
-    @ToolbarContentBuilder
-              private var doneToolbar: some ToolbarContent {
-                  ToolbarItem(placement: .topBarTrailing) {
-                      Button {
-                          dismiss()
-                      } label: {
-                          Image(systemName: "checkmark")
-                              .font(.headline.weight(.semibold))
-                              .frame(width: 32, height: 32)
-                              .contentShape(Circle())
-                      }
-                      .buttonStyle(.plain)
-                      .modifier(GlassBlueCircle())
-                      .accessibilityLabel("Done")
-                  }
-              }
 
     @ViewBuilder
     private var inkOverlay: some View {
