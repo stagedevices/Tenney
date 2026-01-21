@@ -1038,8 +1038,8 @@ final class CommunityPacksStore: ObservableObject {
     }
 
     private func assumedSchemaVersion(from indexSchemaVersion: Int) -> Int? {
-        guard indexSchemaVersion == 1 else { return nil }
-        return 1
+        guard CommunityIndex.supportedSchemaVersions.contains(indexSchemaVersion) else { return nil }
+                return CommunityPack.supportedSchemaVersion
     }
 
     private func resolvedScalePath(entryPath: String, scalePath: String) -> String {
@@ -1074,6 +1074,12 @@ final class CommunityPacksStore: ObservableObject {
             if !candidate.isEmpty && candidate != "scale-builder.json" {
                 return candidate
             }
+            if candidate == "scale-builder.json", tenneyIndex > 0 {
+                            let packCandidate = components[tenneyIndex - 1]
+                            if !packCandidate.isEmpty {
+                                return packCandidate
+                            }
+                        }
         }
         let lastComponent = (tenneyPath as NSString).lastPathComponent
         if lastComponent == "scale-builder.json" {
