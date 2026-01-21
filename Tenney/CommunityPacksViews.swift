@@ -1012,7 +1012,16 @@ private struct CommunityPackDetailView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            GlassRedCircleButton(isSelecting: isSelecting, action: handleCloseTap)
+            Button(action: handleCloseTap) {
+                Image(systemName: isSelecting ? "chevron.left" : "xmark")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .frame(width: 44, height: 44)
+                    .modifier(GlassRedCircle())
+                    .contentShape(Circle())
+                    .accessibilityLabel(isSelecting ? "Back" : "Close")
+            }
+            .buttonStyle(.plain)
         }
         .padding(.horizontal, 16)
         .padding(.top, 10)
@@ -1370,32 +1379,12 @@ private struct CommunityPackDetailView: View {
 
     @ViewBuilder
     private func heroSymbolTile(symbol: String, colors: [Color], parallax: CGFloat) -> some View {
-        let gradient = LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)
-        ZStack {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(gradient.opacity(0.9))
-                .overlay(PremiumModalSurface.glassOverlay(in: RoundedRectangle(cornerRadius: 18, style: .continuous)))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(Color.white.opacity(0.25), lineWidth: 1)
-                )
-            Circle()
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    Circle()
-                        .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                )
-                .frame(width: 52, height: 52)
-            Image(systemName: symbol)
-                .font(.system(size: 50, weight: .semibold))
-                .symbolRenderingMode(.palette)
-                .foregroundStyle(colors[0], colors[1], colors.count > 2 ? colors[2] : Color.white)
-                .opacity(0.95)
-                .offset(y: parallax)
-                .ifAvailableSymbolEffect(symbolDrawn)
-        }
-        .frame(width: 84, height: 84)
-        .shadow(color: Color.black.opacity(0.12), radius: 12, x: 0, y: 8)
+        PackHeroSymbolView(
+            symbolName: symbol,
+            colors: colors,
+            parallax: parallax,
+            symbolDrawn: symbolDrawn
+        )
     }
 
     private func premiumBadge(title: String, systemImage: String) -> some View {
@@ -1533,6 +1522,52 @@ private struct CommunityScaleRow: View {
             if showsSelection {
                 onToggleSelection()
             }
+        }
+    }
+}
+
+private struct PackHeroSymbolView: View {
+    let symbolName: String
+    let colors: [Color]
+    let parallax: CGFloat
+    let symbolDrawn: Bool
+
+    var body: some View {
+        let gradient = LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)
+        ZStack {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(gradient.opacity(0.9))
+                .overlay(PremiumModalSurface.glassOverlay(in: RoundedRectangle(cornerRadius: 18, style: .continuous)))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                )
+
+            iconLayer
+                .offset(y: parallax)
+        }
+        .frame(width: 84, height: 84)
+        .shadow(color: Color.black.opacity(0.12), radius: 12, x: 0, y: 8)
+    }
+
+    private var iconLayer: some View {
+        ZStack {
+            Circle()
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    Circle()
+                        .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                )
+                .frame(width: 52, height: 52)
+
+            Image(systemName: symbolName)
+                .font(.system(size: 52, weight: .semibold))
+                .symbolRenderingMode(.palette)
+                .foregroundStyle(colors[0], colors[1], colors.count > 2 ? colors[2] : colors[0])
+                .opacity(1)
+                .blendMode(.normal)
+                .compositingGroup()
+                .ifAvailableSymbolEffect(symbolDrawn)
         }
     }
 }
