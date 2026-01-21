@@ -1548,23 +1548,30 @@ private struct PackHeroSymbolView: View {
     }
 
     private var iconLayer: some View {
-        let palette = [
-            colors.first ?? .accentColor,
-            colors.dropFirst().first ?? colors.first ?? .accentColor,
-            colors.dropFirst(2).first ?? colors.first ?? .accentColor
-        ]
+        let resolvedSymbolName = VerifiedSFSymbol.resolvedSymbolName(for: symbolName)
         return ZStack {
-            VerifiedSFSymbol(
-                symbolName: symbolName,
-                palette: palette,
-                pointSize: 56
-            )
+            Image(systemName: resolvedSymbolName)
+                .symbolRenderingMode(.monochrome)
+                .foregroundStyle(.white.opacity(0.18))
+                .font(.system(size: 56, weight: .semibold, design: .default))
+                .blur(radius: 0.6)
+
+            Image(systemName: resolvedSymbolName)
+                .symbolRenderingMode(.monochrome)
+                .foregroundStyle(.white)
+                .font(.system(size: 56, weight: .semibold, design: .default))
+                .opacity(0.94)
+                .blendMode(.overlay)
+                .shadow(color: .black.opacity(0.18), radius: 10, x: 0, y: 6)
         }
+        .compositingGroup()
+        .zIndex(20)
     }
 }
 
 private struct VerifiedSFSymbol: View {
-    private let fallbackSymbolName = "music.note"
+    private static let fallbackSymbolName = "music.note"
+    private let fallbackSymbolName = VerifiedSFSymbol.fallbackSymbolName
     let symbolName: String
     let palette: [Color]
     let pointSize: CGFloat
@@ -1592,6 +1599,10 @@ private struct VerifiedSFSymbol: View {
     }
 
     private var resolvedSymbolName: String {
+        Self.resolvedSymbolName(for: symbolName)
+    }
+
+    static func resolvedSymbolName(for symbolName: String) -> String {
         #if canImport(UIKit)
         if UIImage(systemName: symbolName) != nil {
             return symbolName
