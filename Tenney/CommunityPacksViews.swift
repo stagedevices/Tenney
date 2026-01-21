@@ -1552,7 +1552,7 @@ private struct PackHeroSymbolView: View {
 
     private var iconLayer: some View {
         let resolvedName = PackVisualIdentity.resolvedSymbolName(symbolName)
-        ZStack {
+        return ZStack {
             Circle()
                 .fill(.ultraThinMaterial)
                 .overlay(
