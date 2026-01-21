@@ -1612,7 +1612,7 @@ private struct GuaranteedSymbol: View {
         let uiPalette = palette.map { UIColor($0) }
         let base = UIImage.SymbolConfiguration(
             pointSize: pointSize,
-            weight: resolvedUIFontWeight(),
+            weight: resolvedUISymbolWeight(),
             scale: .large
         )
         let paletteConfig = UIImage.SymbolConfiguration(paletteColors: uiPalette)
@@ -1620,7 +1620,7 @@ private struct GuaranteedSymbol: View {
         return UIImage(systemName: resolvedSymbolName, withConfiguration: configuration)
     }
 
-    private func resolvedUIFontWeight() -> UIFont.Weight {
+    private func resolvedUISymbolWeight() -> UIImage.SymbolWeight {
         switch weight {
         case .ultraLight:
             return .ultraLight
