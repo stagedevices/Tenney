@@ -747,7 +747,10 @@ private struct CommunityPackDetailView: View {
 
     private var detailContent: some View {
         ZStack {
-            PremiumModalSurface.background
+            PremiumModalSurface.baseFill
+                .ignoresSafeArea()
+
+            PremiumModalSurface.glassOverlay(in: Rectangle())
                 .ignoresSafeArea()
 
             NoiseOverlay(seed: PackVisualIdentity.stableSeed(for: pack.packID), opacity: 0.04)
@@ -1132,7 +1135,7 @@ private struct CommunityPackDetailView: View {
 
     private func barBackground(separatorEdge: VerticalEdge) -> some View {
         PremiumModalSurface.barBackground
-            .overlay(PremiumModalSurface.glassOverlay(in: Rectangle()))
+            .overlay(PremiumModalSurface.barOverlayMaterial)
             .overlay(
                 Rectangle()
                     .fill(Color.secondary.opacity(0.16))

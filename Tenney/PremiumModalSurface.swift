@@ -1,8 +1,9 @@
 import SwiftUI
 
 enum PremiumModalSurface {
-    static let background = Color(.systemGray6)
-    static let barBackground = background
+    static let baseFill = Color(.secondarySystemBackground)
+    static let background = baseFill
+    static let barBackground = Color.clear
 
     static var subtleShadow: some View {
         Color.black.opacity(0.08)
@@ -14,6 +15,15 @@ enum PremiumModalSurface {
             .fill(background)
             .overlay(glassOverlay(in: shape))
             .shadow(color: Color.black.opacity(0.08), radius: 10, x: 0, y: 6)
+    }
+
+    @ViewBuilder
+    static var barOverlayMaterial: some View {
+        if #available(iOS 26.0, *) {
+            Color.clear
+        } else {
+            Rectangle().fill(.ultraThinMaterial).opacity(0.35)
+        }
     }
 
     @ViewBuilder
