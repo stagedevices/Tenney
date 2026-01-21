@@ -10,6 +10,51 @@ import SwiftUI
 import UIKit
 
  
+// MARK: - Glass styling helper
+
+public struct GlassBlueCircle: ViewModifier {
+   public func body(content: Content) -> some View {
+        content
+            // keep the glyph crisp above the glass plate
+            .foregroundStyle(.primary)
+
+            // ✅ glass belongs on a background “plate”, not on the glyph
+            .background {
+                if #available(iOS 26.0, *) {
+                    Color.clear
+                        .glassEffect(.regular.tint(.blue), in: Circle())
+                } else {
+                    Circle().fill(.ultraThinMaterial)
+                }
+            }
+
+            // ✅ specular / rim highlight (this is what makes it read “liquid”)
+            .overlay {
+                // top-left sheen
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            stops: [
+                                .init(color: .white.opacity(0.30), location: 0.00),
+                                .init(color: .white.opacity(0.10), location: 0.22),
+                                .init(color: .clear,              location: 0.70)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .blendMode(.overlay)
+
+                // rim
+                Circle()
+                    .strokeBorder(.white.opacity(0.22), lineWidth: 0.75)
+                    .blendMode(.overlay)
+            }
+            .compositingGroup()
+            .shadow(color: .black.opacity(0.18), radius: 10, x: 0, y: 6)
+    }
+}
+
 // Neutral / white glass circle for export button
 public struct GlassWhiteCircle: ViewModifier {
   public func body(content: Content) -> some View {

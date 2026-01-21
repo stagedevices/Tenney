@@ -808,7 +808,17 @@ struct StudioConsoleView: View {
                                 Button("Cancel") { showTunerRailPalette = false }
                             }
                             ToolbarItem(placement: .confirmationAction) {
-                                Button("Done") { showTunerRailPalette = false }
+                                Button {
+                                    showTunerRailPalette = false
+                                } label: {
+                                    Image(systemName: "checkmark")
+                                        .font(.headline.weight(.semibold))
+                                        .frame(width: 32, height: 32)
+                                        .contentShape(Circle())
+                                }
+                                .buttonStyle(.plain)
+                                .modifier(GlassBlueCircle())
+                                .accessibilityLabel("Done")
                             }
                         }
                     }
@@ -3688,11 +3698,21 @@ private struct GlassNavTile<Destination: View>: View {
     }
 
     @ToolbarContentBuilder
-    private var doneToolbar: some ToolbarContent {
-        ToolbarItem(placement: .topBarTrailing) {
-            Button("Done") { dismiss() }
-        }
-    }
+              private var doneToolbar: some ToolbarContent {
+                  ToolbarItem(placement: .topBarTrailing) {
+                      Button {
+                          dismiss()
+                      } label: {
+                          Image(systemName: "checkmark")
+                              .font(.headline.weight(.semibold))
+                              .frame(width: 32, height: 32)
+                              .contentShape(Circle())
+                      }
+                      .buttonStyle(.plain)
+                      .modifier(GlassBlueCircle())
+                      .accessibilityLabel("Done")
+                  }
+              }
 
     @ViewBuilder
     private var inkOverlay: some View {
