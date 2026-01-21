@@ -1134,14 +1134,12 @@ private struct CommunityPackDetailView: View {
     }
 
     private func barBackground(separatorEdge: VerticalEdge) -> some View {
-        PremiumModalSurface.barBackground
-            .overlay(PremiumModalSurface.barOverlayMaterial)
-            .overlay(
-                Rectangle()
-                    .fill(Color.secondary.opacity(0.16))
-                    .frame(height: 1),
-                alignment: separatorEdge == .top ? .top : .bottom
-            )
+        Color.clear.overlay(
+            Rectangle()
+                .fill(Color.secondary.opacity(0.16))
+                .frame(height: 1),
+            alignment: separatorEdge == .top ? .top : .bottom
+        )
     }
 
     private var trimmedChangelog: String {
