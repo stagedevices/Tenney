@@ -1011,9 +1011,15 @@ private struct CommunityPackDetailView: View {
                 Text(pack.title)
                     .font(.headline.weight(.semibold))
                     .lineLimit(1)
+                    .opacity(toolbarTitleOpacity)
+                    .scaleEffect(0.98 + 0.02 * toolbarTitleOpacity, anchor: .leading)
+                    .blur(radius: (1 - toolbarTitleOpacity) * 2)
+                    .animation(.easeOut(duration: 0.18), value: toolbarTitleOpacity)
                 Text(toolbarSubtitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .opacity(toolbarSubtitleOpacity)
+                    .animation(.easeOut(duration: 0.18), value: toolbarTitleOpacity)
             }
             Spacer()
             Button(action: handleCloseTap) {
@@ -1030,101 +1036,21 @@ private struct CommunityPackDetailView: View {
         .padding(.horizontal, 16)
         .padding(.top, 10)
         .padding(.bottom, 12)
-        .background(barBackground(separatorEdge: .bottom))
+        .background(PremiumModalSurface.barBackground)
+        .background(PremiumModalSurface.barOverlayMaterial)
         .opacity(heroVisible ? 1 : 0)
         .zIndex(1000)
     }
 
     private var detailActionBar: some View {
-        HStack(spacing: 12) {
-            if showsPreviewActions && pack.scales.count > 1 && selectionMode == .none {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 8) {
-                        Button(action: handlePrimaryAction) {
-                            HStack(spacing: 8) {
-                                if store.installingPackIDs.contains(pack.packID) {
-                                    ProgressView()
-                                        .controlSize(.small)
-                                } else {
-                                    actionSymbol
-                                }
-                                Text(store.installingPackIDs.contains(pack.packID) ? "Installing…" : primaryActionTitle)
-                                    .font(.callout.weight(.semibold))
-                            }
-                            .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.large)
-                        .tint(primaryActionTint)
-                        .disabled(isPrimaryDisabled)
-
-                        Menu {
-                            ForEach(pack.scales) { scale in
-                                Button(action: { handleScalePreview(scale) }) {
-                                    Text(scaleMenuTitle(scale))
-                                }
-                            }
-                        } label: {
-                            Image(systemName: "chevron.down")
-                                .frame(width: 34, height: 34)
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.large)
-                        .accessibilityLabel("Choose scale")
-                    }
-
-                    if let lastPreviewedScaleName {
-                        Text("Last: \(lastPreviewedScaleName)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                Button(action: handlePrimaryAction) {
-                    HStack(spacing: 8) {
-                        if store.installingPackIDs.contains(pack.packID) {
-                            ProgressView()
-                                .controlSize(.small)
-                        } else {
-                            actionSymbol
-                        }
-                        Text(store.installingPackIDs.contains(pack.packID) ? "Installing…" : primaryActionTitle)
-                            .font(.callout.weight(.semibold))
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .tint(primaryActionTint)
-                .disabled(isPrimaryDisabled)
-            }
-
-            if isInstalled && !updateAvailable && selectionMode == .none {
-                Button("Uninstall") {
-                    showUninstallConfirm = true
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.large)
-                .tint(.red)
-            }
-
-            Menu {
-                Button("Contribute a Pack") {
-                    openURL(CommunityPacksEndpoints.submitURL)
-                }
-                Button("How to submit") {
-                    openURL(CommunityPacksEndpoints.issuesURL)
-                }
-            } label: {
-                Image(systemName: "ellipsis.circle")
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.large)
+        ViewThatFits(in: .horizontal) {
+            actionBarInlineLayout
+            actionBarStackedLayout
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .background(barBackground(separatorEdge: .top))
+        .background(PremiumModalSurface.barBackground)
+        .background(PremiumModalSurface.barOverlayMaterial)
         .background(
             GeometryReader { proxy in
                 Color.clear.preference(key: ActionBarHeightKey.self, value: proxy.size.height)
@@ -1133,13 +1059,90 @@ private struct CommunityPackDetailView: View {
         .opacity(contentVisible ? 1 : 0)
     }
 
-    private func barBackground(separatorEdge: VerticalEdge) -> some View {
-        Color.clear.overlay(
-            Rectangle()
-                .fill(Color.secondary.opacity(0.16))
-                .frame(height: 1),
-            alignment: separatorEdge == .top ? .top : .bottom
+    private var actionBarInlineLayout: some View {
+        HStack(spacing: 12) {
+            primaryActionStack
+            if showsUninstallButton {
+                uninstallButton
+            }
+            actionMenuButton
+        }
+    }
+
+    private var actionBarStackedLayout: some View {
+        HStack(spacing: 12) {
+            VStack(spacing: 8) {
+                primaryActionStack
+                if showsUninstallButton {
+                    uninstallButton
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            actionMenuButton
+        }
+    }
+
+    private var primaryActionStack: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                primaryActionButton
+
+                if showsPreviewActions && pack.scales.count > 1 && selectionMode == .none {
+                    Menu {
+                        ForEach(pack.scales) { scale in
+                            Button(action: { handleScalePreview(scale) }) {
+                                Text(scaleMenuTitle(scale))
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "chevron.down")
+                            .frame(width: 34, height: 34)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
+                    .accessibilityLabel("Choose scale")
+                }
+            }
+
+            if showsPreviewActions,
+               let lastPreviewedScaleName {
+                Text("Last: \(lastPreviewedScaleName)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var primaryActionButton: some View {
+        GlassRoundedRectButton(
+            title: store.installingPackIDs.contains(pack.packID) ? "Installing…" : primaryActionTitle,
+            systemImage: store.installingPackIDs.contains(pack.packID) ? nil : actionIcon,
+            tint: primaryActionTint,
+            isLoading: store.installingPackIDs.contains(pack.packID),
+            symbolEffectValue: updateAvailable,
+            action: handlePrimaryAction
         )
+        .disabled(isPrimaryDisabled)
+    }
+
+    private var uninstallButton: some View {
+        GlassRedRoundedRectButton(title: "Uninstall") {
+            showUninstallConfirm = true
+        }
+    }
+
+    private var actionMenuButton: some View {
+        Menu {
+            Button("Contribute a Pack") {
+                openURL(CommunityPacksEndpoints.submitURL)
+            }
+            Button("How to submit") {
+                openURL(CommunityPacksEndpoints.issuesURL)
+            }
+        } label: {
+            GlassWhiteCircleButton(systemName: "ellipsis")
+        }
     }
 
     private var trimmedChangelog: String {
@@ -1148,16 +1151,6 @@ private struct CommunityPackDetailView: View {
 
     private var showsPreviewActions: Bool {
         isInstalled && !updateAvailable
-    }
-
-    @ViewBuilder
-    private var actionSymbol: some View {
-        if #available(iOS 17.0, *) {
-            Image(systemName: actionIcon)
-                .symbolEffect(.bounce, value: updateAvailable)
-        } else {
-            Image(systemName: actionIcon)
-        }
     }
 
     private var lastPreviewedScaleName: String? {
@@ -1241,6 +1234,20 @@ private struct CommunityPackDetailView: View {
         }
     }
 
+    private var toolbarTitleOpacity: CGFloat {
+        let y = -scrollOffset
+        let start: CGFloat = 18
+        let end: CGFloat = 84
+        let t = (y - start) / (end - start)
+        let clamped = min(max(t, 0), 1)
+        let eased = 1 - pow(1 - clamped, 2)
+        return 1 - eased
+    }
+
+    private var toolbarSubtitleOpacity: CGFloat {
+        max(0.2, toolbarTitleOpacity)
+    }
+
     private var toolbarSubtitle: String {
         switch selectionMode {
         case .installSelecting:
@@ -1283,6 +1290,10 @@ private struct CommunityPackDetailView: View {
             return selectedScaleIDs.isEmpty
         }
         return false
+    }
+
+    private var showsUninstallButton: Bool {
+        isInstalled && !updateAvailable && selectionMode == .none
     }
 
     private func handleCloseTap() {
@@ -1678,6 +1689,141 @@ private struct DetailSectionCard<Content: View>: View {
                         .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
                 )
         )
+    }
+}
+
+private struct GlassWhiteCircleButton: View {
+    let systemName: String
+    var action: (() -> Void)?
+
+    var body: some View {
+        Group {
+            if let action {
+                Button(action: action) {
+                    buttonLabel
+                }
+                .buttonStyle(.plain)
+            } else {
+                buttonLabel
+            }
+        }
+        .accessibilityLabel("More")
+    }
+
+    private var buttonLabel: some View {
+        Image(systemName: systemName)
+            .font(.system(size: 16, weight: .semibold))
+            .foregroundStyle(.primary)
+            .frame(width: 44, height: 44)
+            .modifier(GlassWhiteCircle())
+            .contentShape(Circle())
+    }
+}
+
+private struct GlassRoundedRectButton: View {
+    let title: String
+    let systemImage: String?
+    let tint: Color?
+    let role: ButtonRole?
+    let isLoading: Bool
+    let symbolEffectValue: Bool
+    let action: () -> Void
+
+    init(
+        title: String,
+        systemImage: String? = nil,
+        tint: Color? = nil,
+        role: ButtonRole? = nil,
+        isLoading: Bool = false,
+        symbolEffectValue: Bool = false,
+        action: @escaping () -> Void
+    ) {
+        self.title = title
+        self.systemImage = systemImage
+        self.tint = tint
+        self.role = role
+        self.isLoading = isLoading
+        self.symbolEffectValue = symbolEffectValue
+        self.action = action
+    }
+
+    var body: some View {
+        Button(role: role, action: action) {
+            HStack(spacing: 8) {
+                if isLoading {
+                    ProgressView()
+                        .controlSize(.small)
+                } else if let systemImage {
+                    symbolImage(systemImage)
+                }
+                Text(title)
+                    .font(.callout.weight(.semibold))
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 44)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.primary)
+        .background(glassBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    @ViewBuilder
+    private func symbolImage(_ name: String) -> some View {
+        if #available(iOS 17.0, *) {
+            Image(systemName: name)
+                .symbolEffect(.bounce, value: symbolEffectValue)
+        } else {
+            Image(systemName: name)
+        }
+    }
+
+    @ViewBuilder
+    private var glassBackground: some View {
+        let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
+        if #available(iOS 26.0, *) {
+            if let tint {
+                Color.clear.glassEffect(.regular.tint(tint), in: shape)
+            } else {
+                Color.clear.glassEffect(.regular, in: shape)
+            }
+        } else {
+            shape
+                .fill(.ultraThinMaterial)
+                .overlay(shape.fill(tint?.opacity(0.22) ?? .clear))
+                .overlay(shape.stroke(Color.secondary.opacity(0.16), lineWidth: 1))
+        }
+    }
+}
+
+private struct GlassRedRoundedRectButton: View {
+    let title: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(role: .destructive, action: action) {
+            Text(title)
+                .font(.callout.weight(.semibold))
+                .frame(maxWidth: .infinity)
+                .frame(height: 44)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.white)
+        .background(glassBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    @ViewBuilder
+    private var glassBackground: some View {
+        let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
+        if #available(iOS 26.0, *) {
+            Color.clear.glassEffect(.regular.tint(.red), in: shape)
+        } else {
+            shape
+                .fill(.ultraThinMaterial)
+                .overlay(shape.fill(Color.red.opacity(0.28)))
+                .overlay(shape.stroke(Color.red.opacity(0.45), lineWidth: 1))
+        }
     }
 }
 
