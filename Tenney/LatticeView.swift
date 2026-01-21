@@ -2714,20 +2714,7 @@ struct LatticeView: View {
             }
         }
 
-        private struct GlassRedRoundedRect: ViewModifier {
-            let corner: CGFloat
-            func body(content: Content) -> some View {
-                let rr = RoundedRectangle(cornerRadius: corner, style: .continuous)
-                if #available(iOS 26.0, *) {
-                    content.glassEffect(.regular.tint(.red), in: rr)
-                } else {
-                    content
-                        .background(.ultraThinMaterial, in: rr)
-                        .background(rr.fill(Color.red.opacity(0.28)))
-                        .overlay(rr.stroke(Color.red.opacity(0.45), lineWidth: 1))
-                }
-            }
-        }
+
 
         private struct GlassWhiteRoundedRect: ViewModifier {
             let corner: CGFloat
@@ -2755,20 +2742,6 @@ struct LatticeView: View {
                         .background(.ultraThinMaterial, in: rr)
                         .background(rr.fill(Color.black.opacity(0.28)))
                         .overlay(rr.stroke(Color.white.opacity(0.10), lineWidth: 1))
-                }
-            }
-        }
-
-        private struct GlassWhiteCircle: ViewModifier {
-            func body(content: Content) -> some View {
-                let c = Circle()
-                if #available(iOS 26.0, *) {
-                    content
-                        .glassEffect(.regular.tint(.white), in: c)
-                } else {
-                    content
-                        .background(.ultraThinMaterial, in: c)
-                        .background(c.fill(Color.white.opacity(0.28)))
                 }
             }
         }

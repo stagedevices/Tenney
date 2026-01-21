@@ -155,11 +155,13 @@ struct CommunityPacksPageList: View {
             }
         }
         .sheet(item: $selectedPack) { pack in
-            CommunityPackDetailView(
-                pack: pack,
-                namespace: packNamespace,
-                onPreviewRequested: onPreviewRequested
-            )
+            NavigationStack {
+                    CommunityPackDetailView(
+                        pack: pack,
+                        namespace: packNamespace,
+                        onPreviewRequested: onPreviewRequested
+                    )
+                }
             .presentationDetents([.large])
             .presentationDragIndicator(.hidden)
             .presentationBackground(PremiumModalSurface.background)
@@ -447,7 +449,7 @@ private struct FeaturedPackCard: View {
             .font(.caption)
             .foregroundStyle(.secondary)
 
-            PackPrimaryActionButton(
+            PackCardPrimaryActionButton(
                 title: buttonTitle,
                 systemImage: buttonIcon,
                 isInstalling: isInstalling,
@@ -542,7 +544,7 @@ private struct CompactPackCard: View {
                     .background(Capsule().fill(Color.accentColor.opacity(0.18)))
             }
 
-            PackPrimaryActionButton(
+            PackCardPrimaryActionButton(
                 title: buttonTitle,
                 systemImage: buttonIcon,
                 isInstalling: isInstalling,
@@ -586,7 +588,7 @@ private struct CompactPackCard: View {
     }
 }
 
-private struct PackPrimaryActionButton: View {
+private struct PackCardPrimaryActionButton: View {
     let title: String
     let systemImage: String
     let isInstalling: Bool
@@ -704,10 +706,37 @@ private struct CommunityPackDetailView: View {
     @State private var selectedNewScaleIDs: Set<String> = []
     @State private var pendingAction: CommunityPacksStore.InstallAction = .install
     @State private var pendingScaleIDs: Set<String> = []
-    @State private var scrollOffset: CGFloat = 0
+    @State private var scrollBaselineY: CGFloat? = nil
     @State private var actionBarHeight: CGFloat = 0
     @State private var previewPlayer = ScalePreviewPlayer()
 
+    private var corner: CGFloat { 12 }
+
+    @State private var topBarHeight: CGFloat = 64
+
+    private struct TopBarHeightKey: PreferenceKey {
+        static var defaultValue: CGFloat = 0
+        static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+            value = max(value, nextValue())
+        }
+    }
+
+    private var isPreviewMode: Bool {
+            showsPreviewActions && selectionMode == .none
+        }
+    
+        private var primaryButtonMode: PackPrimaryActionMode {
+            if isPreviewMode { return .preview }
+            if updateAvailable { return .update(tint: primaryActionTint) }
+            return .install(tint: primaryActionTint)
+        }
+    
+        private var primaryIsBusy: Bool {
+            store.installingPackIDs.contains(pack.packID)
+        }
+
+
+    
     private enum SelectionMode {
         case none
         case installSelecting
@@ -747,23 +776,19 @@ private struct CommunityPackDetailView: View {
 
     private var detailContent: some View {
         ZStack {
+            PremiumModalSurface.background
+                    .ignoresSafeArea()
+            
             PremiumModalSurface.baseFill
                 .ignoresSafeArea()
 
-            PremiumModalSurface.glassOverlay(in: Rectangle())
-                .ignoresSafeArea()
-
-            NoiseOverlay(seed: PackVisualIdentity.stableSeed(for: pack.packID), opacity: 0.04)
-                .ignoresSafeArea()
+           
 
             ScrollView {
+                
                 VStack(alignment: .leading, spacing: 20) {
-                    GeometryReader { proxy in
-                        Color.clear
-                            .preference(key: ScrollOffsetPreferenceKey.self, value: proxy.frame(in: .named("packDetailScroll")).minY)
-                    }
-                    .frame(height: 0)
-
+                    // NEW: scrolls away; lets content slide under the bar as you scroll
+                    Color.clear.frame(height: topBarHeight)
                     headerCard
                         .opacity(heroVisible ? 1 : 0)
                         .offset(y: heroVisible ? 0 : 18)
@@ -839,20 +864,21 @@ private struct CommunityPackDetailView: View {
                 .padding(.bottom, max(actionBarHeight + 16, 16))
             }
             .scrollIndicators(.hidden)
-            .safeAreaInset(edge: .top) { detailToolbar }
             .safeAreaInset(edge: .bottom) { detailActionBar }
-            .coordinateSpace(name: "packDetailScroll")
-            .onPreferenceChange(ScrollOffsetPreferenceKey.self) { offset in
-                scrollOffset = offset
-            }
             .onPreferenceChange(ActionBarHeightKey.self) { actionBarHeight = $0 }
+            .overlay(alignment: .top) { detailTopBar }
+            .onPreferenceChange(TopBarHeightKey.self) { topBarHeight = $0 }
         }
         .onAppear(perform: startReveal)
         .onDisappear {
             previewPlayer.stop()
         }
+#if os(iOS)
+.toolbar(.hidden, for: .navigationBar)
+#endif
+
         .interactiveDismissDisabled(isSelecting)
-        .presentationBackground(PremiumModalSurface.background)
+        .presentationBackground(.clear)
         .confirmationDialog(
             "Some scales already exist in your Library.",
             isPresented: $showConflictDialog,
@@ -865,6 +891,8 @@ private struct CommunityPackDetailView: View {
         } message: {
             Text("Choose how you’d like to handle these collisions.")
         }
+
+
         .confirmationDialog(
             "Uninstall this pack?",
             isPresented: $showUninstallConfirm,
@@ -876,10 +904,52 @@ private struct CommunityPackDetailView: View {
             Text("This removes scales installed from this pack but keeps any local copies you created.")
         }
     }
+    
+    private var detailTopBar: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(pack.title)
+                    .font(.headline.weight(.semibold))
+                    .lineLimit(1)
+                Text(toolbarSubtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Button(action: handleCloseTap) {
+                Image(systemName: isSelecting ? "chevron.backward" : "checkmark")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .frame(width: 44, height: 44)
+                    .modifier(GlassWhiteCircle())
+                    .contentShape(Circle())
+                    .accessibilityLabel(isSelecting ? "Back" : "Close")
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 10)
+        .padding(.bottom, 12)
+        // IMPORTANT: give it a real hit-testable surface so taps don’t “fall through”
+        .background(PremiumModalSurface.barGlass(in: Rectangle()))
+        .contentShape(Rectangle())
+        // measure height
+        .background(
+            GeometryReader { proxy in
+                Color.clear.preference(key: TopBarHeightKey.self, value: proxy.size.height)
+            }
+        )
+        .zIndex(1000)
+    }
+
+
 
     private var headerCard: some View {
         let identity = PackVisualIdentity.identity(for: pack.packID, accent: .accentColor)
-        let parallax = max(min(-scrollOffset / 10, 12), -12)
+        let parallax: CGFloat = 0
+
         let posterDescription = firstSentence(pack.description)
         return VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top, spacing: 16) {
@@ -898,7 +968,7 @@ private struct CommunityPackDetailView: View {
                     }
                 }
                 Spacer()
-                heroSymbolTile(symbol: identity.symbolName, colors: identity.palette, parallax: parallax)
+                heroSymbolTile(packID: pack.packID, symbol: identity.symbolName, parallax: parallax)
             }
 
             HStack(spacing: 10) {
@@ -925,10 +995,7 @@ private struct CommunityPackDetailView: View {
         .padding(.vertical, 22)
         .padding(.horizontal, 20)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            PremiumModalSurface.cardSurface(cornerRadius: 28)
-                .matchedGeometryEffect(id: "pack-card-\(pack.packID)", in: namespace, isSource: false)
-        )
+        
         .overlay(
             RoundedRectangle(cornerRadius: 28, style: .continuous)
                 .stroke(Color.secondary.opacity(0.24), lineWidth: 3)
@@ -1005,58 +1072,21 @@ private struct CommunityPackDetailView: View {
         handleDefaultPreview()
     }
 
-    private var detailToolbar: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(pack.title)
-                    .font(.headline.weight(.semibold))
-                    .lineLimit(1)
-                Text(toolbarSubtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            Button(action: handleCloseTap) {
-                Image(systemName: isSelecting ? "chevron.left" : "xmark")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .frame(width: 44, height: 44)
-                    .modifier(GlassWhiteCircle())
-                    .contentShape(Circle())
-                    .accessibilityLabel(isSelecting ? "Back" : "Close")
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 10)
-        .padding(.bottom, 12)
-        .background(barBackground(separatorEdge: .bottom))
-        .opacity(heroVisible ? 1 : 0)
-        .zIndex(1000)
-    }
-
     private var detailActionBar: some View {
         HStack(spacing: 12) {
             if showsPreviewActions && pack.scales.count > 1 && selectionMode == .none {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 8) {
-                        Button(action: handlePrimaryAction) {
-                            HStack(spacing: 8) {
-                                if store.installingPackIDs.contains(pack.packID) {
-                                    ProgressView()
-                                        .controlSize(.small)
-                                } else {
-                                    actionSymbol
-                                }
-                                Text(store.installingPackIDs.contains(pack.packID) ? "Installing…" : primaryActionTitle)
-                                    .font(.callout.weight(.semibold))
-                            }
-                            .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.large)
-                        .tint(primaryActionTint)
-                        .disabled(isPrimaryDisabled)
+                        PackPrimaryActionButton(
+                            mode: primaryButtonMode,
+                            title: primaryActionTitle,
+                            systemImage: actionIcon,
+                            isBusy: primaryIsBusy,
+                            isEnabled: !isPrimaryDisabled,
+                            animateSymbol: updateAvailable,
+                            action: handlePrimaryAction,
+                            corner: corner
+                        )
 
                         Menu {
                             ForEach(pack.scales) { scale in
@@ -1081,32 +1111,27 @@ private struct CommunityPackDetailView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             } else {
-                Button(action: handlePrimaryAction) {
-                    HStack(spacing: 8) {
-                        if store.installingPackIDs.contains(pack.packID) {
-                            ProgressView()
-                                .controlSize(.small)
-                        } else {
-                            actionSymbol
-                        }
-                        Text(store.installingPackIDs.contains(pack.packID) ? "Installing…" : primaryActionTitle)
-                            .font(.callout.weight(.semibold))
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .tint(primaryActionTint)
-                .disabled(isPrimaryDisabled)
+                PackPrimaryActionButton(
+                    mode: primaryButtonMode,
+                    title: primaryActionTitle,
+                    systemImage: actionIcon,
+                    isBusy: primaryIsBusy,
+                    isEnabled: !isPrimaryDisabled,
+                    animateSymbol: updateAvailable,
+                    action: handlePrimaryAction,
+                    corner: corner
+                )
             }
 
             if isInstalled && !updateAvailable && selectionMode == .none {
-                Button("Uninstall") {
-                    showUninstallConfirm = true
+                Button(action: { showUninstallConfirm = true }) {
+                    Text("Uninstall").font(.callout.weight(.semibold))
+                        .frame(height: 44)
+                        .padding(.horizontal, 14)
+                        .foregroundStyle(.white)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.large)
-                .tint(.red)
+                .buttonStyle(.plain)
+                .modifier(GlassRedRoundedRect(corner: corner))
             }
 
             Menu {
@@ -1117,29 +1142,22 @@ private struct CommunityPackDetailView: View {
                     openURL(CommunityPacksEndpoints.issuesURL)
                 }
             } label: {
-                Image(systemName: "ellipsis.circle")
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 16, weight: .semibold))
+                    .frame(width: 44, height: 44)
+                    .modifier(GlassWhiteCircle())
+                    .contentShape(Circle())
             }
-            .buttonStyle(.bordered)
-            .controlSize(.large)
+            .buttonStyle(.plain)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .background(barBackground(separatorEdge: .top))
         .background(
             GeometryReader { proxy in
                 Color.clear.preference(key: ActionBarHeightKey.self, value: proxy.size.height)
             }
         )
         .opacity(contentVisible ? 1 : 0)
-    }
-
-    private func barBackground(separatorEdge: VerticalEdge) -> some View {
-        Color.clear.overlay(
-            Rectangle()
-                .fill(Color.secondary.opacity(0.16))
-                .frame(height: 1),
-            alignment: separatorEdge == .top ? .top : .bottom
-        )
     }
 
     private var trimmedChangelog: String {
@@ -1150,15 +1168,6 @@ private struct CommunityPackDetailView: View {
         isInstalled && !updateAvailable
     }
 
-    @ViewBuilder
-    private var actionSymbol: some View {
-        if #available(iOS 17.0, *) {
-            Image(systemName: actionIcon)
-                .symbolEffect(.bounce, value: updateAvailable)
-        } else {
-            Image(systemName: actionIcon)
-        }
-    }
 
     private var lastPreviewedScaleName: String? {
         guard let scaleID = lastPreviewedScaleID(for: pack.packID) else { return nil }
@@ -1385,10 +1394,10 @@ private struct CommunityPackDetailView: View {
     }
 
     @ViewBuilder
-    private func heroSymbolTile(symbol: String, colors: [Color], parallax: CGFloat) -> some View {
+    private func heroSymbolTile(packID: String, symbol: String, parallax: CGFloat) -> some View {
         PackHeroSymbolView(
+            packID: packID,
             symbolName: symbol,
-            colors: colors,
             parallax: parallax
         )
     }
@@ -1533,26 +1542,224 @@ private struct CommunityScaleRow: View {
 }
 
 private struct PackHeroSymbolView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var meshStartRef: TimeInterval = Date().timeIntervalSinceReferenceDate
+    private let meshW = 6
+    private let meshH = 6
+    let packID: String
     let symbolName: String
-    let colors: [Color]
     let parallax: CGFloat
 
     var body: some View {
-        let gradient = LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)
+        let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
         ZStack {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(gradient.opacity(0.9))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(Color.white.opacity(0.25), lineWidth: 1)
-                )
+            heroFill
+               .clipShape(shape)
+               .overlay(shape.stroke(Color.white.opacity(0.25), lineWidth: 1))
+
 
             iconLayer
                 .offset(y: parallax)
                 .zIndex(10)
+
         }
         .frame(width: 84, height: 84)
         .shadow(color: Color.black.opacity(0.12), radius: 12, x: 0, y: 8)
+        
+        .onAppear {
+            meshStartRef = Date().timeIntervalSinceReferenceDate
+        }
+
+    }
+    @ViewBuilder
+        private var heroFill: some View {
+            if #available(iOS 18.0, macOS 15.0, *) {
+                if reduceMotion {
+                    MeshGradient(
+                        width: meshW,
+                        height: meshH,
+                        points: meshPoints(t: 0),
+                        colors: meshColors
+                    )
+                    .drawingGroup(opaque: false, colorMode: .linear)
+                    .opacity(0.92)
+                } else {
+                    TimelineView(.animation) { ctx in
+                        let t = ctx.date.timeIntervalSinceReferenceDate - meshStartRef
+                        MeshGradient(
+                            width: meshW,
+                            height: meshH,
+                            points: meshPoints(t: t),
+                            colors: meshColors
+                        )
+                        .drawingGroup(opaque: false, colorMode: .linear)
+                        .opacity(0.92)
+                    }
+                }
+            } else {
+                LinearGradient(colors: [baseColor, darkColor], startPoint: .topLeading, endPoint: .bottomTrailing)
+                    .opacity(0.9)
+            }
+        }
+
+        @available(iOS 18.0, macOS 15.0, *)
+        private var meshColors: [Color] {
+            let seed = Self.fnv1a64(packID)
+
+            // 12 curated anchor hues (degrees): teal, cyan, azure, indigo, violet, magenta,
+            // rose, orange, amber, chartreuse, green, mint
+            let anchorsDeg: [Double] = [184, 196, 210, 238, 268, 292, 328, 20, 44, 92, 132, 160]
+            let anchor = anchorsDeg[Int(seed % UInt64(anchorsDeg.count))]
+            let jitter = (Self.rand01(seed ^ 0xD1B54A32D192ED03) - 0.5) * 16.0 // ±8°
+
+            let hueDeg = anchor + jitter
+            let hue = Self.mod1(hueDeg / 360.0)
+
+            var sat = Self.lerp(0.55, 0.78, Self.rand01(seed ^ 0xA5A5A5A5A5A5A5A5))
+            var bri = Self.lerp(0.62, 0.88, Self.rand01(seed ^ 0x5A5A5A5A5A5A5A5A))
+            if sat > 0.72 { bri = min(bri, 0.82) } // avoid neon
+
+            let darkB = max(0.12, bri * 0.38)
+            _ = sat * 0.92 // darkS (implicit via per-cell saturation)
+
+            let focusU = 0.35 + 0.30 * Self.rand01(seed ^ 0x9E3779B97F4A7C15)
+            let focusV = 0.30 + 0.35 * Self.rand01((seed >> 1) ^ 0xBF58476D1CE4E5B9)
+
+            var out: [Color] = []
+            out.reserveCapacity(meshW * meshH)
+
+            let w1 = Double(max(1, meshW - 1))
+            let h1 = Double(max(1, meshH - 1))
+
+            for y in 0..<meshH {
+                for x in 0..<meshW {
+                    let u = Double(x) / w1
+                    let v = Double(y) / h1
+
+                    let du = u - focusU
+                    let dv = v - focusV
+                    let d = min(1.0, sqrt(du * du + dv * dv))
+
+                    let m = pow(1.0 - d, 1.6)
+                    let j = (Self.rand01(seed ^ (UInt64(x) << 16) ^ (UInt64(y) << 8)) - 0.5) * 0.06
+
+                    let t = Self.clamp01(m + j)
+                    let cellB = Self.lerp(darkB, bri, t)
+                    let cellS = sat * (0.98 - 0.10 * d)
+
+                    out.append(Color(hue: hue, saturation: cellS, brightness: cellB))
+                }
+            }
+            return out
+        }
+
+        @available(iOS 18.0, macOS 15.0, *)
+        private func meshPoints(t: TimeInterval) -> [SIMD2<Float>] {
+            let tt = Float(t) // t is now small (anchored), so Float has enough precision
+            var pts: [SIMD2<Float>] = []
+            pts.reserveCapacity(meshW * meshH)
+
+            func clamp01(_ v: Float) -> Float { min(1, max(0, v)) }
+
+            let wMinus1 = Float(meshW - 1)
+            let hMinus1 = Float(meshH - 1)
+
+            for yi in 0..<meshH {
+                for xi in 0..<meshW {
+                    let bx = Float(xi) / wMinus1
+                    let by = Float(yi) / hMinus1
+                    let i = Float(yi * meshW + xi)
+
+                    let isCorner = (xi == 0 || xi == meshW - 1) && (yi == 0 || yi == meshH - 1)
+                    let isEdge = (xi == 0 || xi == meshW - 1 || yi == 0 || yi == meshH - 1)
+
+                    // slightly smaller amplitudes than 4x4 (denser mesh reads smoother)
+                    let amp: Float = isCorner ? 0.0 : (isEdge ? 0.045 : 0.085)
+
+                    // “blobby” motion: per-point slow freqs + multi-harmonics (no global rotation cue)
+                    let seed = i * 0.73
+                    let fx = 0.22 + 0.06 * sin(seed)
+                    let fy = 0.18 + 0.06 * cos(seed * 1.3)
+
+                    let dx = amp * (0.65 * sin(tt * fx + seed) + 0.35 * sin(tt * (fx * 1.9) + seed * 0.4))
+                    let dy = amp * (0.65 * cos(tt * fy + seed * 1.2) + 0.35 * sin(tt * (fy * 1.7) + seed * 0.9))
+
+                    var px = bx + dx
+                    var py = by + dy
+
+                    // Pin boundary points to the unit square so the mesh always fully covers the tile.
+                    // Still allows tangential motion: top/bottom edges can slide in X; left/right edges can slide in Y.
+                    if xi == 0 { px = 0 }
+                    else if xi == meshW - 1 { px = 1 }
+                    else { px = clamp01(px) }
+
+                    if yi == 0 { py = 0 }
+                    else if yi == meshH - 1 { py = 1 }
+                    else { py = clamp01(py) }
+
+                    pts.append(SIMD2<Float>(px, py))
+
+                }
+            }
+            return pts
+        }
+
+// MARK: - Seeded “nice single-color” gradient helpers
+
+    private var baseColor: Color {
+        let seed = Self.fnv1a64(packID)
+        let hsb = Self.seededBaseHSB(seed: seed)
+        return Color(hue: hsb.h, saturation: hsb.s, brightness: hsb.b)
+    }
+
+    private var darkColor: Color {
+        let seed = Self.fnv1a64(packID)
+        let hsb = Self.seededBaseHSB(seed: seed)
+        let darkB = max(0.12, hsb.b * 0.38)
+        let darkS = hsb.s * 0.92
+        return Color(hue: hsb.h, saturation: darkS, brightness: darkB)
+    }
+
+    private static func seededBaseHSB(seed: UInt64) -> (h: Double, s: Double, b: Double) {
+        let anchorsDeg: [Double] = [184, 196, 210, 238, 268, 292, 328, 20, 44, 92, 132, 160]
+        let anchor = anchorsDeg[Int(seed % UInt64(anchorsDeg.count))]
+        let jitter = (rand01(seed ^ 0xD1B54A32D192ED03) - 0.5) * 16.0 // ±8°
+
+        let hue = mod1((anchor + jitter) / 360.0)
+        var sat = lerp(0.55, 0.78, rand01(seed ^ 0xA5A5A5A5A5A5A5A5))
+        var bri = lerp(0.62, 0.88, rand01(seed ^ 0x5A5A5A5A5A5A5A5A))
+        if sat > 0.72 { bri = min(bri, 0.82) }
+        // tiny stabilization against “samey” packs
+        sat = min(0.80, max(0.50, sat))
+        bri = min(0.90, max(0.55, bri))
+        return (hue, sat, bri)
+    }
+
+    // FNV-1a 64-bit
+    private static func fnv1a64(_ s: String) -> UInt64 {
+        var hash: UInt64 = 14695981039346656037
+        let prime: UInt64 = 1099511628211
+        for b in s.utf8 {
+            hash ^= UInt64(b)
+            hash = hash &* prime
+        }
+        return hash
+    }
+
+    // SplitMix64-style hash → [0, 1]
+    private static func rand01(_ x: UInt64) -> Double {
+        var z = x &+ 0x9E3779B97F4A7C15
+        z = (z ^ (z >> 30)) &* 0xBF58476D1CE4E5B9
+        z = (z ^ (z >> 27)) &* 0x94D049BB133111EB
+        z = z ^ (z >> 31)
+        return Double(z) / Double(UInt64.max)
+    }
+
+    private static func lerp(_ a: Double, _ b: Double, _ t: Double) -> Double { a + (b - a) * t }
+    private static func clamp01(_ v: Double) -> Double { min(1.0, max(0.0, v)) }
+    private static func mod1(_ v: Double) -> Double {
+        let m = v.truncatingRemainder(dividingBy: 1.0)
+        return m < 0 ? (m + 1.0) : m
     }
 
     private var iconLayer: some View {
@@ -1685,7 +1892,8 @@ private struct ScrollOffsetPreferenceKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
 
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
+        // prefer the smallest minY (most “scrolled up” / most negative)
+        value = min(value, nextValue())
     }
 }
 
@@ -1696,3 +1904,46 @@ private struct ActionBarHeightKey: PreferenceKey {
         value = max(value, nextValue())
     }
 }
+#if canImport(UIKit)
+private struct ScrollOffsetObserver: UIViewRepresentable {
+    let onChange: (CGFloat) -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(onChange: onChange) }
+
+    func makeUIView(context: Context) -> UIView {
+        let v = UIView(frame: .zero)
+        DispatchQueue.main.async { context.coordinator.attach(from: v) }
+        return v
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {}
+
+    final class Coordinator {
+        let onChange: (CGFloat) -> Void
+        private var observation: NSKeyValueObservation?
+        private var attachAttempts = 0
+
+        init(onChange: @escaping (CGFloat) -> Void) { self.onChange = onChange }
+
+        func attach(from view: UIView) {
+            var node: UIView? = view
+            var scrollView: UIScrollView? = nil
+            while let n = node, scrollView == nil {
+                scrollView = n as? UIScrollView
+                node = n.superview
+            }
+
+            guard let sv = scrollView else {
+                attachAttempts += 1
+                guard attachAttempts < 8 else { return }
+                DispatchQueue.main.async { [weak self] in self?.attach(from: view) }
+                return
+            }
+
+            observation = sv.observe(\.contentOffset, options: [.initial, .new]) { [weak self] sv, _ in
+                self?.onChange(max(0, sv.contentOffset.y)) // 0 at top; increases as you scroll down
+            }
+        }
+    }
+}
+#endif
