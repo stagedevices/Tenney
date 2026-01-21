@@ -39,7 +39,7 @@ enum CommunityPackSortKey: String, CaseIterable, Identifiable {
 }
 
 struct CommunityIndex: Decodable {
-    static let supportedSchemaVersion = 1
+    static let supportedSchemaVersions = Set([1, 2])
 
     let schemaVersion: Int
     let packs: [CommunityIndexEntry]
@@ -54,7 +54,7 @@ struct CommunityIndex: Decodable {
         guard let version = try c.decodeIfPresent(Int.self, forKey: .schemaVersion) else {
             throw CommunityPacksError.schemaMismatch
         }
-        guard version == Self.supportedSchemaVersion else {
+        guard Self.supportedSchemaVersions.contains(version) else {
             throw CommunityPacksError.schemaMismatch
         }
         self.schemaVersion = version
@@ -73,6 +73,7 @@ struct CommunityIndexEntry: Decodable {
     let tenneyPath: String?
     let usesFilesContract: Bool
     let isFeatured: Bool
+    let indexScales: [CommunityIndexScale]?
 
     enum CodingKeys: String, CodingKey {
         case packID
@@ -86,6 +87,8 @@ struct CommunityIndexEntry: Decodable {
         case license
         case files
         case featured
+        case isFeatured
+        case scales
     }
 
     init(from decoder: Decoder) throws {
@@ -94,8 +97,18 @@ struct CommunityIndexEntry: Decodable {
         let packID = try c.decodeIfPresent(String.self, forKey: .packID)
         let path = try c.decodeIfPresent(String.self, forKey: .path)
         let slug = try c.decodeIfPresent(String.self, forKey: .slug)
+        let resolvedPath: String
+        if let path, !path.isEmpty {
+            resolvedPath = path
+        } else if let slug, !slug.isEmpty {
+            resolvedPath = "packs/\(slug)"
+        } else if let packID, !packID.isEmpty {
+            resolvedPath = packID
+        } else {
+            resolvedPath = ""
+        }
         self.packID = packID ?? slug ?? path ?? ""
-        self.path = path ?? slug ?? packID ?? ""
+        self.path = resolvedPath
         self.title = try c.decodeIfPresent(String.self, forKey: .title)
         self.description = try c.decodeIfPresent(String.self, forKey: .description)
             ?? c.decodeIfPresent(String.self, forKey: .descr)
@@ -104,11 +117,25 @@ struct CommunityIndexEntry: Decodable {
         self.license = try c.decodeIfPresent(String.self, forKey: .license)
         self.tenneyPath = files?.tenney
         self.usesFilesContract = (tenneyPath?.isEmpty == false)
-        self.isFeatured = try c.decodeIfPresent(Bool.self, forKey: .featured) ?? false
+        self.isFeatured = try c.decodeIfPresent(Bool.self, forKey: .featured)
+            ?? c.decodeIfPresent(Bool.self, forKey: .isFeatured)
+            ?? false
+        self.indexScales = try c.decodeIfPresent([CommunityIndexScale].self, forKey: .scales)
     }
 }
 
 struct CommunityIndexFiles: Decodable {
+    let tenney: String?
+}
+
+struct CommunityIndexScale: Decodable {
+    let id: String?
+    let title: String?
+    let scalaPath: String?
+    let files: CommunityIndexScaleFiles?
+}
+
+struct CommunityIndexScaleFiles: Decodable {
     let tenney: String?
 }
 
