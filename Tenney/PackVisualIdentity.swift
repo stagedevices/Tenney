@@ -1,8 +1,13 @@
 import SwiftUI
+#if canImport(UIKit)
 import UIKit
+#endif
+#if canImport(AppKit)
+import AppKit
+#endif
 
 enum PackVisualIdentity {
-    static let symbolNames: [String] = [
+    private static let curatedSymbolNames: [String] = [
         "music.quarternote.3",
         "music.note.list",
         "music.mic",
@@ -63,6 +68,11 @@ enum PackVisualIdentity {
         "circle.square.fill"
     ]
 
+    static var symbolNames: [String] {
+        let available = curatedSymbolNames.filter { isSymbolAvailable($0) }
+        return available.isEmpty ? ["music.note"] : available
+    }
+
     static let palette: [Color] = [
         Color(red: 0.32, green: 0.40, blue: 0.84),
         Color(red: 0.26, green: 0.58, blue: 0.72),
@@ -84,7 +94,8 @@ enum PackVisualIdentity {
 
     static func identity(for packID: String, accent: Color) -> (symbol: String, colors: [Color]) {
         let hash = stableSeed(for: packID)
-        let symbol = symbolNames[abs(hash) % symbolNames.count]
+        let symbolCandidate = symbolNames[abs(hash) % symbolNames.count]
+        let symbol = resolvedSymbolName(symbolCandidate)
         let accentHue = accent.hueComponent ?? 0.0
 
         var paletteIndex = abs(hash / 7) % palette.count
@@ -99,7 +110,8 @@ enum PackVisualIdentity {
 
         let secondary = palette[(paletteIndex + 5) % palette.count].opacity(0.65)
         let neutral = Color(.secondarySystemBackground).opacity(0.9)
-        return (symbol, [primary, secondary, neutral])
+        let colors = [primary, secondary, neutral].map { ensureVisible($0) }
+        return (symbol, colors)
     }
 
     static func stableSeed(for value: String) -> Int {
@@ -110,10 +122,47 @@ enum PackVisualIdentity {
         }
         return Int(truncatingIfNeeded: hash)
     }
+
+    static func resolvedSymbolName(_ candidate: String) -> String {
+        isSymbolAvailable(candidate) ? candidate : "music.note"
+    }
+
+    private static func isSymbolAvailable(_ candidate: String) -> Bool {
+        #if canImport(UIKit)
+        return UIImage(systemName: candidate) != nil
+        #elseif canImport(AppKit)
+        return NSImage(systemSymbolName: candidate, accessibilityDescription: nil) != nil
+        #else
+        return false
+        #endif
+    }
+
+    private static func ensureVisible(_ color: Color, minimumAlpha: CGFloat = 0.7) -> Color {
+        #if canImport(UIKit)
+        let uiColor = UIColor(color)
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+        guard uiColor.getRed(&red, green: &green, blue: &blue, alpha: &alpha) else {
+            return color
+        }
+        return Color(uiColor: uiColor.withAlphaComponent(max(alpha, minimumAlpha)))
+        #elseif canImport(AppKit)
+        guard let nsColor = NSColor(color).usingColorSpace(.deviceRGB) else {
+            return color
+        }
+        let alpha = nsColor.alphaComponent
+        return Color(nsColor.withAlphaComponent(max(alpha, minimumAlpha)))
+        #else
+        return color
+        #endif
+    }
 }
 
 private extension Color {
     var hueComponent: Double? {
+        #if canImport(UIKit)
         let uiColor = UIColor(self)
         var hue: CGFloat = 0
         var saturation: CGFloat = 0
@@ -123,5 +172,13 @@ private extension Color {
             return nil
         }
         return Double(hue)
+        #elseif canImport(AppKit)
+        guard let nsColor = NSColor(self).usingColorSpace(.deviceRGB) else {
+            return nil
+        }
+        return Double(nsColor.hueComponent)
+        #else
+        return nil
+        #endif
     }
 }

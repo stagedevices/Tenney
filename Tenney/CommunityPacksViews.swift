@@ -1551,6 +1551,7 @@ private struct PackHeroSymbolView: View {
     }
 
     private var iconLayer: some View {
+        let resolvedName = PackVisualIdentity.resolvedSymbolName(symbolName)
         ZStack {
             Circle()
                 .fill(.ultraThinMaterial)
@@ -1560,8 +1561,8 @@ private struct PackHeroSymbolView: View {
                 )
                 .frame(width: 52, height: 52)
 
-            Image(systemName: symbolName)
-                .font(.system(size: 52, weight: .semibold))
+            Image(systemName: resolvedName)
+                .font(.system(size: 54, weight: .semibold))
                 .symbolRenderingMode(.palette)
                 .foregroundStyle(colors[0], colors[1], colors.count > 2 ? colors[2] : colors[0])
                 .opacity(1)
