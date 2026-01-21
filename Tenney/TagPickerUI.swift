@@ -191,8 +191,6 @@ struct TagIconPicker: View {
         "guitars",
         "metronome",
         "waveform",
-        "slider.horizontal.3",
-        "slider.horizontal.below.rectangle",
         "sparkles",
         "sparkle",
         "sun.max",
