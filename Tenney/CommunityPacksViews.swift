@@ -893,7 +893,7 @@ private struct CommunityPackDetailView: View {
                     }
                 }
                 Spacer()
-                heroSymbolTile(symbol: identity.symbol, colors: identity.colors, parallax: parallax)
+                heroSymbolTile(symbol: identity.symbolName, colors: identity.palette, parallax: parallax)
             }
 
             HStack(spacing: 10) {
@@ -1548,29 +1548,26 @@ private struct PackHeroSymbolView: View {
     }
 
     private var iconLayer: some View {
-        let resolvedName = PackVisualIdentity.resolvedSymbolName(symbolName)
         let palette = [
             colors.first ?? .accentColor,
             colors.dropFirst().first ?? colors.first ?? .accentColor,
             colors.dropFirst(2).first ?? colors.first ?? .accentColor
         ]
         return ZStack {
-            GuaranteedSymbol(
-                symbolName: resolvedName,
+            VerifiedSFSymbol(
+                symbolName: symbolName,
                 palette: palette,
-                pointSize: 54,
-                weight: .semibold
+                pointSize: 56
             )
         }
     }
 }
 
-private struct GuaranteedSymbol: View {
+private struct VerifiedSFSymbol: View {
     private let fallbackSymbolName = "music.note"
     let symbolName: String
     let palette: [Color]
     let pointSize: CGFloat
-    let weight: Font.Weight
 
     var body: some View {
         #if canImport(UIKit)
@@ -1612,73 +1609,29 @@ private struct GuaranteedSymbol: View {
         let uiPalette = palette.map { UIColor($0) }
         let base = UIImage.SymbolConfiguration(
             pointSize: pointSize,
-            weight: resolvedUISymbolWeight(),
+            weight: .semibold,
             scale: .large
         )
         let paletteConfig = UIImage.SymbolConfiguration(paletteColors: uiPalette)
         let configuration = base.applying(paletteConfig)
         return UIImage(systemName: resolvedSymbolName, withConfiguration: configuration)
     }
-
-    private func resolvedUISymbolWeight() -> UIImage.SymbolWeight {
-        switch weight {
-        case .ultraLight:
-            return .ultraLight
-        case .thin:
-            return .thin
-        case .light:
-            return .light
-        case .regular:
-            return .regular
-        case .medium:
-            return .medium
-        case .semibold:
-            return .semibold
-        case .bold:
-            return .bold
-        case .heavy:
-            return .heavy
-        case .black:
-            return .black
-        default:
-            return .regular
-        }
-    }
     #endif
 
     #if canImport(AppKit)
     private var configuredNSImage: NSImage? {
-        let nsPalette = palette.map { NSColor($0) }
-        let base = NSImage.SymbolConfiguration(pointSize: pointSize, weight: resolvedNSFontWeight())
-        let paletteConfig = NSImage.SymbolConfiguration(paletteColors: nsPalette)
-        let configuration = base.applying(paletteConfig)
-        return NSImage(systemSymbolName: resolvedSymbolName, accessibilityDescription: nil)?
-            .withSymbolConfiguration(configuration)
-    }
-
-    private func resolvedNSFontWeight() -> NSFont.Weight {
-        switch weight {
-        case .ultraLight:
-            return .ultraLight
-        case .thin:
-            return .thin
-        case .light:
-            return .light
-        case .regular:
-            return .regular
-        case .medium:
-            return .medium
-        case .semibold:
-            return .semibold
-        case .bold:
-            return .bold
-        case .heavy:
-            return .heavy
-        case .black:
-            return .black
-        default:
-            return .regular
+        let base = NSImage.SymbolConfiguration(pointSize: pointSize, weight: .semibold)
+        guard let symbol = NSImage(systemSymbolName: resolvedSymbolName, accessibilityDescription: nil) else {
+            return nil
         }
+        let nsPalette = palette.map { NSColor($0) }
+        let paletteConfig = NSImage.SymbolConfiguration(paletteColors: nsPalette)
+        if let configured = symbol.withSymbolConfiguration(base.applying(paletteConfig)) {
+            return configured
+        }
+        let fallbackColor = NSColor(palette.first ?? Color(.labelColor))
+        let hierarchicalConfig = NSImage.SymbolConfiguration(hierarchicalColor: fallbackColor)
+        return symbol.withSymbolConfiguration(base.applying(hierarchicalConfig))
     }
     #endif
 }

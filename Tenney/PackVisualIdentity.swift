@@ -92,10 +92,10 @@ enum PackVisualIdentity {
         Color(red: 0.36, green: 0.36, blue: 0.40)
     ]
 
-    static func identity(for packID: String, accent: Color) -> (symbol: String, colors: [Color]) {
+    static func identity(for packID: String, accent: Color) -> (symbolName: String, palette: [Color]) {
         let hash = stableSeed(for: packID)
         let symbolCandidate = symbolNames[abs(hash) % symbolNames.count]
-        let symbol = resolvedSymbolName(symbolCandidate)
+        let symbolName = resolvedSymbolName(symbolCandidate)
         let accentHue = accent.hueComponent ?? 0.0
 
         var paletteIndex = abs(hash / 7) % palette.count
@@ -110,8 +110,8 @@ enum PackVisualIdentity {
 
         let secondary = palette[(paletteIndex + 5) % palette.count].opacity(0.65)
         let neutral = Color(.secondarySystemBackground).opacity(0.9)
-        let colors = [primary, secondary, neutral].map { ensureVisible($0) }
-        return (symbol, colors)
+        let palette = [primary, secondary, neutral].map { ensureVisible($0) }
+        return (symbolName, palette)
     }
 
     static func stableSeed(for value: String) -> Int {
