@@ -131,6 +131,7 @@ struct CommunityIndexFiles: Decodable {
 struct CommunityIndexScale: Decodable {
     let id: String?
     let title: String?
+    let scalaPath: String?
     let files: CommunityIndexScaleFiles?
 }
 

@@ -426,7 +426,7 @@ final class CommunityPacksStore: ObservableObject {
                 if index.schemaVersion >= 2,
                    let indexScales = entry.indexScales,
                    !indexScales.isEmpty {
-                    let scaleInfos = try makeIndexScaleInfos(indexScales: indexScales)
+                    let scaleInfos = try makeIndexScaleInfos(entry: entry, indexScales: indexScales)
                     let (packData, scaleDataByPath) = try await fetchIndexScaleData(
                         entry: entry,
                         scaleInfos: scaleInfos,
@@ -1039,7 +1039,7 @@ final class CommunityPacksStore: ObservableObject {
 
     private func assumedSchemaVersion(from indexSchemaVersion: Int) -> Int? {
         guard CommunityIndex.supportedSchemaVersions.contains(indexSchemaVersion) else { return nil }
-                return CommunityPack.supportedSchemaVersion
+        return CommunityPack.supportedSchemaVersion
     }
 
     private func resolvedScalePath(entryPath: String, scalePath: String) -> String {
@@ -1049,21 +1049,57 @@ final class CommunityPacksStore: ObservableObject {
     }
 
     private func makeIndexScaleInfos(
+        entry: CommunityIndexEntry,
         indexScales: [CommunityIndexScale]
     ) throws -> [IndexScaleInfo] {
+        let packTitle = entry.title?.trimmingCharacters(in: .whitespacesAndNewlines)
         let infos: [IndexScaleInfo] = try indexScales.map { scale in
             guard let tenneyPath = scale.files?.tenney, !tenneyPath.isEmpty else {
                 throw CommunityPacksError.decoding("INDEX.json is missing a tenney file path.")
             }
             let scaleID = deriveScaleID(from: tenneyPath)
             let title = scale.title?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let resolvedTitle = (title?.isEmpty == false) ? title! : scaleID
+            let resolvedTitle = resolveScaleTitle(
+                packTitle: packTitle,
+                title: title,
+                scalaPath: scale.scalaPath,
+                tenneyPath: tenneyPath,
+                fallback: scaleID
+            )
             return IndexScaleInfo(id: scaleID, title: resolvedTitle, path: tenneyPath)
         }
         guard !infos.isEmpty else {
             throw CommunityPacksError.decoding("INDEX.json is missing scale manifests.")
         }
         return infos
+    }
+
+    private func resolveScaleTitle(
+        packTitle: String?,
+        title: String?,
+        scalaPath: String?,
+        tenneyPath: String,
+        fallback: String
+    ) -> String {
+        if let title, !title.isEmpty, title != packTitle {
+            return title
+        }
+        if let scalaPath, !scalaPath.isEmpty {
+            let candidate = (scalaPath as NSString).lastPathComponent
+            let base = (candidate as NSString).deletingPathExtension
+            if !base.isEmpty {
+                return base
+            }
+        }
+        let lastComponent = (tenneyPath as NSString).lastPathComponent
+        if lastComponent == "scale-builder.json" {
+            let parent = (tenneyPath as NSString).deletingLastPathComponent
+            let parentName = (parent as NSString).lastPathComponent
+            if !parentName.isEmpty {
+                return parentName
+            }
+        }
+        return fallback
     }
 
     private func deriveScaleID(from tenneyPath: String) -> String {
@@ -1075,11 +1111,11 @@ final class CommunityPacksStore: ObservableObject {
                 return candidate
             }
             if candidate == "scale-builder.json", tenneyIndex > 0 {
-                            let packCandidate = components[tenneyIndex - 1]
-                            if !packCandidate.isEmpty {
-                                return packCandidate
-                            }
-                        }
+                let packCandidate = components[tenneyIndex - 1]
+                if !packCandidate.isEmpty {
+                    return packCandidate
+                }
+            }
         }
         let lastComponent = (tenneyPath as NSString).lastPathComponent
         if lastComponent == "scale-builder.json" {
