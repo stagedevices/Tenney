@@ -705,6 +705,7 @@ private struct CommunityPackDetailView: View {
     @State private var pendingAction: CommunityPacksStore.InstallAction = .install
     @State private var pendingScaleIDs: Set<String> = []
     @State private var scrollOffset: CGFloat = 0
+    @State private var actionBarHeight: CGFloat = 0
     @State private var previewPlayer = ScalePreviewPlayer()
 
     private enum SelectionMode {
@@ -832,7 +833,7 @@ private struct CommunityPackDetailView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
-                .padding(.bottom, 96)
+                .padding(.bottom, max(actionBarHeight + 16, 16))
             }
             .scrollIndicators(.hidden)
             .safeAreaInset(edge: .top) { detailToolbar }
@@ -841,6 +842,7 @@ private struct CommunityPackDetailView: View {
             .onPreferenceChange(ScrollOffsetPreferenceKey.self) { offset in
                 scrollOffset = offset
             }
+            .onPreferenceChange(ActionBarHeightKey.self) { actionBarHeight = $0 }
         }
         .onAppear(perform: startReveal)
         .onDisappear {
@@ -1120,6 +1122,11 @@ private struct CommunityPackDetailView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .background(barBackground(separatorEdge: .top))
+        .background(
+            GeometryReader { proxy in
+                Color.clear.preference(key: ActionBarHeightKey.self, value: proxy.size.height)
+            }
+        )
         .opacity(contentVisible ? 1 : 0)
     }
 
@@ -1678,5 +1685,13 @@ private struct ScrollOffsetPreferenceKey: PreferenceKey {
 
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = nextValue()
+    }
+}
+
+private struct ActionBarHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
