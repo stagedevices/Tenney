@@ -1610,7 +1610,7 @@ private extension View {
     @ViewBuilder
     func ifAvailableSymbolEffect(_ isActive: Bool) -> some View {
         if #available(iOS 26.0, *) {
-            self.symbolEffect(.drawOn, value: isActive)
+            self.symbolEffect(.drawOn)
         } else {
             self
         }
