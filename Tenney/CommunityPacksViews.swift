@@ -1,5 +1,8 @@
 import SwiftUI
 import UIKit
+#if canImport(AppKit)
+import AppKit
+#endif
 
 struct CommunityPackPreviewRequest {
     let packID: String
@@ -702,7 +705,6 @@ private struct CommunityPackDetailView: View {
     @State private var pendingAction: CommunityPacksStore.InstallAction = .install
     @State private var pendingScaleIDs: Set<String> = []
     @State private var scrollOffset: CGFloat = 0
-    @State private var symbolDrawn = false
     @State private var previewPlayer = ScalePreviewPlayer()
 
     private enum SelectionMode {
@@ -841,9 +843,6 @@ private struct CommunityPackDetailView: View {
             }
         }
         .onAppear(perform: startReveal)
-        .onAppear {
-            symbolDrawn = true
-        }
         .onDisappear {
             previewPlayer.stop()
         }
@@ -1382,8 +1381,7 @@ private struct CommunityPackDetailView: View {
         PackHeroSymbolView(
             symbolName: symbol,
             colors: colors,
-            parallax: parallax,
-            symbolDrawn: symbolDrawn
+            parallax: parallax
         )
     }
 
@@ -1530,14 +1528,12 @@ private struct PackHeroSymbolView: View {
     let symbolName: String
     let colors: [Color]
     let parallax: CGFloat
-    let symbolDrawn: Bool
 
     var body: some View {
         let gradient = LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)
         ZStack {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(gradient.opacity(0.9))
-                .overlay(PremiumModalSurface.glassOverlay(in: RoundedRectangle(cornerRadius: 18, style: .continuous)))
                 .overlay(
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
                         .stroke(Color.white.opacity(0.25), lineWidth: 1)
@@ -1545,6 +1541,7 @@ private struct PackHeroSymbolView: View {
 
             iconLayer
                 .offset(y: parallax)
+                .zIndex(10)
         }
         .frame(width: 84, height: 84)
         .shadow(color: Color.black.opacity(0.12), radius: 12, x: 0, y: 8)
@@ -1552,25 +1549,138 @@ private struct PackHeroSymbolView: View {
 
     private var iconLayer: some View {
         let resolvedName = PackVisualIdentity.resolvedSymbolName(symbolName)
+        let palette = [
+            colors.first ?? .accentColor,
+            colors.dropFirst().first ?? colors.first ?? .accentColor,
+            colors.dropFirst(2).first ?? colors.first ?? .accentColor
+        ]
         return ZStack {
-            Circle()
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    Circle()
-                        .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                )
-                .frame(width: 52, height: 52)
+            GuaranteedSymbol(
+                symbolName: resolvedName,
+                palette: palette,
+                pointSize: 54,
+                weight: .semibold
+            )
+        }
+    }
+}
 
-            Image(systemName: resolvedName)
-                .font(.system(size: 54, weight: .semibold))
-                .symbolRenderingMode(.palette)
-                .foregroundStyle(colors[0], colors[1], colors.count > 2 ? colors[2] : colors[0])
+private struct GuaranteedSymbol: View {
+    private let fallbackSymbolName = "music.note"
+    let symbolName: String
+    let palette: [Color]
+    let pointSize: CGFloat
+    let weight: Font.Weight
+
+    var body: some View {
+        #if canImport(UIKit)
+        if let image = configuredUIImage {
+            Image(uiImage: image)
+                .renderingMode(.original)
                 .opacity(1)
                 .blendMode(.normal)
                 .compositingGroup()
-                .ifAvailableSymbolEffect(symbolDrawn)
+        }
+        #elseif canImport(AppKit)
+        if let image = configuredNSImage {
+            Image(nsImage: image)
+                .renderingMode(.original)
+                .opacity(1)
+                .blendMode(.normal)
+                .compositingGroup()
+        }
+        #else
+        EmptyView()
+        #endif
+    }
+
+    private var resolvedSymbolName: String {
+        #if canImport(UIKit)
+        if UIImage(systemName: symbolName) != nil {
+            return symbolName
+        }
+        #elseif canImport(AppKit)
+        if NSImage(systemSymbolName: symbolName, accessibilityDescription: nil) != nil {
+            return symbolName
+        }
+        #endif
+        return fallbackSymbolName
+    }
+
+    #if canImport(UIKit)
+    private var configuredUIImage: UIImage? {
+        let uiPalette = palette.map { UIColor($0) }
+        let base = UIImage.SymbolConfiguration(
+            pointSize: pointSize,
+            weight: resolvedUIFontWeight(),
+            scale: .large
+        )
+        let paletteConfig = UIImage.SymbolConfiguration(paletteColors: uiPalette)
+        let configuration = base.applying(paletteConfig)
+        return UIImage(systemName: resolvedSymbolName, withConfiguration: configuration)
+    }
+
+    private func resolvedUIFontWeight() -> UIFont.Weight {
+        switch weight {
+        case .ultraLight:
+            return .ultraLight
+        case .thin:
+            return .thin
+        case .light:
+            return .light
+        case .regular:
+            return .regular
+        case .medium:
+            return .medium
+        case .semibold:
+            return .semibold
+        case .bold:
+            return .bold
+        case .heavy:
+            return .heavy
+        case .black:
+            return .black
+        default:
+            return .regular
         }
     }
+    #endif
+
+    #if canImport(AppKit)
+    private var configuredNSImage: NSImage? {
+        let nsPalette = palette.map { NSColor($0) }
+        let base = NSImage.SymbolConfiguration(pointSize: pointSize, weight: resolvedNSFontWeight())
+        let paletteConfig = NSImage.SymbolConfiguration(paletteColors: nsPalette)
+        let configuration = base.applying(paletteConfig)
+        return NSImage(systemSymbolName: resolvedSymbolName, accessibilityDescription: nil)?
+            .withSymbolConfiguration(configuration)
+    }
+
+    private func resolvedNSFontWeight() -> NSFont.Weight {
+        switch weight {
+        case .ultraLight:
+            return .ultraLight
+        case .thin:
+            return .thin
+        case .light:
+            return .light
+        case .regular:
+            return .regular
+        case .medium:
+            return .medium
+        case .semibold:
+            return .semibold
+        case .bold:
+            return .bold
+        case .heavy:
+            return .heavy
+        case .black:
+            return .black
+        default:
+            return .regular
+        }
+    }
+    #endif
 }
 
 private struct DetailSectionCard<Content: View>: View {
@@ -1604,16 +1714,5 @@ private struct ScrollOffsetPreferenceKey: PreferenceKey {
 
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = nextValue()
-    }
-}
-
-private extension View {
-    @ViewBuilder
-    func ifAvailableSymbolEffect(_ isActive: Bool) -> some View {
-        if #available(iOS 26.0, *) {
-            self.symbolEffect(.drawOn)
-        } else {
-            self
-        }
     }
 }
