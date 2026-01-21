@@ -2769,10 +2769,10 @@ struct StudioConsoleView: View {
                             Image(systemName: "chevron.backward")
                                 .font(.headline.weight(.semibold))
                                 .frame(width: 40, height: 40)
+                                .glassWhiteCircle()      // ⬅️ MOVE HERE
                                 .contentShape(Circle())
                         }
                         .buttonStyle(.plain)
-                        .glassWhiteCircle()
                         .padding(.top, 20)
                         .padding(.leading, 20)
                         .transition(.opacity)
