@@ -65,6 +65,7 @@ final class CommunityPacksStore: ObservableObject {
         let pack: CommunityPackViewModel
         let action: InstallAction
         let resolution: InstallResolution
+        let selectedScaleIDs: Set<String>?
 
         static func == (lhs: InstallRequest, rhs: InstallRequest) -> Bool {
             lhs.pack.packID == rhs.pack.packID
@@ -144,9 +145,12 @@ final class CommunityPacksStore: ObservableObject {
         return output
     }
 
-    func collisions(for pack: CommunityPackViewModel) -> [UUID] {
+    func collisions(for pack: CommunityPackViewModel, selectedScaleIDs: Set<String>? = nil) -> [UUID] {
         let library = ScaleLibraryStore.shared
         return pack.scales.compactMap { scale in
+            if let selectedScaleIDs, !selectedScaleIDs.contains(scale.id) {
+                return nil
+            }
             let id = communityScaleUUID(packID: pack.packID, scaleID: scale.id)
             return library.scales[id] != nil ? id : nil
         }
@@ -155,14 +159,22 @@ final class CommunityPacksStore: ObservableObject {
     func enqueueInstall(
         pack: CommunityPackViewModel,
         action: InstallAction = .install,
-        resolution: InstallResolution = .overwrite
+        resolution: InstallResolution = .overwrite,
+        selectedScaleIDs: Set<String>? = nil
     ) {
         if deletedPackIDs.remove(pack.packID) != nil {
             updateInstallState()
         }
         guard installingPackIDs.contains(pack.packID) == false else { return }
         guard installQueue.contains(where: { $0.pack.packID == pack.packID }) == false else { return }
-        installQueue.append(InstallRequest(pack: pack, action: action, resolution: resolution))
+        let resolvedScaleIDs: Set<String>?
+        if action == .update, selectedScaleIDs == nil {
+            let installed = installedRemoteScaleIDs(for: pack.packID)
+            resolvedScaleIDs = installed.isEmpty ? nil : installed
+        } else {
+            resolvedScaleIDs = selectedScaleIDs
+        }
+        installQueue.append(InstallRequest(pack: pack, action: action, resolution: resolution, selectedScaleIDs: resolvedScaleIDs))
         startNextInstallIfNeeded()
     }
 
@@ -176,6 +188,24 @@ final class CommunityPacksStore: ObservableObject {
 
     func isUpdateAvailable(_ packID: String) -> Bool {
         updateAvailablePackIDs.contains(packID) && installedPackIDs.contains(packID)
+    }
+
+    func installedRemoteScaleIDs(for packID: String) -> Set<String> {
+        let registry = CommunityInstallRegistryStore.shared
+        guard let record = registry.records[packID] else { return [] }
+        if let remote = record.installedRemoteScaleIDs, !remote.isEmpty {
+            return Set(remote)
+        }
+        guard let pack = packs.first(where: { $0.packID == packID }) else { return [] }
+        let installedUUIDs = Set(record.installedScaleIDs)
+        let matched = pack.scales.filter { scale in
+            installedUUIDs.contains(communityScaleUUID(packID: pack.packID, scaleID: scale.id))
+        }
+        let matchedIDs = Set(matched.map(\.id))
+        if !matchedIDs.isEmpty {
+            return matchedIDs
+        }
+        return Set(pack.scales.map(\.id))
     }
 
     func uninstall(pack: CommunityPackViewModel) {
@@ -230,6 +260,10 @@ final class CommunityPacksStore: ObservableObject {
         let existingIDs = Set(library.scales.keys)
         var imported: [TenneyScale] = []
         let newIDs = Set(pack.scales.map { communityScaleUUID(packID: pack.packID, scaleID: $0.id) })
+        let targetScales = pack.scales.filter { scale in
+            guard let selected = request.selectedScaleIDs else { return true }
+            return selected.contains(scale.id)
+        }
 
         if request.action == .update, request.resolution == .overwrite {
             for scale in library.scales.values where scale.provenance?.packID == pack.packID && !newIDs.contains(scale.id) {
@@ -237,7 +271,7 @@ final class CommunityPacksStore: ObservableObject {
             }
         }
 
-        for scale in pack.scales {
+        for scale in targetScales {
             let stableID = communityScaleUUID(packID: pack.packID, scaleID: scale.id)
             let collision = existingIDs.contains(stableID)
             switch request.resolution {
@@ -264,8 +298,10 @@ final class CommunityPacksStore: ObservableObject {
             guard scale.provenance?.packID == pack.packID else { return nil }
             return scale.id
         }
+        let installedRemoteScaleIDs = request.selectedScaleIDs.map { Array($0) } ?? pack.scales.map(\.id)
         let record = CommunityInstallRecord(
             installedScaleIDs: installedIDs,
+            installedRemoteScaleIDs: installedRemoteScaleIDs.sorted(),
             installedAt: Date(),
             installedVersion: pack.version,
             installedContentHash: pack.contentHash,

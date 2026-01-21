@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct CommunityPackPreviewRequest {
     let packID: String
@@ -648,12 +649,28 @@ private struct CommunityPackDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(SettingsKeys.communityPackLastPreviewedScaleIDs) private var lastPreviewedScaleIDsJSON: String = ""
+    @AppStorage("Tenney.SoundOn") private var soundOn: Bool = true
+    @AppStorage(SettingsKeys.safeAmp) private var safeAmp: Double = 0.18
 
     @State private var showConflictDialog = false
     @State private var showUninstallConfirm = false
     @State private var showChangelog = false
     @State private var heroVisible = false
     @State private var contentVisible = false
+    @State private var selectionMode: SelectionMode = .none
+    @State private var selectedScaleIDs: Set<String> = []
+    @State private var selectedNewScaleIDs: Set<String> = []
+    @State private var pendingAction: CommunityPacksStore.InstallAction = .install
+    @State private var pendingScaleIDs: Set<String> = []
+    @State private var scrollOffset: CGFloat = 0
+    @State private var symbolDrawn = false
+    @State private var previewPlayer = ScalePreviewPlayer()
+
+    private enum SelectionMode {
+        case none
+        case installSelecting
+        case updateSelecting
+    }
 
     private var isInstalled: Bool {
         store.isInstalled(pack.packID)
@@ -665,6 +682,14 @@ private struct CommunityPackDetailView: View {
     }
 
     private var primaryActionTitle: String {
+        switch selectionMode {
+        case .installSelecting:
+            return selectedScaleIDs.isEmpty ? "Select scales" : "Install Selected"
+        case .updateSelecting:
+            return selectedNewScaleIDs.isEmpty ? "Update" : "Update + Add"
+        case .none:
+            break
+        }
         if !isInstalled { return "Install" }
         if updateAvailable { return "Update" }
         return "Preview"
@@ -676,11 +701,20 @@ private struct CommunityPackDetailView: View {
 
     private var detailContent: some View {
         ZStack {
-            sheetBackground
+            PremiumModalSurface.background
+                .ignoresSafeArea()
+
+            NoiseOverlay(seed: PackVisualIdentity.stableSeed(for: pack.packID), opacity: 0.04)
                 .ignoresSafeArea()
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
+                    GeometryReader { proxy in
+                        Color.clear
+                            .preference(key: ScrollOffsetPreferenceKey.self, value: proxy.frame(in: .named("packDetailScroll")).minY)
+                    }
+                    .frame(height: 0)
+
                     headerCard
                         .opacity(heroVisible ? 1 : 0)
                         .offset(y: heroVisible ? 0 : 18)
@@ -690,6 +724,12 @@ private struct CommunityPackDetailView: View {
                             DetailStatView(title: "Scales", value: "\(pack.scaleCount)")
                             DetailStatView(title: "Typical limit", value: "\(typicalLimit)-limit")
                         }
+                        if !pack.summary.isEmpty {
+                            Text(pack.summary)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
                     }
                     .opacity(contentVisible ? 1 : 0)
                     .offset(y: contentVisible ? 0 : 16)
@@ -697,11 +737,19 @@ private struct CommunityPackDetailView: View {
 
                     DetailSectionCard(title: "Sample scales") {
                         VStack(spacing: 10) {
-                            ForEach(sampleScales) { scale in
+                            ForEach(visibleScales) { scale in
                                 CommunityScaleRow(
                                     scale: scale,
                                     packID: pack.packID,
-                                    onActions: { handleScalePreview(scale) }
+                                    showsSelection: selectionMode != .none,
+                                    isSelected: isScaleSelected(scale),
+                                    isSelectable: isScaleSelectable(scale),
+                                    isUpdating: isScaleUpdating(scale),
+                                    isNew: newScaleIDs.contains(scale.id),
+                                    canPreviewInLibrary: showsPreviewActions,
+                                    onToggleSelection: { toggleSelection(for: scale) },
+                                    onPlay: { playScalePreview(scale) },
+                                    onPreviewInLibrary: { handleScalePreview(scale) }
                                 )
                             }
                         }
@@ -743,8 +791,19 @@ private struct CommunityPackDetailView: View {
             }
             .safeAreaInset(edge: .top) { detailToolbar }
             .safeAreaInset(edge: .bottom) { detailActionBar }
+            .coordinateSpace(name: "packDetailScroll")
+            .onPreferenceChange(ScrollOffsetPreferenceKey.self) { offset in
+                scrollOffset = offset
+            }
         }
         .onAppear(perform: startReveal)
+        .onAppear {
+            symbolDrawn = true
+        }
+        .onDisappear {
+            previewPlayer.stop()
+        }
+        .presentationBackground(PremiumModalSurface.background)
         .confirmationDialog(
             "Some scales already exist in your Library.",
             isPresented: $showConflictDialog,
@@ -770,75 +829,66 @@ private struct CommunityPackDetailView: View {
     }
 
     private var headerCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top) {
+        let identity = PackVisualIdentity.identity(for: pack.packID, accent: .accentColor)
+        let parallax = max(min(-scrollOffset / 10, 12), -12)
+        return VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 16) {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(pack.title)
                         .font(.largeTitle.weight(.semibold))
                     Text("by \(pack.authorName)")
                         .font(.title3.weight(.medium))
                         .foregroundStyle(.secondary)
+                    if !pack.description.isEmpty {
+                        Text(pack.description)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 }
                 Spacer()
-                if pack.isFeatured {
-                    Label("FEATURED", systemImage: "seal.fill")
-                        .font(.caption2.weight(.semibold))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Capsule().fill(Color.accentColor.opacity(0.18)))
-                }
-            }
-
-            if !pack.description.isEmpty {
-                Text(pack.description)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(3)
+                heroSymbolTile(symbol: identity.symbol, colors: identity.colors, parallax: parallax)
             }
 
             HStack(spacing: 10) {
                 if !pack.license.isEmpty {
-                    Text(pack.license)
+                    Label(pack.license, systemImage: "doc.plaintext")
                 }
-                if !pack.dateString.isEmpty {
-                    Text(pack.dateString)
+                Label(pack.version, systemImage: "tag")
+                if let updated = pack.lastUpdated {
+                    Label(updated.formatted(date: .abbreviated, time: .omitted), systemImage: "calendar")
                 }
-                Text("\(pack.scaleCount) scales")
-                Text(primeLimitLabel)
             }
             .font(.caption.monospacedDigit())
             .foregroundStyle(.secondary)
 
-            if updateAvailable {
-                Text("Update available")
-                    .font(.caption2.weight(.semibold))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Capsule().fill(Color.accentColor.opacity(0.18)))
+            HStack(spacing: 8) {
+                if pack.isFeatured {
+                    premiumBadge(title: "FEATURED", systemImage: "seal.fill")
+                }
+                if updateAvailable {
+                    premiumBadge(title: "UPDATE", systemImage: "arrow.triangle.2.circlepath.circle.fill")
+                }
             }
         }
-        .padding(.vertical, 20)
-        .padding(.horizontal, 18)
+        .padding(.vertical, 22)
+        .padding(.horizontal, 20)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            PackCardSurface(cornerRadius: 24)
+            PremiumModalSurface.cardSurface(cornerRadius: 28)
                 .matchedGeometryEffect(id: "pack-card-\(pack.packID)", in: namespace, isSource: false)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .stroke(Color.secondary.opacity(0.24), lineWidth: 3)
         )
     }
 
-    private var sampleScales: [CommunityPackScaleViewModel] {
-        Array(pack.scales.prefix(8))
-    }
-
-    private var primeLimitLabel: String {
-        if pack.primeLimitMin == pack.primeLimitMax {
-            return "\(pack.primeLimitMin)-limit"
+    private var visibleScales: [CommunityPackScaleViewModel] {
+        if selectionMode == .none {
+            return Array(pack.scales.prefix(8))
         }
-        return "\(pack.primeLimitMin)–\(pack.primeLimitMax)-limit"
+        return pack.scales
     }
 
     private var typicalLimit: Int {
@@ -852,6 +902,14 @@ private struct CommunityPackDetailView: View {
     }
 
     private var actionIcon: String {
+        switch selectionMode {
+        case .installSelecting:
+            return "checkmark.circle.fill"
+        case .updateSelecting:
+            return "arrow.triangle.2.circlepath.circle.fill"
+        case .none:
+            break
+        }
         if !isInstalled {
             return "arrow.down.circle.fill"
         }
@@ -862,38 +920,38 @@ private struct CommunityPackDetailView: View {
     }
 
     private func handlePrimaryAction() {
-        if !isInstalled || updateAvailable {
-            let collisions = store.collisions(for: pack)
-            if collisions.isEmpty {
-                resolveInstall(.overwrite)
-            } else {
-                showConflictDialog = true
-            }
-        } else {
-            handleDefaultPreview()
+        switch selectionMode {
+        case .installSelecting:
+            guard !selectedScaleIDs.isEmpty else { return }
+            prepareInstall(action: .install, selectedScaleIDs: selectedScaleIDs)
+            return
+        case .updateSelecting:
+            let selected = installedScaleIDs.union(selectedNewScaleIDs)
+            prepareInstall(action: .update, selectedScaleIDs: selected)
+            return
+        case .none:
+            break
         }
-    }
 
-    private func resolveInstall(_ resolution: CommunityPacksStore.InstallResolution) {
-        let action: CommunityPacksStore.InstallAction = updateAvailable ? .update : .install
-        store.enqueueInstall(pack: pack, action: action, resolution: resolution)
-    }
+        if !isInstalled {
+            if pack.scales.count > 1 {
+                enterInstallSelection()
+                return
+            }
+            prepareInstall(action: .install, selectedScaleIDs: Set(pack.scales.map(\.id)))
+            return
+        }
 
-    private var sheetBackground: some View {
-        Color(.systemBackground)
-            .overlay(detailGradient.opacity(0.35))
-    }
+        if updateAvailable {
+            if newScaleIDs.isEmpty {
+                prepareInstall(action: .update, selectedScaleIDs: installedScaleIDs)
+            } else {
+                enterUpdateSelection()
+            }
+            return
+        }
 
-    private var detailGradient: LinearGradient {
-        LinearGradient(
-            colors: [
-                Color(.systemBackground),
-                Color(.secondarySystemBackground),
-                Color(.systemBackground)
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
+        handleDefaultPreview()
     }
 
     private var detailToolbar: some View {
@@ -902,25 +960,27 @@ private struct CommunityPackDetailView: View {
                 Text(pack.title)
                     .font(.headline.weight(.semibold))
                     .lineLimit(1)
-                Text("Community Pack")
+                Text(toolbarSubtitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Button(action: { dismiss() }) {
-                closeSymbol
+            Button(action: handleCloseTap) {
+                Image(systemName: selectionMode == .none ? "xmark" : "chevron.left")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.primary)
                     .frame(width: 44, height: 44)
                     .background(
                         Circle()
-                            .fill(Color.primary.opacity(0.06))
+                            .fill(PremiumModalSurface.background)
+                            .overlay(PremiumModalSurface.glassOverlay(in: Circle()))
                             .overlay(
                                 Circle()
-                                    .stroke(Color.secondary.opacity(0.22), lineWidth: 1)
+                                    .stroke(Color.secondary.opacity(0.28), lineWidth: 1)
                             )
-                            .overlay(closeGlassOverlay)
                     )
                     .contentShape(Circle())
-                    .accessibilityLabel("Close")
+                    .accessibilityLabel(selectionMode == .none ? "Close" : "Back")
             }
             .buttonStyle(.plain)
         }
@@ -932,25 +992,9 @@ private struct CommunityPackDetailView: View {
         .zIndex(1000)
     }
 
-    private var closeSymbol: some View {
-        Image(systemName: "xmark")
-            .font(.system(size: 16, weight: .semibold))
-            .symbolRenderingMode(.hierarchical)
-            .foregroundStyle(.primary)
-    }
-
-    @ViewBuilder
-    private var closeGlassOverlay: some View {
-        if #available(iOS 26.0, *) {
-            Circle()
-                .fill(.clear)
-                .glassEffect(.regular, in: Circle())
-        }
-    }
-
     private var detailActionBar: some View {
         HStack(spacing: 12) {
-            if showsPreviewActions && pack.scales.count > 1 {
+            if showsPreviewActions && pack.scales.count > 1 && selectionMode == .none {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 8) {
                         Button(action: handlePrimaryAction) {
@@ -968,7 +1012,8 @@ private struct CommunityPackDetailView: View {
                         }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.large)
-                        .disabled(store.installingPackIDs.contains(pack.packID))
+                        .tint(primaryActionTint)
+                        .disabled(isPrimaryDisabled)
 
                         Menu {
                             ForEach(pack.scales) { scale in
@@ -1008,10 +1053,11 @@ private struct CommunityPackDetailView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
-                .disabled(store.installingPackIDs.contains(pack.packID))
+                .tint(primaryActionTint)
+                .disabled(isPrimaryDisabled)
             }
 
-            if isInstalled && !updateAvailable {
+            if isInstalled && !updateAvailable && selectionMode == .none {
                 Button("Uninstall") {
                     showUninstallConfirm = true
                 }
@@ -1040,27 +1086,14 @@ private struct CommunityPackDetailView: View {
     }
 
     private func barBackground(separatorEdge: VerticalEdge) -> some View {
-        sheetBackground
-            .overlay(barGlassOverlay)
+        PremiumModalSurface.barBackground
+            .overlay(PremiumModalSurface.glassOverlay(in: Rectangle()))
             .overlay(
                 Rectangle()
-                    .fill(Color.secondary.opacity(0.12))
+                    .fill(Color.secondary.opacity(0.16))
                     .frame(height: 1),
                 alignment: separatorEdge == .top ? .top : .bottom
             )
-    }
-
-    @ViewBuilder
-    private var barGlassOverlay: some View {
-        if #available(iOS 26.0, *) {
-            Rectangle()
-                .fill(.clear)
-                .glassEffect(.regular, in: Rectangle())
-        } else {
-            Rectangle()
-                .fill(.ultraThinMaterial)
-                .opacity(0.6)
-        }
     }
 
     private var trimmedChangelog: String {
@@ -1149,17 +1182,191 @@ private struct CommunityPackDetailView: View {
             }
             return
         }
-        withAnimation(.easeOut(duration: 0.45)) {
+        withAnimation(.easeOut(duration: 0.8)) {
             heroVisible = true
         }
         Task {
-            try? await Task.sleep(nanoseconds: 220_000_000)
+            try? await Task.sleep(nanoseconds: 240_000_000)
             await MainActor.run {
-                withAnimation(.easeOut(duration: 0.4)) {
+                withAnimation(.easeOut(duration: 0.6)) {
                     contentVisible = true
                 }
             }
         }
+    }
+
+    private var toolbarSubtitle: String {
+        switch selectionMode {
+        case .installSelecting:
+            return "Selected: \(selectedScaleIDs.count)"
+        case .updateSelecting:
+            return "Selected: \(selectedNewScaleIDs.count)"
+        case .none:
+            return "Community Pack"
+        }
+    }
+
+    private var installedScaleIDs: Set<String> {
+        let installed = store.installedRemoteScaleIDs(for: pack.packID)
+        if installed.isEmpty {
+            return Set(pack.scales.map(\.id))
+        }
+        return installed
+    }
+
+    private var newScaleIDs: Set<String> {
+        Set(pack.scales.map(\.id)).subtracting(installedScaleIDs)
+    }
+
+    private var primaryActionTint: Color? {
+        switch selectionMode {
+        case .installSelecting:
+            return .green
+        case .updateSelecting:
+            return .orange
+        case .none:
+            return nil
+        }
+    }
+
+    private var isPrimaryDisabled: Bool {
+        if store.installingPackIDs.contains(pack.packID) {
+            return true
+        }
+        if selectionMode == .installSelecting {
+            return selectedScaleIDs.isEmpty
+        }
+        return false
+    }
+
+    private func handleCloseTap() {
+        if selectionMode != .none {
+            exitSelectionMode()
+            return
+        }
+        dismiss()
+    }
+
+    private func enterInstallSelection() {
+        selectionMode = .installSelecting
+        selectedScaleIDs = Set(pack.scales.map(\.id))
+    }
+
+    private func enterUpdateSelection() {
+        selectionMode = .updateSelecting
+        selectedNewScaleIDs = []
+        selectedScaleIDs = installedScaleIDs
+    }
+
+    private func exitSelectionMode() {
+        selectionMode = .none
+        selectedScaleIDs = []
+        selectedNewScaleIDs = []
+    }
+
+    private func prepareInstall(action: CommunityPacksStore.InstallAction, selectedScaleIDs: Set<String>) {
+        pendingAction = action
+        pendingScaleIDs = selectedScaleIDs
+        let collisions = store.collisions(for: pack, selectedScaleIDs: selectedScaleIDs)
+        if collisions.isEmpty {
+            resolveInstall(.overwrite)
+        } else {
+            showConflictDialog = true
+        }
+        exitSelectionMode()
+    }
+
+    private func resolveInstall(_ resolution: CommunityPacksStore.InstallResolution) {
+        store.enqueueInstall(pack: pack, action: pendingAction, resolution: resolution, selectedScaleIDs: pendingScaleIDs)
+    }
+
+    private func isScaleSelectable(_ scale: CommunityPackScaleViewModel) -> Bool {
+        switch selectionMode {
+        case .installSelecting:
+            return true
+        case .updateSelecting:
+            return newScaleIDs.contains(scale.id)
+        case .none:
+            return false
+        }
+    }
+
+    private func isScaleSelected(_ scale: CommunityPackScaleViewModel) -> Bool {
+        switch selectionMode {
+        case .installSelecting:
+            return selectedScaleIDs.contains(scale.id)
+        case .updateSelecting:
+            return selectedNewScaleIDs.contains(scale.id)
+        case .none:
+            return false
+        }
+    }
+
+    private func isScaleUpdating(_ scale: CommunityPackScaleViewModel) -> Bool {
+        selectionMode == .updateSelecting && installedScaleIDs.contains(scale.id)
+    }
+
+    private func toggleSelection(for scale: CommunityPackScaleViewModel) {
+        guard isScaleSelectable(scale) else { return }
+        switch selectionMode {
+        case .installSelecting:
+            if selectedScaleIDs.contains(scale.id) {
+                selectedScaleIDs.remove(scale.id)
+            } else {
+                selectedScaleIDs.insert(scale.id)
+            }
+        case .updateSelecting:
+            if selectedNewScaleIDs.contains(scale.id) {
+                selectedNewScaleIDs.remove(scale.id)
+            } else {
+                selectedNewScaleIDs.insert(scale.id)
+            }
+        case .none:
+            break
+        }
+    }
+
+    private func playScalePreview(_ scale: CommunityPackScaleViewModel) {
+        guard soundOn else { return }
+        let tenneyScale = communityScaleForFiltering(pack: pack, scale: scale)
+        let degrees = tenneyScale.degrees.sorted { lhs, rhs in
+            let l = RatioMath.hz(rootHz: tenneyScale.referenceHz, p: lhs.p, q: lhs.q, octave: lhs.octave, fold: false)
+            let r = RatioMath.hz(rootHz: tenneyScale.referenceHz, p: rhs.p, q: rhs.q, octave: rhs.octave, fold: false)
+            if l == r { return lhs.id < rhs.id }
+            return l < r
+        }
+        previewPlayer.play(mode: .arp, scale: tenneyScale, degrees: degrees, focus: nil, safeAmp: safeAmp)
+    }
+
+    @ViewBuilder
+    private func heroSymbolTile(symbol: String, colors: [Color], parallax: CGFloat) -> some View {
+        let gradient = LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)
+        ZStack {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(gradient.opacity(0.9))
+                .overlay(PremiumModalSurface.glassOverlay(in: RoundedRectangle(cornerRadius: 18, style: .continuous)))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                )
+            Image(systemName: symbol)
+                .font(.system(size: 40, weight: .semibold))
+                .symbolRenderingMode(.palette)
+                .foregroundStyle(colors[0], colors[1], colors.count > 2 ? colors[2] : Color.white)
+                .offset(y: parallax)
+                .ifAvailableSymbolEffect(symbolDrawn)
+        }
+        .frame(width: 84, height: 84)
+        .shadow(color: Color.black.opacity(0.12), radius: 12, x: 0, y: 8)
+    }
+
+    private func premiumBadge(title: String, systemImage: String) -> some View {
+        Label(title, systemImage: systemImage)
+            .font(.caption2.weight(.semibold))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Capsule().fill(Color.accentColor.opacity(0.18)))
+            .foregroundStyle(.primary)
     }
 }
 
@@ -1176,10 +1383,10 @@ private struct DetailStatView: View {
                 .font(.headline.monospacedDigit())
         }
         .padding(12)
-        .background(PackCardSurface(cornerRadius: 12))
+        .background(PremiumModalSurface.cardSurface(cornerRadius: 14))
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
         )
     }
 }
@@ -1187,7 +1394,15 @@ private struct DetailStatView: View {
 private struct CommunityScaleRow: View {
     let scale: CommunityPackScaleViewModel
     let packID: String
-    let onActions: () -> Void
+    let showsSelection: Bool
+    let isSelected: Bool
+    let isSelectable: Bool
+    let isUpdating: Bool
+    let isNew: Bool
+    let canPreviewInLibrary: Bool
+    let onToggleSelection: () -> Void
+    let onPlay: () -> Void
+    let onPreviewInLibrary: () -> Void
     @ObservedObject private var library = ScaleLibraryStore.shared
 
     var body: some View {
@@ -1195,7 +1410,7 @@ private struct CommunityScaleRow: View {
         HStack(spacing: 12) {
             ZStack {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color.secondary.opacity(0.12))
+                    .fill(Color.secondary.opacity(0.16))
                 VStack(spacing: 2) {
                     Text("\(scale.size)")
                         .font(.headline.monospacedDigit())
@@ -1205,11 +1420,25 @@ private struct CommunityScaleRow: View {
             .frame(width: 54, height: 54)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(scale.title)
-                    .font(.headline.weight(.semibold))
+                HStack(spacing: 6) {
+                    Text(scale.title)
+                        .font(.headline.weight(.semibold))
+                    if isNew {
+                        Text("New")
+                            .font(.caption2.weight(.semibold))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Capsule().fill(Color.accentColor.opacity(0.2)))
+                    }
+                }
                 HStack(spacing: 8) {
                     Text("\(scale.primeLimit)-limit").font(.caption).foregroundStyle(.secondary)
                     Text("\(scale.size) notes").font(.caption).foregroundStyle(.secondary)
+                }
+                if isUpdating {
+                    Text("Updating")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
                 }
             }
             Spacer()
@@ -1217,22 +1446,56 @@ private struct CommunityScaleRow: View {
                 Image(systemName: "star.fill")
                     .foregroundStyle(.yellow)
             }
-            Button(action: onActions) {
-                Image(systemName: "ellipsis")
-                    .font(.headline)
-                    .rotationEffect(.degrees(90))
-                    .frame(width: 28, height: 28)
+            if showsSelection {
+                if isSelectable {
+                    Button(action: onToggleSelection) {
+                        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                            .font(.title3)
+                            .foregroundStyle(isSelected ? Color.green : Color.secondary)
+                            .frame(width: 32, height: 32)
+                    }
+                    .buttonStyle(.plain)
+                }
+            } else {
+                Button(action: onPlay) {
+                    Image(systemName: "play.fill")
+                        .font(.headline)
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.plain)
+
+                Menu {
+                    if canPreviewInLibrary {
+                        Button("Preview in Library") {
+                            onPreviewInLibrary()
+                        }
+                    }
+                    Button("Copy scale name") {
+                        UIPasteboard.general.string = scale.title
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.headline)
+                        .rotationEffect(.degrees(90))
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
         }
         .padding(10)
         .background(
-            PackCardSurface(cornerRadius: 14)
+            PremiumModalSurface.cardSurface(cornerRadius: 16)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
                 )
         )
+        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .onTapGesture {
+            if showsSelection {
+                onToggleSelection()
+            }
+        }
     }
 }
 
@@ -1244,29 +1507,39 @@ private struct DetailSectionCard<Content: View>: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(title)
                 .font(.headline)
+                .scrollTransition(.animated) { view, phase in
+                    view.opacity(phase.isIdentity ? 1 : 0.6)
+                        .scaleEffect(phase.isIdentity ? 1 : 0.96)
+                }
             content()
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            PackCardSurface(cornerRadius: 20)
+            PremiumModalSurface.cardSurface(cornerRadius: 22)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
                 )
         )
     }
 }
 
-private struct DetailGlassCircle: View {
-    var body: some View {
+private struct ScrollOffsetPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func ifAvailableSymbolEffect(_ isActive: Bool) -> some View {
         if #available(iOS 26.0, *) {
-            Circle()
-                .fill(.clear)
-                .glassEffect(.regular, in: Circle())
+            self.symbolEffect(.drawOn, value: isActive)
         } else {
-            Circle()
-                .fill(.ultraThinMaterial)
+            self
         }
     }
 }
