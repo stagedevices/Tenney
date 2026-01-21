@@ -602,7 +602,7 @@ private let libraryStore = ScaleLibraryStore.shared
     private var scaleLibraryDetent: some View {
         ScaleLibrarySheet()
             .environmentObject(libraryStore)
-            .presentationDetents([.medium, .large], selection: .constant(.medium))
+            .presentationDetents([.large], selection: .constant(.medium))
             .presentationDragIndicator(.visible)
             .presentationBackground(.ultraThinMaterial)
             .onAppear { app.setMicActive(false) }

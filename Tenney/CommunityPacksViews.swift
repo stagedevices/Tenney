@@ -495,18 +495,14 @@ private struct FeaturedPackCard: View {
     }
 
     private var buttonIcon: String {
-        if isInstalled {
-            return updateAvailable ? "arrow.triangle.2.circlepath.circle.fill" : "arrow.up.forward.app"
+            // list buttons are always “open pack”
+            "arrow.up.forward.app"
         }
-        return "arrow.down.circle.fill"
-    }
 
     private var buttonAction: () -> Void {
-        if isInstalled && !updateAvailable {
-            return onOpen
+            // list buttons never trigger install/update; they open the pack sheet
+            onOpen
         }
-        return onInstall
-    }
 }
 
 private struct CompactPackCard: View {
@@ -574,18 +570,14 @@ private struct CompactPackCard: View {
     }
 
     private var buttonIcon: String {
-        if style == .installed {
-            return updateAvailable ? "arrow.triangle.2.circlepath.circle.fill" : "arrow.up.forward.app"
+            // list buttons are always “open pack”
+            "arrow.up.forward.app"
         }
-        return "arrow.down.circle.fill"
-    }
 
     private var buttonAction: () -> Void {
-        if style == .installed && !updateAvailable {
-            return onOpen
+            // list buttons never trigger install/update; they open the pack sheet
+            onOpen
         }
-        return onInstall
-    }
 }
 
 private struct PackCardPrimaryActionButton: View {
@@ -610,7 +602,6 @@ private struct PackCardPrimaryActionButton: View {
             }
         }
         .modifier(PackButtonStyleModifier(isProminent: isProminent))
-        .disabled(isInstalling)
     }
 
     @ViewBuilder

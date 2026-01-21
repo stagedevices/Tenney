@@ -43,7 +43,7 @@ enum PremiumModalSurface {
                                 .glassEffect(.regular, in: shape)
                 
                             // debug tint (keep while verifying; remove after)
-                            shape.fill(Color.green.opacity(0.08))
+                            shape.fill(Color.clear.opacity(0.08))
                 
                             // edge cue
                             shape.stroke(Color.white.opacity(0.14), lineWidth: 0.75)
