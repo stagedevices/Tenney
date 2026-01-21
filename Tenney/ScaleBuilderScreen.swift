@@ -1348,31 +1348,6 @@ connectedScenes
     }
 }
 
-// Neutral / white glass circle for export button
- private struct GlassWhiteCircle: ViewModifier {
-    func body(content: Content) -> some View {
-        content
-            .background(
-                Group {
-                    if #available(iOS 26.0, *) {
-                        Circle()
-                            .fill(.clear)
-                            .glassEffect(
-                                .regular,
-                                in: Circle()
-                            )
-                    } else {
-                        Circle()
-                            .fill(.ultraThinMaterial)
-                    }
-                }
-            )
-            .overlay(
-                Circle()
-                    .stroke(Color.secondary.opacity(0.16), lineWidth: 1)
-            )
-    }
-}
 
 
 

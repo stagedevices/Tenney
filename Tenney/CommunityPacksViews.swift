@@ -1016,7 +1016,7 @@ private struct CommunityPackDetailView: View {
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(.primary)
                     .frame(width: 44, height: 44)
-                    .modifier(GlassRedCircle())
+                    .modifier(GlassWhiteCircle())
                     .contentShape(Circle())
                     .accessibilityLabel(isSelecting ? "Back" : "Close")
             }
@@ -1105,10 +1105,10 @@ private struct CommunityPackDetailView: View {
             }
 
             Menu {
-                Button("Submit a Pack") {
+                Button("Contribute a Pack") {
                     openURL(CommunityPacksEndpoints.submitURL)
                 }
-                Button("How to submit (GitHub Issues)") {
+                Button("How to submit") {
                     openURL(CommunityPacksEndpoints.issuesURL)
                 }
             } label: {
