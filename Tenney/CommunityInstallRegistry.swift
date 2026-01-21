@@ -3,6 +3,7 @@ import Combine
 
 struct CommunityInstallRecord: Codable, Hashable {
     var installedScaleIDs: [UUID]
+    var installedRemoteScaleIDs: [String]?
     var installedAt: Date
     var installedVersion: String
     var installedContentHash: String
