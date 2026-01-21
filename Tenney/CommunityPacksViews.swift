@@ -35,6 +35,28 @@ private func communityScaleForFiltering(pack: CommunityPackViewModel, scale: Com
     )
 }
 
+private func firstSentence(_ text: String) -> String {
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return "" }
+    let terminators: Set<Character> = [".", "!", "?"]
+    var index = trimmed.startIndex
+    while index < trimmed.endIndex {
+        let character = trimmed[index]
+        if terminators.contains(character) {
+            let next = trimmed.index(after: index)
+            if next == trimmed.endIndex || trimmed[next].isWhitespace {
+                let sentence = String(trimmed[...index])
+                return sentence.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+        index = trimmed.index(after: index)
+    }
+    if let firstLine = trimmed.split(whereSeparator: \.isNewline).first {
+        return firstLine.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    return ""
+}
+
 struct CommunityPackBadge: View {
     let packName: String
 
@@ -129,12 +151,15 @@ struct CommunityPacksPageList: View {
                 await store.refresh(force: true)
             }
         }
-        .fullScreenCover(item: $selectedPack) { pack in
+        .sheet(item: $selectedPack) { pack in
             CommunityPackDetailView(
                 pack: pack,
                 namespace: packNamespace,
                 onPreviewRequested: onPreviewRequested
             )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.hidden)
+            .presentationBackground(PremiumModalSurface.background)
         }
         .task {
             guard !didTriggerRefresh else { return }
@@ -277,18 +302,22 @@ private struct CommunityPacksSections: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(spacing: 14) {
                         ForEach(featured) { pack in
-                            FeaturedPackCard(
-                                pack: pack,
-                                isInstalling: store.installingPackIDs.contains(pack.packID),
-                                updateAvailable: updateAvailable(pack),
-                                isInstalled: store.isInstalled(pack.packID),
-                                onOpen: { selectedPack = pack },
-                                onInstall: { store.enqueueInstall(pack: pack, action: action(for: pack)) },
-                                namespace: namespace
-                            )
-                            .frame(width: 280)
-                            .modifier(FeaturedScrollTransition())
-                            .opacity(selectedPack?.packID == pack.packID ? 0 : 1)
+                            let isSelected = selectedPack?.packID == pack.packID
+                            VStack(spacing: 0) {
+                                FeaturedPackCard(
+                                    pack: pack,
+                                    isInstalling: store.installingPackIDs.contains(pack.packID),
+                                    updateAvailable: updateAvailable(pack),
+                                    isInstalled: store.isInstalled(pack.packID),
+                                    isMatchedSource: isSelected,
+                                    onOpen: { selectedPack = pack },
+                                    onInstall: { store.enqueueInstall(pack: pack, action: action(for: pack)) },
+                                    namespace: namespace
+                                )
+                                .frame(width: 280)
+                                .modifier(FeaturedScrollTransition())
+                            }
+                            .opacity(isSelected ? 0 : 1)
                         }
                     }
                     .padding(.horizontal, 4)
@@ -304,16 +333,20 @@ private struct CommunityPacksSections: View {
             } else {
                 LazyVStack(spacing: 10) {
                     ForEach(installed) { pack in
-                        CompactPackCard(
-                            pack: pack,
-                            style: .installed,
-                            isInstalling: store.installingPackIDs.contains(pack.packID),
-                            updateAvailable: updateAvailable(pack),
-                            onOpen: { selectedPack = pack },
-                            onInstall: { store.enqueueInstall(pack: pack, action: .update) },
-                            namespace: namespace
-                        )
-                        .opacity(selectedPack?.packID == pack.packID ? 0 : 1)
+                        let isSelected = selectedPack?.packID == pack.packID
+                        VStack(spacing: 0) {
+                            CompactPackCard(
+                                pack: pack,
+                                style: .installed,
+                                isInstalling: store.installingPackIDs.contains(pack.packID),
+                                updateAvailable: updateAvailable(pack),
+                                isMatchedSource: isSelected,
+                                onOpen: { selectedPack = pack },
+                                onInstall: { store.enqueueInstall(pack: pack, action: .update) },
+                                namespace: namespace
+                            )
+                        }
+                        .opacity(isSelected ? 0 : 1)
                     }
                 }
             }
@@ -321,16 +354,20 @@ private struct CommunityPacksSections: View {
             SectionHeader(title: "Browse all")
             LazyVStack(spacing: 10) {
                 ForEach(browseAll) { pack in
-                    CompactPackCard(
-                        pack: pack,
-                        style: .browse,
-                        isInstalling: store.installingPackIDs.contains(pack.packID),
-                        updateAvailable: updateAvailable(pack),
-                        onOpen: { selectedPack = pack },
-                        onInstall: { store.enqueueInstall(pack: pack, action: .install) },
-                        namespace: namespace
-                    )
-                    .opacity(selectedPack?.packID == pack.packID ? 0 : 1)
+                    let isSelected = selectedPack?.packID == pack.packID
+                    VStack(spacing: 0) {
+                        CompactPackCard(
+                            pack: pack,
+                            style: .browse,
+                            isInstalling: store.installingPackIDs.contains(pack.packID),
+                            updateAvailable: updateAvailable(pack),
+                            isMatchedSource: isSelected,
+                            onOpen: { selectedPack = pack },
+                            onInstall: { store.enqueueInstall(pack: pack, action: .install) },
+                            namespace: namespace
+                        )
+                    }
+                    .opacity(isSelected ? 0 : 1)
                 }
             }
         }
@@ -374,6 +411,7 @@ private struct FeaturedPackCard: View {
     let isInstalling: Bool
     let updateAvailable: Bool
     let isInstalled: Bool
+    let isMatchedSource: Bool
     let onOpen: () -> Void
     let onInstall: () -> Void
     let namespace: Namespace.ID
@@ -418,7 +456,7 @@ private struct FeaturedPackCard: View {
         .padding(16)
         .background(
             PackCardSurface(cornerRadius: 24)
-                .matchedGeometryEffect(id: "pack-card-\(pack.packID)", in: namespace, isSource: true)
+                .matchedGeometryEffect(id: "pack-card-\(pack.packID)", in: namespace, isSource: isMatchedSource)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
@@ -471,6 +509,7 @@ private struct CompactPackCard: View {
     let style: CompactPackCardStyle
     let isInstalling: Bool
     let updateAvailable: Bool
+    let isMatchedSource: Bool
     let onOpen: () -> Void
     let onInstall: () -> Void
     let namespace: Namespace.ID
@@ -512,7 +551,7 @@ private struct CompactPackCard: View {
         .padding(12)
         .background(
             PackCardSurface(cornerRadius: 16)
-                .matchedGeometryEffect(id: "pack-card-\(pack.packID)", in: namespace, isSource: true)
+                .matchedGeometryEffect(id: "pack-card-\(pack.packID)", in: namespace, isSource: isMatchedSource)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -695,6 +734,10 @@ private struct CommunityPackDetailView: View {
         return "Preview"
     }
 
+    private var isSelecting: Bool {
+        selectionMode != .none
+    }
+
     var body: some View {
         detailContent
     }
@@ -789,6 +832,7 @@ private struct CommunityPackDetailView: View {
                 .padding(.top, 8)
                 .padding(.bottom, 96)
             }
+            .scrollIndicators(.hidden)
             .safeAreaInset(edge: .top) { detailToolbar }
             .safeAreaInset(edge: .bottom) { detailActionBar }
             .coordinateSpace(name: "packDetailScroll")
@@ -803,6 +847,7 @@ private struct CommunityPackDetailView: View {
         .onDisappear {
             previewPlayer.stop()
         }
+        .interactiveDismissDisabled(isSelecting)
         .presentationBackground(PremiumModalSurface.background)
         .confirmationDialog(
             "Some scales already exist in your Library.",
@@ -831,6 +876,7 @@ private struct CommunityPackDetailView: View {
     private var headerCard: some View {
         let identity = PackVisualIdentity.identity(for: pack.packID, accent: .accentColor)
         let parallax = max(min(-scrollOffset / 10, 12), -12)
+        let posterDescription = firstSentence(pack.description)
         return VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top, spacing: 16) {
                 VStack(alignment: .leading, spacing: 8) {
@@ -839,11 +885,12 @@ private struct CommunityPackDetailView: View {
                     Text("by \(pack.authorName)")
                         .font(.title3.weight(.medium))
                         .foregroundStyle(.secondary)
-                    if !pack.description.isEmpty {
-                        Text(pack.description)
+                    if !posterDescription.isEmpty {
+                        Text(posterDescription)
                             .font(.callout)
                             .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 Spacer()
@@ -966,21 +1013,13 @@ private struct CommunityPackDetailView: View {
             }
             Spacer()
             Button(action: handleCloseTap) {
-                Image(systemName: selectionMode == .none ? "xmark" : "chevron.left")
+                Image(systemName: isSelecting ? "chevron.left" : "xmark")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(.primary)
                     .frame(width: 44, height: 44)
-                    .background(
-                        Circle()
-                            .fill(PremiumModalSurface.background)
-                            .overlay(PremiumModalSurface.glassOverlay(in: Circle()))
-                            .overlay(
-                                Circle()
-                                    .stroke(Color.secondary.opacity(0.28), lineWidth: 1)
-                            )
-                    )
+                    .modifier(GlassRedCircle())
                     .contentShape(Circle())
-                    .accessibilityLabel(selectionMode == .none ? "Close" : "Back")
+                    .accessibilityLabel(isSelecting ? "Back" : "Close")
             }
             .buttonStyle(.plain)
         }
@@ -1340,24 +1379,12 @@ private struct CommunityPackDetailView: View {
 
     @ViewBuilder
     private func heroSymbolTile(symbol: String, colors: [Color], parallax: CGFloat) -> some View {
-        let gradient = LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)
-        ZStack {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(gradient.opacity(0.9))
-                .overlay(PremiumModalSurface.glassOverlay(in: RoundedRectangle(cornerRadius: 18, style: .continuous)))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(Color.white.opacity(0.25), lineWidth: 1)
-                )
-            Image(systemName: symbol)
-                .font(.system(size: 40, weight: .semibold))
-                .symbolRenderingMode(.palette)
-                .foregroundStyle(colors[0], colors[1], colors.count > 2 ? colors[2] : Color.white)
-                .offset(y: parallax)
-                .ifAvailableSymbolEffect(symbolDrawn)
-        }
-        .frame(width: 84, height: 84)
-        .shadow(color: Color.black.opacity(0.12), radius: 12, x: 0, y: 8)
+        PackHeroSymbolView(
+            symbolName: symbol,
+            colors: colors,
+            parallax: parallax,
+            symbolDrawn: symbolDrawn
+        )
     }
 
     private func premiumBadge(title: String, systemImage: String) -> some View {
@@ -1495,6 +1522,52 @@ private struct CommunityScaleRow: View {
             if showsSelection {
                 onToggleSelection()
             }
+        }
+    }
+}
+
+private struct PackHeroSymbolView: View {
+    let symbolName: String
+    let colors: [Color]
+    let parallax: CGFloat
+    let symbolDrawn: Bool
+
+    var body: some View {
+        let gradient = LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)
+        ZStack {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(gradient.opacity(0.9))
+                .overlay(PremiumModalSurface.glassOverlay(in: RoundedRectangle(cornerRadius: 18, style: .continuous)))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                )
+
+            iconLayer
+                .offset(y: parallax)
+        }
+        .frame(width: 84, height: 84)
+        .shadow(color: Color.black.opacity(0.12), radius: 12, x: 0, y: 8)
+    }
+
+    private var iconLayer: some View {
+        ZStack {
+            Circle()
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    Circle()
+                        .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                )
+                .frame(width: 52, height: 52)
+
+            Image(systemName: symbolName)
+                .font(.system(size: 52, weight: .semibold))
+                .symbolRenderingMode(.palette)
+                .foregroundStyle(colors[0], colors[1], colors.count > 2 ? colors[2] : colors[0])
+                .opacity(1)
+                .blendMode(.normal)
+                .compositingGroup()
+                .ifAvailableSymbolEffect(symbolDrawn)
         }
     }
 }
