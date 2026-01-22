@@ -158,7 +158,7 @@ struct ThemesCenterView: View {
             return "Sets the weighting basis for theme mixing."
         }
     }
-    
+    // monochrome chip presets
     private var monochromeTintPresets: [(name: String, hex: String)] {
         [
             ("Black",     "#000000"),
@@ -168,7 +168,7 @@ struct ThemesCenterView: View {
             ("Crystal",   "#38D9FF"),
             ("Amethyst",  "#B06CFF"),
             ("Red",       "#E62E3D"),
-            ("Blue",      "#1A4CFF")
+            ("Green",      "#008000")
         ]
     }
 

@@ -299,7 +299,7 @@ private extension View {
 
 struct StudioConsoleView: View {
     @Environment(\.colorScheme) private var scheme
-
+    @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var homeQuery: String = ""

@@ -32,7 +32,7 @@ private let libraryStore = ScaleLibraryStore.shared
     @AppStorage(SettingsKeys.latticeThemeStyle) private var themeStyleRaw: String = "system"
     private var resolvedTheme: ResolvedTenneyTheme {
         let _ = monochromeTintHex
-        TenneyThemeRegistry.resolvedCurrent(
+        return TenneyThemeRegistry.resolvedCurrent(
             themeIDRaw: tenneyThemeIDRaw,
             scheme: effectiveIsDark ? .dark : .light,
             mixBasis: TenneyMixBasis(rawValue: mixBasisRaw),
