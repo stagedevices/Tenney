@@ -174,6 +174,7 @@ final class ToneOutputEngine {
         let freq: Double
         let amp: Float
         let owner: VoiceOwner
+        let ownerKey: String
     }
 
     private struct VoiceMeta {
@@ -303,7 +304,68 @@ final class ToneOutputEngine {
     func snapshotActiveVoices(excluding owners: Set<VoiceOwner> = []) -> [VoiceSnapshot] {
         metaAll()
             .filter { !owners.contains($0.1.owner) }
-            .map { (_, m) in VoiceSnapshot(freq: m.freq, amp: m.amp, owner: m.owner) }
+            .map { (_, m) in VoiceSnapshot(freq: m.freq, amp: m.amp, owner: m.owner, ownerKey: m.ownerKey) }
+    }
+
+    var isEngineRunning: Bool { isRunning }
+
+    func activeVoiceCount() -> Int {
+        metaAll().count
+    }
+
+    func fadeOutAllVoices(releaseSeconds: Double) {
+        let ids = metaAll().map { $0.0 }
+        for id in ids {
+            release(id: id, seconds: releaseSeconds)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + releaseSeconds) { [weak self] in
+            self?.stopAll()
+        }
+    }
+
+    func hardStopEngine(deactivateSession: Bool) {
+        if !Thread.isMainThread {
+            DispatchQueue.main.sync { hardStopEngine(deactivateSession: deactivateSession) }
+            return
+        }
+
+        if engine.isRunning { engine.stop() }
+        engine.reset()
+
+        if let sourceNode {
+            engine.detach(sourceNode)
+            self.sourceNode = nil
+        }
+        phaseScopeTapInstalled = false
+
+        if let token { NotificationCenter.default.removeObserver(token) }
+        token = nil
+
+        os_unfair_lock_lock(&cmdLock)
+        pendingCmds.removeAll(keepingCapacity: true)
+        processingCmds.removeAll(keepingCapacity: true)
+        os_unfair_lock_unlock(&cmdLock)
+
+        os_unfair_lock_lock(&metaLock)
+        metaByID.removeAll(keepingCapacity: true)
+        os_unfair_lock_unlock(&metaLock)
+        clearAllOwnerVoices()
+
+        for i in voices.indices {
+            voices[i].active = false
+            voices[i].env = 0
+            voices[i].envState = 0
+        }
+
+        testToneID = nil
+        firstRenderLogged = false
+        isRunning = false
+
+#if os(iOS) || targetEnvironment(macCatalyst)
+        if deactivateSession {
+            try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+        }
+#endif
     }
 
     /// Called when Builder sheet appears.

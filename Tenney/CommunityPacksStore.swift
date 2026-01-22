@@ -921,14 +921,14 @@ final class CommunityPacksStore: ObservableObject {
     }
 
     #if DEBUG
-    private static func logFetch(_ message: String) { print(message) }
+    nonisolated private static func logFetch(_ message: String) { print(message) }
     #else
-    private static func logFetch(_ message: String) { }
+    nonisolated private static func logFetch(_ message: String) { }
     #endif
 
     private func logFetch(_ message: String) { Self.logFetch(message) }
 
-    private static func decodeSchema<T: Decodable>(
+    nonisolated private static func decodeSchema<T: Decodable>(
         _ type: T.Type,
         data: Data,
         label: String,
@@ -960,7 +960,7 @@ final class CommunityPacksStore: ObservableObject {
         }
     }
 
-    private static func decodeScalePayload(
+    nonisolated private static func decodeScalePayload(
         data: Data,
         label: String,
         assumedSchemaVersion: Int?,
@@ -978,7 +978,7 @@ final class CommunityPacksStore: ObservableObject {
         }
     }
 
-    private static func decodeSchemaOffMain<T: Decodable>(
+    nonisolated private static func decodeSchemaOffMain<T: Decodable>(
         _ type: T.Type,
         data: Data,
         label: String,
@@ -996,7 +996,7 @@ final class CommunityPacksStore: ObservableObject {
         }.value
     }
 
-    private static func decodeScalePayloadOffMain(
+    nonisolated private static func decodeScalePayloadOffMain(
         data: Data,
         label: String,
         assumedSchemaVersion: Int?,
@@ -1116,7 +1116,7 @@ final class CommunityPacksStore: ObservableObject {
         return String(format: "0x%02x", byte)
     }
 
-    private static func logSchemaMismatch(label: String, data: Data) {
+    nonisolated private static func logSchemaMismatch(label: String, data: Data) {
         var versionDescription = "missing"
         if let object = try? JSONSerialization.jsonObject(with: data),
            let dict = object as? [String: Any] {
@@ -1127,7 +1127,7 @@ final class CommunityPacksStore: ObservableObject {
         Self.logFetch("CommunityPacks \(label) schema mismatch (schemaVersion: \(versionDescription)).")
     }
 
-    private static func logDecodingError(label: String, error: DecodingError, data: Data) {
+    nonisolated private static func logDecodingError(label: String, error: DecodingError, data: Data) {
         let path = Self.decodingPath(from: error)
         Self.logFetch("CommunityPacks \(label) decode error at \(path.isEmpty ? "<root>" : path): \(error.localizedDescription)")
         if let object = try? JSONSerialization.jsonObject(with: data) {
@@ -1140,7 +1140,7 @@ final class CommunityPacksStore: ObservableObject {
         }
     }
 
-    private static func decodingPath(from error: DecodingError) -> String {
+    nonisolated private static func decodingPath(from error: DecodingError) -> String {
         let path: [CodingKey]
         switch error {
         case .typeMismatch(_, let context):
@@ -1157,7 +1157,7 @@ final class CommunityPacksStore: ObservableObject {
         return path.map(\.stringValue).joined(separator: ".")
     }
 
-    private static func injectSchemaVersionIfNeeded(
+    nonisolated private static func injectSchemaVersionIfNeeded(
         data: Data,
         label: String,
         assumedSchemaVersion: Int?,
@@ -1293,7 +1293,7 @@ final class CommunityPacksStore: ObservableObject {
         return (packData, scaleDataByPath)
     }
 
-    private static func communityPacksDecoder() -> JSONDecoder {
+    nonisolated private static func communityPacksDecoder() -> JSONDecoder {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .custom { decoder in
             let container = try decoder.singleValueContainer()
@@ -1320,13 +1320,13 @@ final class CommunityPacksStore: ObservableObject {
         return decoder
     }
 
-    private static let iso8601FractionalFormatter: ISO8601DateFormatter = {
+    nonisolated private static let iso8601FractionalFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter
     }()
 
-    private static let iso8601Formatter: ISO8601DateFormatter = {
+    nonisolated private static let iso8601Formatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
         return formatter
