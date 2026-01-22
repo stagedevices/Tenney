@@ -176,77 +176,7 @@ struct ScaleLibrarySheet: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                libraryGlassBackground
-                    .ignoresSafeArea()
-                VStack(spacing: 0) {
-                    
-                    // card below the search bar
-                    LibraryControlsCard(
-                        sortKey: $library.sortKey,
-                        showOnlyFavorites: $libraryFavoritesOnly,
-                        showFilterSheet: $showFilterSheet,
-                        selectedTagRefs: selectedTagRefs,
-                        filterChips: activeFilterChips,
-                        onRemoveTag: { filters.selectedTagIDs.remove($0) }
-                    )
-                    .padding(.horizontal, 12)
-                    .padding(.top, 8)
-                    .padding(.bottom, 10)
-                    
-                    GeometryReader { proxy in
-                        TabView(selection: $libraryPage) {
-                            
-                            PackBrowserPageList(
-                                filteredScales: filteredScales,
-                                searchText: librarySearchText,
-                                onPickScale: { actionTarget = $0 },
-                                onMoveToPack: { packPickerTarget = $0 },
-                                onOpenPack: { selectedPack = $0 },
-                                onOpenPackInfo: { infoPackTarget = $0 },
-                                onRenamePack: beginRenamePack,
-                                onDeletePack: { deletePackTarget = $0 },
-                                onOpenCommunityPack: { selectedCommunityPack = $0 },
-                                openInBuilder: openInBuilder,
-                                addToBuilder: addToBuilder,
-                                playScalePreview: playScalePreview,
-                                onClearFilters: clearAllFilters
-                            )
-                            .tag(0)
-                            
-                            CollectionsByLimitPageList(
-                                limits: limits,
-                                countForLimit: { count(for: $0) },
-                                filteredSavedScales: filteredScales,
-                                hasResults: !filteredScales.isEmpty,
-                                isFiltering: filters.isFiltering(
-                                    searchText: librarySearchText,
-                                    favoritesOnly: libraryFavoritesOnly
-                                ),
-                                onClearFilters: clearAllFilters,
-                                onChooseScale: { chosen in addToBuilder(chosen) }
-                            )
-                            .tag(1)
-
-                            CommunityPacksPageList(
-                                sortKey: library.sortKey,
-                                filters: filters,
-                                favoritesOnly: libraryFavoritesOnly,
-                                searchText: librarySearchText,
-                                onClearFilters: clearAllFilters,
-                                onPreviewRequested: handleCommunityPackPreviewRequest
-                            )
-                                .tag(2)
-                        }
-                        .tabViewStyle(.page(indexDisplayMode: .never))
-                        .background(Color.clear)
-                        .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
-                    }
-                    
-                    PagePips(page: $libraryPage, labels: ["Packs", "Collections by Limit", "Community Packs"])
-                        .padding(.bottom, 10)
-                }
-            }
+            mainContent
             .listStyle(.insetGrouped)
             .navigationTitle("Library")
             .searchable(text: $librarySearchText, placement: .navigationBarDrawer(displayMode: .automatic))
@@ -427,6 +357,81 @@ struct ScaleLibrarySheet: View {
         .onChange(of: library.sortKey) { newValue in
             librarySortKeyRaw = newValue.rawValue
         }
+    }
+
+    private var mainContent: some View {
+        ZStack {
+            libraryGlassBackground
+                .ignoresSafeArea()
+            VStack(spacing: 0) {
+                LibraryControlsCard(
+                    sortKey: $library.sortKey,
+                    showOnlyFavorites: $libraryFavoritesOnly,
+                    showFilterSheet: $showFilterSheet,
+                    selectedTagRefs: selectedTagRefs,
+                    filterChips: activeFilterChips,
+                    onRemoveTag: { filters.selectedTagIDs.remove($0) }
+                )
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
+                .padding(.bottom, 10)
+
+                GeometryReader { proxy in
+                    libraryPages
+                        .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
+                }
+
+                PagePips(page: $libraryPage, labels: ["Packs", "Collections by Limit", "Community Packs"])
+                    .padding(.bottom, 10)
+            }
+        }
+    }
+
+    private var libraryPages: some View {
+        TabView(selection: $libraryPage) {
+            PackBrowserPageList(
+                filteredScales: filteredScales,
+                searchText: librarySearchText,
+                onPickScale: { actionTarget = $0 },
+                onMoveToPack: { packPickerTarget = $0 },
+                onOpenPack: { selectedPack = $0 },
+                onOpenPackInfo: { infoPackTarget = $0 },
+                onRenamePack: beginRenamePack,
+                onDeletePack: { deletePackTarget = $0 },
+                onOpenCommunityPack: { selectedCommunityPack = $0 },
+                openInBuilder: openInBuilder,
+                addToBuilder: addToBuilder,
+                playScalePreview: playScalePreview,
+                onClearFilters: clearAllFilters
+            )
+            .tag(0)
+
+            CollectionsByLimitPageList(
+                limits: limits,
+                countForLimit: { count(for: $0) },
+                filteredSavedScales: filteredScales,
+                hasResults: !filteredScales.isEmpty,
+                isFiltering: filters.isFiltering(
+                    searchText: librarySearchText,
+                    favoritesOnly: libraryFavoritesOnly
+                ),
+                onClearFilters: clearAllFilters,
+                onChooseScale: { chosen in addToBuilder(chosen) }
+            )
+            .tag(1)
+
+            CommunityPacksPageList(
+                sortKey: library.sortKey,
+                filters: filters,
+                favoritesOnly: libraryFavoritesOnly,
+                searchText: librarySearchText,
+                onClearFilters: clearAllFilters,
+                onPreviewRequested: handleCommunityPackPreviewRequest
+            )
+            .tag(2)
+        }
+        .tabViewStyle(.page(indexDisplayMode: .never))
+        .background(Color.clear)
     }
     @ViewBuilder
     private var libraryGlassBackground: some View {
@@ -1368,7 +1373,7 @@ private struct PackCreationSheet: View {
                                 Spacer()
                                 if selectedIDs.contains(scale.id) {
                                     Image(systemName: "checkmark.circle.fill")
-                                        .foregroundStyle(.accent)
+                                        .foregroundStyle(.accentColor)
                                 }
                             }
                         }
