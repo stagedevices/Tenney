@@ -264,9 +264,20 @@ private struct ScopeTrace: View {
                 path.move(to: map(points[0]))
                 for p in points.dropFirst() { path.addLine(to: map(p)) }
 
-                ctx.stroke(path,
-                           with: .color(theme.scopeTraceDefault.opacity(alpha)),
-                           style: StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
+                if theme.idRaw == LatticeThemeID.monochrome.rawValue {
+                    ScopeTraceStyle.strokeMonochrome(
+                        path: path,
+                        in: &ctx,
+                        theme: theme,
+                        coreWidth: 1.8,
+                        sheenWidth: 0.9,
+                        alpha: alpha
+                    )
+                } else {
+                    ctx.stroke(path,
+                               with: .color(theme.scopeTraceDefault.opacity(alpha)),
+                               style: StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
+                }
             }
             .blur(radius: blur)
             .opacity(referenceOn ? 1.0 : 0.0)

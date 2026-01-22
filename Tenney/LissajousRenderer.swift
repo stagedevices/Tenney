@@ -303,7 +303,10 @@ final class LissajousRenderer: NSObject, MTKViewDelegate {
             return SIMD4(1,1,1,Float(alpha))
             #endif
         }
-        let stroke = rgba(theme.scopeTraceDefault, alpha: 0.9)
+        let strokeColor = theme.idRaw == LatticeThemeID.monochrome.rawValue
+            ? theme.scopeInkPair().ink
+            : theme.scopeTraceDefault
+        let stroke = rgba(strokeColor, alpha: 0.9)
 
         // Build verts
         var verts: [VSIn] = []
@@ -457,8 +460,14 @@ final class LissajousRenderer: NSObject, MTKViewDelegate {
             return SIMD4<Float>(0.95, 0.95, 0.95, Float(alpha))
             #endif
         }
-        coreColor = rgba(theme.e3, alpha: 0.85)
-        sheenColor = rgba(theme.scopeTraceDefault, alpha: 0.95)
+        if theme.idRaw == LatticeThemeID.monochrome.rawValue {
+            let inks = theme.scopeInkPair()
+            coreColor = rgba(inks.deepInk, alpha: 0.85)
+            sheenColor = rgba(inks.ink, alpha: 0.95)
+        } else {
+            coreColor = rgba(theme.e3, alpha: 0.85)
+            sheenColor = rgba(theme.scopeTraceDefault, alpha: 0.95)
+        }
     }
 
     // MARK: - Persistence targets
@@ -522,7 +531,10 @@ final class LissajousRenderer: NSObject, MTKViewDelegate {
                 return SIMD4(1,1,1,Float(alpha))
                 #endif
             }
-            let stroke = rgba(theme.scopeTraceDefault, alpha: 0.9)
+            let strokeColor = theme.idRaw == LatticeThemeID.monochrome.rawValue
+                ? theme.scopeInkPair().ink
+                : theme.scopeTraceDefault
+            let stroke = rgba(strokeColor, alpha: 0.9)
 
             let pptr = livePointBuffer!.contents().bindMemory(to: VSIn.self, capacity: max(1, livePointCount))
             if livePointCount > 0 {

@@ -89,7 +89,17 @@ struct ThemeScopeMicroPreview: View {
                 if i == 0 { p.move(to: CGPoint(x: x, y: y)) }
                 else { p.addLine(to: CGPoint(x: x, y: y)) }
             }
-            ctx.stroke(p, with: .color(theme.scopeTraceDefault), lineWidth: 1.4)
+            if theme.idRaw == LatticeThemeID.monochrome.rawValue {
+                ScopeTraceStyle.strokeMonochrome(
+                    path: p,
+                    in: &ctx,
+                    theme: theme,
+                    coreWidth: 1.6,
+                    sheenWidth: 0.8
+                )
+            } else {
+                ctx.stroke(p, with: .color(theme.scopeTraceDefault), lineWidth: 1.4)
+            }
         }
         .frame(height: 22)
         .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
