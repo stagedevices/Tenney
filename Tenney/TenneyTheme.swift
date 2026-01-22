@@ -93,6 +93,8 @@ public struct ResolvedTenneyTheme: Equatable {
      public var isDark: Bool { scheme == .dark }
      public var e3: Color { primeTint(3) }
      public var e5: Color { primeTint(5) }
+     public var accent: Color { tunerNeedle }
+     public var accentGradient: LinearGradient { ThemeAccent.gradient(from: accent) }
      init(
          idRaw: String,
          name: String,
