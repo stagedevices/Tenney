@@ -1625,6 +1625,14 @@ struct LatticeView: View {
         default:      return 12
         }
     }
+
+    private func helmholtzPreference(from preference: AccidentalPreference) -> NotationFormatter.AccidentalPreference {
+        switch preference {
+        case .preferFlats: return .preferFlats
+        case .preferSharps: return .preferSharps
+        case .auto: return .auto
+        }
+    }
     
     // MARK: - Info-card octave helpers (no-fold; do NOT force ratio back to 1–2)
     private func ratioWithOctaveOffsetNoFold(num: Int, den: Int, offset: Int) -> (Int, Int) {
@@ -4404,14 +4412,20 @@ struct LatticeView: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             // Adjusted frequency for staff + metrics (unfolded for display)
-            let hzAdj = f.hz * pow(2.0, Double(infoOctaveOffset))
-            let staff = NotationFormatter.staffNoteName(freqHz: hzAdj)
+            let baseHz = foldToAudible(app.rootHz * (Double(f.num) / Double(f.den)), minHz: 20, maxHz: 5000)
+            let hzAdj = baseHz * pow(2.0, Double(infoOctaveOffset))
+            let pref = AccidentalPreference(rawValue: accidentalPreferenceRaw) ?? .auto
+            let helmholtzPref = helmholtzPreference(from: pref)
+            let noteLabel = NotationFormatter.closestHelmholtzLabel(
+                freqHz: hzAdj,
+                a4Hz: staffA4Hz,
+                preference: helmholtzPref
+            )
             // Adjusted ratio string (NO FOLD to 1–2; preserves +/- octaves in ratio)
             let (adjP, adjQ) = ratioWithOctaveOffsetNoFold(num: f.num, den: f.den, offset: infoOctaveOffset)
             let jiText: String = (store.labelMode == .ratio)
             ? "\(adjP)/\(adjQ)"
             : hejiTextLabel(p: f.num, q: f.den, octave: infoOctaveOffset, rootHz: app.rootHz)
-            let pref = AccidentalPreference(rawValue: accidentalPreferenceRaw) ?? .auto
             let ratioRef = RatioRef(p: f.num, q: f.den, octave: infoOctaveOffset, monzo: [:])
             let hejiContext = HejiContext(
                 referenceA4Hz: staffA4Hz,
@@ -4424,8 +4438,8 @@ struct LatticeView: View {
             )
             
             // Octave step availability (audible range)
-            let nextUpHz   = f.hz * pow(2.0, Double(infoOctaveOffset + 1))
-            let nextDownHz = f.hz * pow(2.0, Double(infoOctaveOffset - 1))
+            let nextUpHz   = baseHz * pow(2.0, Double(infoOctaveOffset + 1))
+            let nextDownHz = baseHz * pow(2.0, Double(infoOctaveOffset - 1))
             let canUp   = nextUpHz   >= 20 && nextUpHz   <= 5000
             let canDown = nextDownHz >= 20 && nextDownHz <= 5000
             
@@ -4436,8 +4450,10 @@ struct LatticeView: View {
                         if store.labelMode == .heji {
                             HejiPitchLabel(context: hejiContext, pitch: .ratio(ratioRef))
                         } else {
-                            Text("\(staff.name)\(staff.octave)")
-                                .font(.title3.weight(.semibold))
+                            Text(noteLabel)
+                                .font(.title2.weight(.semibold))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.9)
                             Text(jiText)
                                 .font(.headline.monospaced())
                                 .opacity(0.9)
@@ -4453,7 +4469,7 @@ struct LatticeView: View {
                     }
                     HStack(spacing: 12) {
                         // keep your ET text; use adjusted Hz for cents if desired
-                        Text(String(format: "%+.1f¢ vs ET", f.etCents))
+                        Text(String(format: "%+.1f¢ vs ET", RatioMath.centsFromET(freqHz: hzAdj, refHz: app.rootHz)))
                             .font(.footnote).foregroundStyle(.secondary)
                         Text(String(format: "%.1f Hz", hzAdj))
                             .font(.footnote).foregroundStyle(.secondary)
@@ -4507,7 +4523,8 @@ struct LatticeView: View {
         .frame(maxWidth: 320, alignment: .leading)
         // Ensure octave changes always retune immediately (even if other gestures also fire while the card is up).
                 .onChange(of: infoOctaveOffset) { newOffset in
-                let hzNew = f.hz * pow(2.0, Double(newOffset))
+                let baseHzLocal = foldToAudible(app.rootHz * (Double(f.num) / Double(f.den)), minHz: 20, maxHz: 5000)
+                let hzNew = baseHzLocal * pow(2.0, Double(newOffset))
                     switchInfoTone(toHz: hzNew, newOffset: newOffset)
                 }
     }
