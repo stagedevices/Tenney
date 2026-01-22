@@ -218,6 +218,46 @@ public struct ResolvedTenneyTheme: Equatable {
         return tunerInTuneNeutral.opacity(tunerInTuneStrength)
     }
 
+    func scopeInkPair() -> (ink: Color, deepInk: Color) {
+        guard idRaw == LatticeThemeID.monochrome.rawValue else {
+            return (ink: scopeTraceDefault, deepInk: scopeTraceDefault)
+        }
+
+        let inkHex = UserDefaults.standard.string(forKey: SettingsKeys.tenneyMonochromeTintHex) ?? "#000000"
+        let ink = Color(hex: inkHex)
+        let deepInk = ResolvedTenneyTheme.deepInk(from: ink, isDark: isDark)
+        return (ink: ink, deepInk: deepInk)
+    }
+
+    private static func deepInk(from ink: Color, isDark: Bool) -> Color {
+        #if canImport(UIKit)
+        let ui = UIColor(ink)
+        var h: CGFloat = 0
+        var s: CGFloat = 0
+        var b: CGFloat = 0
+        var a: CGFloat = 0
+        if ui.getHue(&h, saturation: &s, brightness: &b, alpha: &a) {
+            let sat = min(1.0, s * 1.25 + 0.10)
+            let bri = max(isDark ? 0.18 : 0.0, b * 0.45)
+            return Color(uiColor: UIColor(hue: h, saturation: sat, brightness: bri, alpha: a))
+        }
+        #elseif canImport(AppKit)
+        let ns = NSColor(ink)
+        let c = ns.usingColorSpace(.sRGB) ?? ns
+        var h: CGFloat = 0
+        var s: CGFloat = 0
+        var b: CGFloat = 0
+        var a: CGFloat = 0
+        c.getHue(&h, saturation: &s, brightness: &b, alpha: &a)
+        let sat = min(1.0, s * 1.25 + 0.10)
+        let bri = max(isDark ? 0.18 : 0.0, b * 0.45)
+        return Color(.sRGB, hue: Double(h), saturation: Double(sat), brightness: Double(bri), opacity: Double(a))
+        #endif
+
+        let darkMix = ink.mixed(with: .black, amount: isDark ? 0.68 : 0.55)
+        return darkMix.mixed(with: ink, amount: 0.08)
+    }
+
     // MARK: - Internals
     private struct WeightItem { let p: Int; let w: CGFloat }
 
