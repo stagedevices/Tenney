@@ -246,9 +246,7 @@ struct LatticeView: View {
         if store.labelMode == .ratio {
             return "\(cp)/\(cq)"
         } else {
-            let raw = app.rootHz * (Double(cp) / Double(cq))
-            let freq = foldToAudible(raw, minHz: 20, maxHz: 5000)
-            return NotationFormatter.hejiLabel(p: cp, q: cq, freqHz: freq, rootHz: app.rootHz)
+            return hejiTextLabel(p: cp, q: cq, octave: 0, rootHz: app.rootHz)
         }
     }
 
@@ -1517,9 +1515,7 @@ struct LatticeView: View {
         if store.labelMode == .ratio {
             return "\(cp)/\(cq)"
         } else {
-            let raw = app.rootHz * (Double(cp) / Double(cq))
-            let freq = foldToAudible(raw, minHz: 20, maxHz: 5000)
-            return NotationFormatter.hejiLabel(p: cp, q: cq, freqHz: freq, rootHz: app.rootHz)
+            return hejiTextLabel(p: cp, q: cq, octave: 0, rootHz: app.rootHz)
         }
     }
 
@@ -1615,6 +1611,8 @@ struct LatticeView: View {
     
     @AppStorage(SettingsKeys.nodeSize)     private var nodeSize = "m"
     @AppStorage(SettingsKeys.labelDensity) private var labelDensity: Double = 0.65
+    @AppStorage(SettingsKeys.accidentalPreference) private var accidentalPreferenceRaw: String = AccidentalPreference.auto.rawValue
+    @AppStorage(SettingsKeys.staffA4Hz) private var staffA4Hz: Double = 440
     
     @Environment(\.latticePreviewHideDistance) private var latticePreviewHideDistance
     
@@ -4412,7 +4410,18 @@ struct LatticeView: View {
             let (adjP, adjQ) = ratioWithOctaveOffsetNoFold(num: f.num, den: f.den, offset: infoOctaveOffset)
             let jiText: String = (store.labelMode == .ratio)
             ? "\(adjP)/\(adjQ)"
-            : NotationFormatter.hejiLabel(p: f.num, q: f.den, freqHz: hzAdj, rootHz: app.rootHz)
+            : hejiTextLabel(p: f.num, q: f.den, octave: infoOctaveOffset, rootHz: app.rootHz)
+            let pref = AccidentalPreference(rawValue: accidentalPreferenceRaw) ?? .auto
+            let ratioRef = RatioRef(p: f.num, q: f.den, octave: infoOctaveOffset, monzo: [:])
+            let hejiContext = HejiContext(
+                referenceA4Hz: staffA4Hz,
+                rootHz: app.rootHz,
+                rootRatio: nil,
+                preferred: pref,
+                maxPrime: max(3, app.primeLimit),
+                allowApproximation: false,
+                scaleDegreeHint: ratioRef
+            )
             
             // Octave step availability (audible range)
             let nextUpHz   = f.hz * pow(2.0, Double(infoOctaveOffset + 1))
@@ -4424,11 +4433,15 @@ struct LatticeView: View {
                 // Left: names/metrics
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 8) {
-                        Text("\(staff.name)\(staff.octave)")
-                            .font(.title3.weight(.semibold))
-                        Text(jiText)
-                            .font(.headline.monospaced())
-                            .opacity(store.labelMode == .heji ? 1 : 0.9)
+                        if store.labelMode == .heji {
+                            HejiPitchLabel(context: hejiContext, pitch: .ratio(ratioRef))
+                        } else {
+                            Text("\(staff.name)\(staff.octave)")
+                                .font(.title3.weight(.semibold))
+                            Text(jiText)
+                                .font(.headline.monospaced())
+                                .opacity(0.9)
+                        }
                         
                         // ( +n oct ) badge while offset active
                         if infoOctaveOffset != 0 {
@@ -4471,13 +4484,6 @@ struct LatticeView: View {
                                 store.setOctaveOffset(for: coord, to: newOffset)
                             }
                         }
-                    }
-                    if store.labelMode == .heji {
-                        HejiStaffRow(letter: staff.name,
-                                     octave: staff.octave,
-                                     etCents: f.etCents)
-                        .frame(width: 140, height: 60)
-                        .accessibilityHidden(true)
                     }
                 }
             }
@@ -4666,6 +4672,22 @@ struct LatticeView: View {
         var vec = basis.map { (numF[$0] ?? 0) - (denF[$0] ?? 0) }
         while vec.last == 0 && vec.count > 1 { _ = vec.popLast() }
         return "<" + vec.map(String.init).joined(separator: ", ") + ">"
+    }
+
+    private func hejiTextLabel(p: Int, q: Int, octave: Int, rootHz: Double) -> String {
+        let ratioRef = RatioRef(p: p, q: q, octave: octave, monzo: [:])
+        let pref = AccidentalPreference(rawValue: accidentalPreferenceRaw) ?? .auto
+        let context = HejiContext(
+            referenceA4Hz: staffA4Hz,
+            rootHz: rootHz,
+            rootRatio: nil,
+            preferred: pref,
+            maxPrime: max(3, app.primeLimit),
+            allowApproximation: false,
+            scaleDegreeHint: ratioRef
+        )
+        let spelling = HejiNotation.spelling(forRatio: ratioRef, context: context)
+        return String(HejiNotation.textLabel(spelling, showCents: false).characters)
     }
 
 #if os(macOS) || targetEnvironment(macCatalyst)

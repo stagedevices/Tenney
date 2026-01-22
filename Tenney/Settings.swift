@@ -333,6 +333,7 @@ struct StudioConsoleView: View {
 
     @State private var showWhatsNewSheet: Bool = false
     @State private var debugBundleExporting: Bool = false
+    @State private var showHejiGallery: Bool = false
     
     private var whatsNewIsUnread: Bool {
     // “new” if either changes
@@ -416,6 +417,8 @@ struct StudioConsoleView: View {
     // Labels
     @AppStorage(SettingsKeys.labelDefault)       private var labelDefault = "ratio" // "ratio" | "heji"
     @AppStorage(SettingsKeys.showRatioAlongHeji) private var showRatioAlong: Bool = true
+    @AppStorage(SettingsKeys.infoCardNotationMode) private var infoCardNotationModeRaw: String = HejiNotationMode.staff.rawValue
+    @AppStorage(SettingsKeys.accidentalPreference) private var accidentalPreferenceRaw: String = AccidentalPreference.auto.rawValue
 
     // Lattice UI
     @AppStorage(SettingsKeys.nodeSize)     private var nodeSize = NodeSizeChoice.m.rawValue
@@ -2832,6 +2835,8 @@ struct StudioConsoleView: View {
                 a4Staff: $a4Staff,
                 labelDefault: $labelDefault,
                 showRatioAlong: $showRatioAlong,
+                infoCardNotationModeRaw: $infoCardNotationModeRaw,
+                accidentalPreferenceRaw: $accidentalPreferenceRaw,
                 nodeSize: $nodeSize,
                 labelDensity: $labelDensity,
                 gridModeRaw: $gridModeRaw,
@@ -2925,6 +2930,17 @@ struct StudioConsoleView: View {
                 ProgressView()
                     .progressViewStyle(.circular)
             }
+
+#if DEBUG
+            GlassCTAButton(title: "HEJI Gallery", systemName: "music.note.list") {
+                showHejiGallery = true
+            }
+            .sheet(isPresented: $showHejiGallery) {
+                NavigationStack {
+                    HejiGalleryView()
+                }
+            }
+#endif
 
             Text("Includes device/app info and recent logs. Personal data is redacted.")
                 .font(.footnote)
@@ -3756,6 +3772,8 @@ private struct GlassNavTile<Destination: View>: View {
         @Binding var a4Staff: Double
         @Binding var labelDefault: String
         @Binding var showRatioAlong: Bool
+        @Binding var infoCardNotationModeRaw: String
+        @Binding var accidentalPreferenceRaw: String
         @Binding var nodeSize: String
         @Binding var labelDensity: Double
         @Binding var gridModeRaw: String
@@ -3816,6 +3834,8 @@ private struct GlassNavTile<Destination: View>: View {
                 .onChange(of: a4Staff)       { postSetting(SettingsKeys.staffA4Hz, $0) }
                 .onChange(of: labelDefault)  { postSetting(SettingsKeys.labelDefault, $0) }
                 .onChange(of: showRatioAlong){ postSetting(SettingsKeys.showRatioAlongHeji, $0) }
+                .onChange(of: infoCardNotationModeRaw) { postSetting(SettingsKeys.infoCardNotationMode, $0) }
+                .onChange(of: accidentalPreferenceRaw) { postSetting(SettingsKeys.accidentalPreference, $0) }
                 .onChange(of: nodeSize)      { postSetting(SettingsKeys.nodeSize, $0) }
                 .onChange(of: labelDensity)  { postSetting(SettingsKeys.labelDensity, $0) }
                 .onChange(of: gridModeRaw)       { postSetting(SettingsKeys.latticeHexGridMode, $0) }
@@ -4278,6 +4298,20 @@ private struct GlassNavTile<Destination: View>: View {
 
             Toggle("Show ratio alongside HEJI", isOn: $showRatioAlong)
 
+            Picker("Info card notation", selection: $infoCardNotationModeRaw) {
+                ForEach(HejiNotationMode.allCases) { mode in
+                    Text(mode.title).tag(mode.rawValue)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            Picker("Accidental preference", selection: $accidentalPreferenceRaw) {
+                ForEach(AccidentalPreference.allCases) { pref in
+                    Text(pref.title).tag(pref.rawValue)
+                }
+            }
+            .pickerStyle(.segmented)
+
             Text("Affects Lattice info cards and Builder labels.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
@@ -4636,6 +4670,8 @@ private struct GlassNavTile<Destination: View>: View {
     private func broadcastAll() {
         postSetting(SettingsKeys.labelDefault, labelDefault)
         postSetting(SettingsKeys.showRatioAlongHeji, showRatioAlong)
+        postSetting(SettingsKeys.infoCardNotationMode, infoCardNotationModeRaw)
+        postSetting(SettingsKeys.accidentalPreference, accidentalPreferenceRaw)
         postSetting(SettingsKeys.latticeThemeID, tenneyThemeIDRaw)
         postSetting(SettingsKeys.nodeSize, nodeSize)
         postSetting(SettingsKeys.labelDensity, labelDensity)

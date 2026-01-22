@@ -1,0 +1,439 @@
+//
+//  HejiNotation.swift
+//  Tenney
+//
+//  Facade for HEJI spelling + layout.
+//
+
+import Foundation
+import CoreGraphics
+import SwiftUI
+
+enum HejiNotationMode: String, CaseIterable, Identifiable {
+    case staff
+    case text
+    case combined
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .staff: return "Staff"
+        case .text: return "Text"
+        case .combined: return "Combined"
+        }
+    }
+}
+
+enum AccidentalPreference: String, CaseIterable, Identifiable {
+    case auto
+    case preferSharps
+    case preferFlats
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .auto: return "Auto"
+        case .preferSharps: return "Sharps"
+        case .preferFlats: return "Flats"
+        }
+    }
+}
+
+struct HejiContext {
+    var referenceA4Hz: Double
+    var rootHz: Double
+    var rootRatio: RatioRef?
+    var preferred: AccidentalPreference
+    var maxPrime: Int
+    var allowApproximation: Bool
+    var scaleDegreeHint: RatioRef?
+
+    static let `default` = HejiContext(
+        referenceA4Hz: 440,
+        rootHz: 440,
+        rootRatio: nil,
+        preferred: .auto,
+        maxPrime: 13,
+        allowApproximation: true,
+        scaleDegreeHint: nil
+    )
+}
+
+enum HejiFont {
+    case bravura
+    case systemText
+
+    var fontName: String {
+        switch self {
+        case .bravura: return "Bravura"
+        case .systemText: return ".SFUI"
+        }
+    }
+}
+
+struct GlyphRun: Hashable {
+    var font: HejiFont
+    var glyph: String
+    var offset: CGPoint
+}
+
+struct HejiSpelling: Hashable {
+    var baseLetter: String
+    var helmholtzOctave: Int
+    var accidental: HejiAccidental
+    var isApproximate: Bool
+    var centsError: Double?
+    var ratio: Ratio?
+    var unsupportedPrimes: [Int]
+}
+
+struct HejiStaffLayout: Hashable {
+    enum Clef: Hashable { case treble, bass }
+    var clef: Clef
+    var staffStepFromMiddle: Int
+    var noteheadGlyph: String
+    var accidentalGlyphs: [GlyphRun]
+    var ledgerLineCount: Int
+    var approxMarkerGlyph: String?
+}
+
+struct HejiAccidental: Hashable {
+    var diatonicAccidental: Int
+    var microtonalComponents: [HejiMicrotonalComponent]
+}
+
+enum HejiMicrotonalComponent: Hashable {
+    case syntonic(up: Bool)
+    case septimal(up: Bool)
+    case undecimal(up: Bool)
+    case tridecimal(up: Bool)
+}
+
+enum HejiNotation {
+    private struct Candidate {
+        let e3: Int
+        let e2: Int
+        let cents: Double
+        let accidentalCount: Int
+    }
+
+    private static let fifthLetters = ["C", "G", "D", "A", "E", "B", "F"]
+    private static let baseFifth = [0, 1, 2, 3, 4, 5, -1]
+
+    private static let hejiSearchRange = -16...16
+
+    static func spelling(forRatio ratioRef: RatioRef, context: HejiContext) -> HejiSpelling {
+        let ratio = Ratio(ratioRef.p, ratioRef.q)
+        return spelling(forRatio: ratio, octave: ratioRef.octave, context: context)
+    }
+
+    static func spelling(forRatio ratio: Ratio, octave: Int = 0, context: HejiContext) -> HejiSpelling {
+        let value = ratio.value * pow(2.0, Double(octave))
+        let folded = foldToUnit(value)
+        let best = bestThreeLimitCandidate(for: folded, preference: context.preferred)
+        let letter = letter(for: best.e3).letter
+        let accidental = HejiAccidental(
+            diatonicAccidental: letter(for: best.e3).accidentalCount,
+            microtonalComponents: microtonalComponents(for: ratio, maxPrime: context.maxPrime)
+        )
+
+        let hz = context.rootHz > 0 ? context.rootHz * value : value
+        let staff = NotationFormatter.staffNoteName(freqHz: hz, a4Hz: context.referenceA4Hz)
+        let octaveOut = staff.octave
+
+        let unsupported = unsupportedPrimes(in: ratio)
+
+        return HejiSpelling(
+            baseLetter: letter,
+            helmholtzOctave: octaveOut,
+            accidental: accidental,
+            isApproximate: false,
+            centsError: nil,
+            ratio: ratio,
+            unsupportedPrimes: unsupported
+        )
+    }
+
+    static func spelling(forFrequency hz: Double, context: HejiContext) -> HejiSpelling {
+        if let hint = context.scaleDegreeHint {
+            return spelling(forRatio: hint, context: context)
+        }
+
+        guard context.allowApproximation, context.rootHz > 0, hz.isFinite, hz > 0 else {
+            let ratio = Ratio(1, 1)
+            return spelling(forRatio: ratio, context: context)
+        }
+
+        let ratioValue = hz / context.rootHz
+        let primeLimit = resolvePrimeLimit(context.maxPrime)
+        let approx = RatioApproximator.approximate(ratioValue, options: .init(primeLimit: primeLimit, maxDenominator: 4096, maxCentsError: 120))
+        let centsError = 1200.0 * log2(approx.value / ratioValue)
+        var spelling = spelling(forRatio: approx, context: context)
+        spelling.isApproximate = true
+        spelling.centsError = centsError
+        return spelling
+    }
+
+    static func textLabel(_ spelling: HejiSpelling, showCents: Bool = false) -> AttributedString {
+        var out = AttributedString(helmholtzLabel(letter: spelling.baseLetter, octave: spelling.helmholtzOctave))
+        let accidentalText = textAccidental(spelling.accidental)
+        if !accidentalText.isEmpty {
+            var acc = AttributedString(accidentalText)
+            acc.font = .system(size: 16, weight: .regular)
+            out = acc + out
+        }
+
+        if spelling.isApproximate {
+            var approx = AttributedString(" ≈")
+            approx.font = .system(size: 14, weight: .regular)
+            out += approx
+        }
+
+        if showCents, let cents = spelling.centsError, cents.isFinite {
+            let rounded = String(format: "%+.1f¢", cents)
+            var centsText = AttributedString(" \(rounded)")
+            centsText.font = .system(size: 12, weight: .regular)
+            out += centsText
+        }
+
+        return out
+    }
+
+    static func accessibilityLabel(_ spelling: HejiSpelling) -> String {
+        var parts: [String] = []
+        parts.append(spelling.baseLetter)
+        if !spelling.accidental.verbalization.isEmpty {
+            parts.append(spelling.accidental.verbalization)
+        }
+        parts.append("Helmholtz \(helmholtzLabel(letter: spelling.baseLetter, octave: spelling.helmholtzOctave))")
+        if let ratio = spelling.ratio {
+            parts.append("ratio \(ratio.n)/\(ratio.d)")
+        }
+        if spelling.isApproximate, let cents = spelling.centsError, cents.isFinite {
+            parts.append(String(format: "approximately, %.1f cents", cents))
+        }
+        return parts.joined(separator: " ")
+    }
+
+    static func staffLayout(_ spelling: HejiSpelling, context: HejiContext) -> HejiStaffLayout {
+        let clef = autoClef(forOctave: spelling.helmholtzOctave)
+        let step = staffStepFromMiddle(letter: spelling.baseLetter, octave: spelling.helmholtzOctave, clef: clef)
+        let accidentals = staffAccidentalGlyphs(spelling.accidental)
+        let ledger = ledgerLineCount(for: step)
+        let approx = spelling.isApproximate ? "≈" : nil
+        return HejiStaffLayout(
+            clef: clef,
+            staffStepFromMiddle: step,
+            noteheadGlyph: HejiGlyphs.noteheadBlack,
+            accidentalGlyphs: accidentals,
+            ledgerLineCount: ledger,
+            approxMarkerGlyph: approx
+        )
+    }
+
+    // MARK: - 3-limit base
+
+    private static func bestThreeLimitCandidate(for ratio: Double, preference: AccidentalPreference) -> Candidate {
+        var best: Candidate?
+        for e3 in hejiSearchRange {
+            let base = pow(3.0, Double(e3))
+            let e2 = -Int(floor(log2(base)))
+            let candidate = base * pow(2.0, Double(e2))
+            let cents = abs(1200.0 * log2(ratio / candidate))
+            let acc = letter(for: e3).accidentalCount
+            let candidateScore = Candidate(e3: e3, e2: e2, cents: cents, accidentalCount: acc)
+            if best == nil {
+                best = candidateScore
+                continue
+            }
+            guard let current = best else { continue }
+            if cents < current.cents - 1e-6 {
+                best = candidateScore
+            } else if abs(cents - current.cents) <= 1e-6 {
+                let complexity = abs(acc)
+                let currentComplexity = abs(current.accidentalCount)
+                if complexity < currentComplexity {
+                    best = candidateScore
+                } else if complexity == currentComplexity {
+                    switch preference {
+                    case .preferSharps:
+                        if acc > current.accidentalCount { best = candidateScore }
+                    case .preferFlats:
+                        if acc < current.accidentalCount { best = candidateScore }
+                    case .auto:
+                        break
+                    }
+                }
+            }
+        }
+        return best ?? Candidate(e3: 0, e2: 0, cents: 0, accidentalCount: 0)
+    }
+
+    private static func letter(for e3: Int) -> (letter: String, accidentalCount: Int) {
+        let idx = ((e3 % 7) + 7) % 7
+        let base = baseFifth[idx]
+        let accidental = (e3 - base) / 7
+        return (fifthLetters[idx], accidental)
+    }
+
+    // MARK: - Microtonal components
+
+    private static func microtonalComponents(for ratio: Ratio, maxPrime: Int) -> [HejiMicrotonalComponent] {
+        guard let monzo = ratio.toMonzoIfWithin13() else { return [] }
+        var components: [HejiMicrotonalComponent] = []
+        let primes: [(Int, Int)] = [(5, monzo.e5), (7, monzo.e7), (11, monzo.e11), (13, monzo.e13)]
+        for (prime, exp) in primes where prime <= maxPrime && exp != 0 {
+            let up = exp < 0
+            let count = abs(exp)
+            let component: HejiMicrotonalComponent
+            switch prime {
+            case 5: component = .syntonic(up: up)
+            case 7: component = .septimal(up: up)
+            case 11: component = .undecimal(up: up)
+            case 13: component = .tridecimal(up: up)
+            default: continue
+            }
+            components.append(contentsOf: Array(repeating: component, count: count))
+        }
+        return components
+    }
+
+    private static func unsupportedPrimes(in ratio: Ratio) -> [Int] {
+        let primes = [2, 3, 5, 7, 11, 13]
+        func factor(_ x: Int) -> [Int] {
+            var n = abs(x)
+            var out: [Int] = []
+            var p = 2
+            while p * p <= n {
+                if n % p == 0 {
+                    out.append(p)
+                    while n % p == 0 { n /= p }
+                }
+                p += (p == 2 ? 1 : 2)
+            }
+            if n > 1 { out.append(n) }
+            return out
+        }
+        let all = Set(factor(ratio.n) + factor(ratio.d))
+        return all.filter { !primes.contains($0) }.sorted()
+    }
+
+    // MARK: - Staff layout helpers
+
+    private static func autoClef(forOctave octave: Int) -> HejiStaffLayout.Clef {
+        // Heuristic: treble at middle C (C4) and above; bass below.
+        return octave >= 4 ? .treble : .bass
+    }
+
+    private static func staffStepFromMiddle(letter: String, octave: Int, clef: HejiStaffLayout.Clef) -> Int {
+        let baseLetter: String
+        let baseOctave: Int
+        switch clef {
+        case .treble:
+            baseLetter = "B" // middle line (B4)
+            baseOctave = 4
+        case .bass:
+            baseLetter = "D" // middle line (D3)
+            baseOctave = 3
+        }
+        let noteIndex = diatonicIndex(letter: letter, octave: octave)
+        let baseIndex = diatonicIndex(letter: baseLetter, octave: baseOctave)
+        return noteIndex - baseIndex
+    }
+
+    private static func diatonicIndex(letter: String, octave: Int) -> Int {
+        let order = ["C", "D", "E", "F", "G", "A", "B"]
+        let idx = order.firstIndex(of: letter.uppercased()) ?? 0
+        return octave * 7 + idx
+    }
+
+    private static func ledgerLineCount(for staffStep: Int) -> Int {
+        let absStep = abs(staffStep)
+        if absStep <= 4 { return 0 }
+        return (absStep - 4 + 1) / 2
+    }
+
+    private static func staffAccidentalGlyphs(_ accidental: HejiAccidental) -> [GlyphRun] {
+        var runs: [GlyphRun] = []
+        if accidental.diatonicAccidental != 0 {
+            let glyph = HejiGlyphs.standardAccidental(for: accidental.diatonicAccidental)
+            runs.append(GlyphRun(font: .bravura, glyph: glyph, offset: .zero))
+        }
+        for (index, component) in accidental.microtonalComponents.enumerated() {
+            let glyph = HejiGlyphs.microtonalGlyph(for: component)
+            let offset = CGPoint(x: CGFloat(index + 1) * -10, y: 0)
+            runs.append(GlyphRun(font: .bravura, glyph: glyph, offset: offset))
+        }
+        return runs
+    }
+
+    private static func textAccidental(_ accidental: HejiAccidental) -> String {
+        var text = ""
+        if accidental.diatonicAccidental > 0 {
+            text += String(repeating: "♯", count: accidental.diatonicAccidental)
+        } else if accidental.diatonicAccidental < 0 {
+            text += String(repeating: "♭", count: abs(accidental.diatonicAccidental))
+        }
+        for component in accidental.microtonalComponents {
+            switch component {
+            case .syntonic(let up): text += up ? "↑" : "↓"
+            case .septimal(let up): text += up ? "⇑" : "⇓"
+            case .undecimal(let up): text += up ? "⤒" : "⤓"
+            case .tridecimal(let up): text += up ? "⤒" : "⤓"
+            }
+        }
+        return text
+    }
+
+    private static func foldToUnit(_ ratio: Double) -> Double {
+        guard ratio.isFinite, ratio > 0 else { return 1.0 }
+        var value = ratio
+        while value < 1 { value *= 2 }
+        while value >= 2 { value /= 2 }
+        return value
+    }
+
+    private static func resolvePrimeLimit(_ maxPrime: Int) -> PrimeLimit {
+        switch maxPrime {
+        case ..<5: return .three
+        case 5: return .five
+        case 6...7: return .seven
+        case 8...11: return .eleven
+        default: return .thirteen
+        }
+    }
+
+    private static func helmholtzLabel(letter: String, octave: Int) -> String {
+        let lower = letter.lowercased()
+        let upper = letter.uppercased()
+        if octave >= 4 {
+            let primes = String(repeating: "′", count: max(1, octave - 3))
+            return "\(lower)\(primes)"
+        } else {
+            let commas = String(repeating: ",", count: max(0, 3 - octave))
+            return "\(upper)\(commas)"
+        }
+    }
+}
+
+private extension HejiAccidental {
+    var verbalization: String {
+        var pieces: [String] = []
+        if diatonicAccidental > 0 {
+            pieces.append(String(repeating: "sharp ", count: diatonicAccidental).trimmingCharacters(in: .whitespaces))
+        } else if diatonicAccidental < 0 {
+            pieces.append(String(repeating: "flat ", count: abs(diatonicAccidental)).trimmingCharacters(in: .whitespaces))
+        }
+        for component in microtonalComponents {
+            switch component {
+            case .syntonic(let up): pieces.append(up ? "syntonic comma up" : "syntonic comma down")
+            case .septimal(let up): pieces.append(up ? "septimal comma up" : "septimal comma down")
+            case .undecimal(let up): pieces.append(up ? "undecimal quartertone up" : "undecimal quartertone down")
+            case .tridecimal(let up): pieces.append(up ? "tridecimal quartertone up" : "tridecimal quartertone down")
+            }
+        }
+        return pieces.joined(separator: " ")
+    }
+}

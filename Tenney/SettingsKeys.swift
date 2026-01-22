@@ -81,6 +81,8 @@ enum SettingsKeys {
     // Labels
     static let labelDefault       = "tenney.label.default"       // "ratio" | "heji"
     static let showRatioAlongHeji = "tenney.label.showRatio"     // Bool
+    static let infoCardNotationMode = "tenney.label.notationMode" // "staff" | "text" | "combined"
+    static let accidentalPreference = "tenney.label.accidentalPreference" // "auto" | "preferSharps" | "preferFlats"
 
     // Lattice UI
     static let nodeSize      = "tenney.ui.nodeSize"        // "s" | "m" | "mplus" | "l"
