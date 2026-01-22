@@ -1796,8 +1796,13 @@ struct LatticeView: View {
         viewRect: CGRect
     ) {
         defer { autoSelectInFlight = false }
-        let now = CACurrentMediaTime()
-        let candidates = nextSelectionCandidates(in: viewRect, now: now)
+        if store.selected.isEmpty && store.selectedGhosts.isEmpty {
+            releaseInfoVoice()
+            withAnimation(.easeOut(duration: 0.2)) { focusedPoint = nil }
+            return
+        }
+
+        let candidates = selectedSelectionCandidates(in: viewRect)
         guard let nextKey = NextNodeSelection.pickNext(
             from: candidates,
             excluding: excludedKey,
@@ -1806,17 +1811,12 @@ struct LatticeView: View {
             priorDirection: nil,
             displayScale: displayScale
         ) else {
+            releaseInfoVoice()
             withAnimation(.easeOut(duration: 0.2)) { focusedPoint = nil }
             return
         }
 
         guard let nextCandidate = candidates.first(where: { $0.id == nextKey }) else { return }
-
-        if !isSelectionKeySelected(nextKey) {
-            withAnimation(.snappy) {
-                toggleSelectionKey(nextKey)
-            }
-        }
 
         if let newFocus = focusedPoint(for: nextKey, at: nextCandidate.position) {
             focusedPoint = newFocus
@@ -1863,129 +1863,53 @@ struct LatticeView: View {
         }
     }
 
-    private func isSelectionKeySelected(_ key: LatticeStore.SelectionKey) -> Bool {
-        switch key {
-        case .plane(let c):
-            return store.selected.contains(c)
-        case .ghost(let g):
-            return store.selectedGhosts.contains(g)
-        }
-    }
-
-    private func toggleSelectionKey(_ key: LatticeStore.SelectionKey) {
-        switch key {
-        case .plane(let c):
-            store.toggleSelection(c)
-            infoOctaveOffset = store.octaveOffset(for: c)
-        case .ghost(let g):
-            store.toggleOverlay(prime: g.p, e3: g.e3, e5: g.e5, eP: g.eP)
-            infoOctaveOffset = store.octaveOffset(for: g)
-        }
-    }
-
-    private func nextSelectionCandidates(
-        in viewRect: CGRect,
-        now: Double
+    private func selectedSelectionCandidates(
+        in viewRect: CGRect
     ) -> [NextNodeSelection.Candidate<LatticeStore.SelectionKey>] {
         var out: [NextNodeSelection.Candidate<LatticeStore.SelectionKey>] = []
 
-        let radius = Int(max(8, min(48, store.camera.appliedScale / 5)))
-        let pad: CGFloat = 120
+        for coord in store.selected {
+            let wp = layout.position(for: coord)
+            let sp = store.camera.worldToScreen(wp)
+            let e3m = coord.e3 + (store.axisShift[3] ?? 0)
+            let e5m = coord.e5 + (store.axisShift[5] ?? 0)
+            let complexity: Double = {
+                guard let (p, q) = planePQ(e3: e3m, e5: e5m) else { return 1.0e12 }
+                return complexityScore(num: p, den: q)
+            }()
 
-        for de3 in (-radius...radius) {
-            for de5 in (-radius...radius) {
-                let coord = LatticeCoord(e3: store.pivot.e3 + de3, e5: store.pivot.e5 + de5)
-                let wp = layout.position(for: coord)
-                let sp = store.camera.worldToScreen(wp)
-
-                if sp.x < viewRect.minX - pad || sp.x > viewRect.maxX + pad || sp.y < viewRect.minY - pad || sp.y > viewRect.maxY + pad {
-                    continue
-                }
-
-                let e3m = coord.e3 + (store.axisShift[3] ?? 0)
-                let e5m = coord.e5 + (store.axisShift[5] ?? 0)
-                let complexity: Double = {
-                    guard let (p, q) = planePQ(e3: e3m, e5: e5m) else { return 1.0e12 }
-                    return complexityScore(num: p, den: q)
-                }()
-
-                out.append(
-                    .init(
-                        id: .plane(coord),
-                        stableID: "plane:\(coord.e3),\(coord.e5)",
-                        position: sp,
-                        isVisible: viewRect.contains(sp),
-                        isGhost: false,
-                        opacityOrPriority: nil,
-                        complexity: complexity
-                    )
+            out.append(
+                .init(
+                    id: .plane(coord),
+                    stableID: "plane:\(coord.e3),\(coord.e5)",
+                    position: sp,
+                    isVisible: viewRect.contains(sp),
+                    isGhost: false,
+                    opacityOrPriority: nil,
+                    complexity: complexity
                 )
-            }
+            )
         }
 
-        let overlayPrimes = store.renderPrimes.filter { $0 != 2 && $0 != 3 && $0 != 5 }
-        let baseE3 = store.pivot.e3 + (store.axisShift[3] ?? 0)
-        let baseE5 = store.pivot.e5 + (store.axisShift[5] ?? 0)
-        let epSpan = max(6, min(12, Int(store.camera.appliedScale / 8)))
-        let center = store.camera.worldToScreen(.zero)
-        let maxR = maxRadius(from: center, in: viewRect)
-        let overlayPad: CGFloat = 60
+        for ghost in store.selectedGhosts {
+            let wp = layout.position(monzo: [3: ghost.e3, 5: ghost.e5, ghost.p: ghost.eP])
+            let sp = store.camera.worldToScreen(wp)
+            let complexity: Double = {
+                guard let (p, q) = overlayPQ(e3: ghost.e3, e5: ghost.e5, prime: ghost.p, eP: ghost.eP) else { return 1.0e12 }
+                return complexityScore(num: p, den: q)
+            }()
 
-        for prime in overlayPrimes {
-            let phase = store.inkPhase(for: prime, now: now)
-            let isVisiblePrime = store.visiblePrimes.contains(prime)
-            let isAnimating = (phase != nil)
-
-            if !isVisiblePrime && !isAnimating { continue }
-
-            let targetOn: Bool = phase?.targetOn ?? true
-            let tNorm: CGFloat = phase?.t ?? 1.0
-            let dur: Double = phase?.duration ?? 0.65
-            let s = store.axisShift[prime] ?? 0
-
-            for ep in (-epSpan...epSpan) where ep != 0 {
-                let eP = ep + s
-                let monzo: [Int:Int] = [3: baseE3, 5: baseE5, prime: eP]
-                let wp = layout.position(monzo: monzo)
-                let sp = store.camera.worldToScreen(wp)
-
-                if sp.x < viewRect.minX - overlayPad || sp.x > viewRect.maxX + overlayPad || sp.y < viewRect.minY - overlayPad || sp.y > viewRect.maxY + overlayPad {
-                    continue
-                }
-
-                let dist = hypot(sp.x - center.x, sp.y - center.y)
-                let local: CGFloat = {
-                    guard isAnimating else { return 1.0 }
-                    let bandPx: CGFloat = 160
-                    let bandT: CGFloat = max(0.035, min(0.22, bandPx / maxR))
-
-                    let hitT = dist / maxR
-                    let jitter = inkJitterFrac(prime: prime, e3: baseE3, e5: baseE5, eP: eP, duration: dur)
-                    let x = (tNorm - (hitT + jitter)) / bandT
-                    let wave = smoothstep(x)
-                    return targetOn ? wave : (1 - wave)
-                }()
-
-                if local <= 0.001 { continue }
-
-                let complexity: Double = {
-                    guard let (p, q) = overlayPQ(e3: baseE3, e5: baseE5, prime: prime, eP: eP) else { return 1.0e12 }
-                    return complexityScore(num: p, den: q)
-                }()
-
-                let ghostKey = LatticeStore.GhostMonzo(e3: baseE3, e5: baseE5, p: prime, eP: eP)
-                out.append(
-                    .init(
-                        id: .ghost(ghostKey),
-                        stableID: "ghost:\(prime):\(baseE3):\(baseE5):\(eP)",
-                        position: sp,
-                        isVisible: viewRect.contains(sp),
-                        isGhost: true,
-                        opacityOrPriority: nil,
-                        complexity: complexity
-                    )
+            out.append(
+                .init(
+                    id: .ghost(ghost),
+                    stableID: "ghost:\(ghost.p):\(ghost.e3):\(ghost.e5):\(ghost.eP)",
+                    position: sp,
+                    isVisible: viewRect.contains(sp),
+                    isGhost: true,
+                    opacityOrPriority: nil,
+                    complexity: complexity
                 )
-            }
+            )
         }
 
         return out
