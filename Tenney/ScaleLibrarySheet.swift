@@ -27,6 +27,31 @@ private func recentlyPlayedChipLabel(_ filter: LibraryFilters.RecentlyPlayed) ->
     }
 }
 
+private enum OrganizeRoute: Identifiable, Hashable {
+    case pickPack(scaleID: UUID)
+
+    var id: String {
+        switch self {
+        case .pickPack(let scaleID):
+            return "pick-pack-\(scaleID)"
+        }
+    }
+}
+
+private enum ScaleSheetRoute: Identifiable, Hashable {
+    case actions(scaleID: UUID)
+    case organize(OrganizeRoute)
+
+    var id: String {
+        switch self {
+        case .actions(let scaleID):
+            return "actions-\(scaleID)"
+        case .organize(let route):
+            return "organize-\(route.id)"
+        }
+    }
+}
+
 struct ScaleLibrarySheet: View {
     @State private var libraryPage: Int = 0
     @State private var didApplyLaunchMode = false
@@ -40,13 +65,13 @@ struct ScaleLibrarySheet: View {
     @AppStorage(SettingsKeys.librarySearchText) private var librarySearchText: String = ""
     @AppStorage(SettingsKeys.libraryFavoritesOnly) private var libraryFavoritesOnly: Bool = false
     @AppStorage(SettingsKeys.librarySortKey) private var librarySortKeyRaw: String = ScaleLibraryStore.SortKey.recent.rawValue
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var filters: LibraryFilters = .defaultValue
     @State private var showFilterSheet = false
     @State private var didLoadFilters = false
-    @State private var actionTarget: TenneyScale? = nil   // ← selected row for the action sheet
+    @State private var scaleSheetRoute: ScaleSheetRoute? = nil
     @State private var selectedPack: PackSummary? = nil
     @State private var selectedCommunityPack: CommunityPackViewModel? = nil
-    @State private var packPickerTarget: TenneyScale? = nil
     @State private var newPackName: String = ""
     @State private var showNewPackPrompt: Bool = false
     @State private var packCreationContext: PackCreationContext? = nil
@@ -55,6 +80,8 @@ struct ScaleLibrarySheet: View {
     @State private var deletePackTarget: PackRef? = nil
     @State private var infoPackTarget: PackSummary? = nil
     @Namespace private var communityPackNamespace
+    @State private var moveToast: MoveToast? = nil
+    @State private var moveToastTask: Task<Void, Never>? = nil
 
     // simple sort/local filter
     private var filteredScales: [TenneyScale] {
@@ -177,36 +204,70 @@ struct ScaleLibrarySheet: View {
     var body: some View {
         NavigationStack {
             mainContent
-            .listStyle(.insetGrouped)
-            .navigationTitle("Library")
-            .searchable(text: $librarySearchText, placement: .navigationBarDrawer(displayMode: .automatic))
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        showNewPackPrompt = true
-                    } label: {
-                        Label("New Pack", systemImage: "folder.badge.plus")
+                .overlay(alignment: .bottom) {
+                    if let moveToast {
+                        MoveToastView(
+                            title: "Moved to \(moveToast.destinationTitle)",
+                            onUndo: { undoMove(toast: moveToast) }
+                        )
+                        .transition(.opacity)
+                        .padding(.bottom, 12)
                     }
                 }
-            }
+                .listStyle(.insetGrouped)
+                .navigationTitle("Library")
+                .searchable(text: $librarySearchText, placement: .navigationBarDrawer(displayMode: .automatic))
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button {
+                            showNewPackPrompt = true
+                        } label: {
+                            Label("New Pack", systemImage: "folder.badge.plus")
+                        }
+                    }
+                }
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: moveToast?.id)
             
-            // Per-scale actions presented as a medium detent sheet
-            .sheet(item: $actionTarget) { s in
-                ScaleActionsSheet(
-                    scale: s,
-                    onOpen: { openInBuilder(s) },
-                    onAdd:  { addToBuilder(s) },
-                    onMoveToPack: { packPickerTarget = s }
-                )
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
+            // Per-scale actions and organize sheet
+            .sheet(item: $scaleSheetRoute) { route in
+                switch route {
+                case .actions(let scaleID):
+                    if let scale = library.scales[scaleID] {
+                        ScaleActionsSheet(
+                            scale: scale,
+                            onOpen: { openInBuilder(scale) },
+                            onAdd:  { addToBuilder(scale) },
+                            onMoveToPack: { beginMoveToPack(scaleID: scale.id) },
+                            onDuplicateToUserPack: { duplicateScaleToUser(scaleID: scale.id) }
+                        )
+                        .presentationDetents([.medium, .large])
+                        .presentationDragIndicator(.visible)
+                    }
+                case .organize(.pickPack(let scaleID)):
+                    if let scale = library.scales[scaleID] {
+                        PackPickerSheet(
+                            scale: scale,
+                            packSummaries: library.allPackSummaries(),
+                            onMove: { pack in
+                                handleMove(scaleID: scale.id, to: pack)
+                                scaleSheetRoute = nil
+                            },
+                            onCreatePack: { title in
+                                let packRef = makeUserPack(title: title)
+                                return packRef
+                            },
+                            onClose: { scaleSheetRoute = nil }
+                        )
+                        .presentationDetents([.medium, .large])
+                    }
+                }
             }
             .fullScreenCover(item: $selectedPack) { pack in
                 PackDetailSheet(
                     pack: pack,
                     scales: scalesForPack(pack),
-                    onPickScale: { actionTarget = $0 },
-                    onMoveToPack: { packPickerTarget = $0 },
+                    onPickScale: { openScaleActions($0) },
+                    onMoveToPack: { beginMoveToPack(scaleID: $0.id) },
                     openInBuilder: openInBuilder,
                     addToBuilder: addToBuilder,
                     playScalePreview: playScalePreview
@@ -221,22 +282,6 @@ struct ScaleLibrarySheet: View {
                     )
                 }
                 .presentationBackground(PremiumModalSurface.background)
-            }
-            .sheet(item: $packPickerTarget) { scale in
-                PackPickerSheet(
-                    scale: scale,
-                    userPacks: userPackRefs(from: Array(library.scales.values)),
-                    onSelectPack: { pack in
-                        library.assignPack(pack, to: scale.id)
-                        packPickerTarget = nil
-                    },
-                    onCreatePack: { title in
-                        let packRef = makeUserPack(title: title)
-                        library.assignPack(packRef, to: scale.id)
-                        packPickerTarget = nil
-                    }
-                )
-                .presentationDetents([.medium, .large])
             }
             .sheet(item: $packCreationContext) { context in
                 PackCreationSheet(
@@ -392,8 +437,8 @@ struct ScaleLibrarySheet: View {
             PackBrowserPageList(
                 filteredScales: filteredScales,
                 searchText: librarySearchText,
-                onPickScale: { actionTarget = $0 },
-                onMoveToPack: { packPickerTarget = $0 },
+                onPickScale: { openScaleActions($0) },
+                onMoveToPack: { beginMoveToPack(scaleID: $0.id) },
                 onOpenPack: { selectedPack = $0 },
                 onOpenPackInfo: { infoPackTarget = $0 },
                 onRenamePack: beginRenamePack,
@@ -446,7 +491,7 @@ struct ScaleLibrarySheet: View {
     private func handleCommunityPackPreviewRequest(_ request: CommunityPackPreviewRequest) {
         DispatchQueue.main.async {
             libraryPage = 0
-            actionTarget = request.scale
+            openScaleActions(request.scale)
         }
     }
 
@@ -800,24 +845,6 @@ private struct LibraryFilterPicker<Option: Hashable & CaseIterable & Identifiabl
 }
 
 
-private struct PackSummary: Identifiable, Hashable {
-    enum Kind: Hashable {
-        case favorites
-        case recents
-        case communitySuperFolder
-        case loose
-        case realPack(PackRef)
-    }
-
-    var id: String
-    var title: String
-    var subtitle: String?
-    var count: Int
-    var source: PackRef.Source?
-    var packRef: PackRef?
-    var kind: Kind
-}
-
 private struct PackCreationContext: Identifiable {
     let id = UUID()
     let title: String
@@ -966,6 +993,7 @@ private struct PackBrowserPageList: View {
                             Button("Add to Builder") { addToBuilder(s) }
                             Button("Play Scale") { playScalePreview(s) }
                             Button("Move to Pack…") { onMoveToPack(s) }
+                                .disabled(s.provenance?.kind == .communityPack)
                         }
                     }
                 }
@@ -1477,6 +1505,7 @@ private struct PackDetailSheet: View {
                                 Button("Add to Builder") { addToBuilder(s) }
                                 Button("Play Scale") { playScalePreview(s) }
                                 Button("Move to Pack…") { onMoveToPack(s) }
+                                    .disabled(s.provenance?.kind == .communityPack)
                             }
                         }
                     } header: {
@@ -1494,72 +1523,252 @@ private struct PackDetailSheet: View {
     }
 }
 
+private enum PackDestination: Hashable, Identifiable {
+    case loose
+    case pack(PackRef)
+
+    var id: String {
+        switch self {
+        case .loose:
+            return "loose"
+        case .pack(let pack):
+            return pack.id
+        }
+    }
+
+    var packRef: PackRef? {
+        switch self {
+        case .loose:
+            return nil
+        case .pack(let pack):
+            return pack
+        }
+    }
+
+    static func from(pack: PackRef?) -> PackDestination {
+        guard let pack else { return .loose }
+        return .pack(pack)
+    }
+}
+
 private struct PackPickerSheet: View {
     let scale: TenneyScale
-    let userPacks: [PackRef]
-    let onSelectPack: (PackRef?) -> Void
-    let onCreatePack: (String) -> Void
+    let packSummaries: [PackSummary]
+    let onMove: (PackRef?) -> Void
+    let onCreatePack: (String) -> PackRef
+    let onClose: () -> Void
 
-    @Environment(\.dismiss) private var dismiss
+    @State private var searchText: String = ""
     @State private var newPackName: String = ""
-    @State private var showNewPackPrompt = false
+    @State private var selectedDestination: PackDestination
+    @State private var extraUserPacks: [PackRef] = []
+    private let initialDestination: PackDestination
+
+    init(
+        scale: TenneyScale,
+        packSummaries: [PackSummary],
+        onMove: @escaping (PackRef?) -> Void,
+        onCreatePack: @escaping (String) -> PackRef,
+        onClose: @escaping () -> Void
+    ) {
+        self.scale = scale
+        self.packSummaries = packSummaries
+        self.onMove = onMove
+        self.onCreatePack = onCreatePack
+        self.onClose = onClose
+        let initial = PackDestination.from(pack: scale.pack)
+        _selectedDestination = State(initialValue: initial)
+        initialDestination = initial
+    }
+
+    private var trimmedSearch: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var recentPackSummaries: [PackSummary] {
+        let recentIDs = PackRecentsStore.load()
+        let mapped = Dictionary(uniqueKeysWithValues: packSummaries.compactMap { summary in
+            summary.packRef.map { (summary.id, summary) }
+        })
+        let ordered = recentIDs.compactMap { mapped[$0] }
+        if trimmedSearch.isEmpty {
+            return Array(ordered.prefix(5))
+        }
+        return ordered.filter { $0.title.localizedCaseInsensitiveContains(trimmedSearch) }
+    }
+
+    private var userPackSummaries: [PackSummary] {
+        let extras = extraUserPacks.map { pack in
+            PackSummary(
+                id: pack.id,
+                title: pack.title,
+                subtitle: "Empty",
+                count: 0,
+                source: pack.source,
+                packRef: pack,
+                kind: .realPack(pack)
+            )
+        }
+        let combined = packSummaries.filter { $0.source == .user } + extras
+        let deduped = Dictionary(grouping: combined, by: \.id).compactMap { $0.value.first }
+        return filterPacks(deduped)
+    }
+
+    private var builtInPackSummaries: [PackSummary] {
+        filterPacks(packSummaries.filter { $0.source == .builtIn })
+    }
+
+    private var communityPackSummaries: [PackSummary] {
+        filterPacks(packSummaries.filter { $0.source == .community })
+    }
+
+    private var canMove: Bool {
+        selectedDestination != initialDestination
+    }
 
     var body: some View {
         NavigationStack {
             List {
-                Section("Move to") {
-                    Button {
-                        onSelectPack(nil)
-                        dismiss()
-                    } label: {
-                        packRow(title: "Loose Scales", isSelected: scale.pack == nil)
-                    }
-
-                    ForEach(userPacks, id: \.id) { pack in
-                        Button {
-                            onSelectPack(pack)
-                            dismiss()
-                        } label: {
-                            packRow(title: pack.title, isSelected: scale.pack?.id == pack.id)
+                if !recentPackSummaries.isEmpty {
+                    Section("Recents") {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(recentPackSummaries) { summary in
+                                    if let packRef = summary.packRef {
+                                        Button {
+                                            selectedDestination = .pack(packRef)
+                                        } label: {
+                                            FilterChip(label: summary.title, systemImage: "clock")
+                                        }
+                                        .buttonStyle(.plain)
+                                        .accessibilityLabel(summary.title)
+                                        .accessibilityValue(selectedDestination.id == packRef.id ? "Selected" : "")
+                                    }
+                                }
+                            }
+                            .padding(.vertical, 2)
                         }
                     }
                 }
 
-                Section {
-                    Button("New Pack…") {
-                        showNewPackPrompt = true
+                Section("New Pack") {
+                    HStack(spacing: 12) {
+                        TextField("New pack name", text: $newPackName)
+                            .textFieldStyle(.plain)
+                            .submitLabel(.done)
+                            .onSubmit { createPack() }
+                        Button("Create") {
+                            createPack()
+                        }
+                        .disabled(newPackName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                }
+
+                Section("Destination") {
+                    packRow(title: "Loose Scales", subtitle: "No pack", destination: .loose)
+                }
+
+                if !userPackSummaries.isEmpty {
+                    Section("User Packs") {
+                        ForEach(userPackSummaries) { pack in
+                            if let packRef = pack.packRef {
+                                packRow(
+                                    title: pack.title,
+                                    subtitle: pack.subtitle,
+                                    destination: .pack(packRef)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if !builtInPackSummaries.isEmpty {
+                    Section("Built-in Packs") {
+                        ForEach(builtInPackSummaries) { pack in
+                            if let packRef = pack.packRef {
+                                packRow(
+                                    title: pack.title,
+                                    subtitle: pack.subtitle,
+                                    destination: .pack(packRef)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if !communityPackSummaries.isEmpty {
+                    Section("Community Packs") {
+                        ForEach(communityPackSummaries) { pack in
+                            if let packRef = pack.packRef {
+                                packRow(
+                                    title: pack.title,
+                                    subtitle: pack.subtitle,
+                                    destination: .pack(packRef)
+                                )
+                            }
+                        }
                     }
                 }
             }
             .navigationTitle("Move to Pack")
+            .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always))
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") { onClose() }
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") { dismiss() }
+                    Button("Move") {
+                        onMove(selectedDestination.packRef)
+                    }
+                    .disabled(!canMove)
                 }
-            }
-            .alert("New Pack", isPresented: $showNewPackPrompt) {
-                TextField("Pack name", text: $newPackName)
-                Button("Create") {
-                    let trimmed = newPackName.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !trimmed.isEmpty else { return }
-                    onCreatePack(trimmed)
-                    newPackName = ""
-                    dismiss()
-                }
-                Button("Cancel", role: .cancel) { newPackName = "" }
             }
         }
     }
 
-    private func packRow(title: String, isSelected: Bool) -> some View {
-        HStack {
-            Text(title)
-            Spacer()
-            if isSelected {
-                Image(systemName: "checkmark")
-                    .foregroundStyle(.secondary)
-            }
+    private func createPack() {
+        let trimmed = newPackName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let pack = onCreatePack(trimmed)
+        extraUserPacks.append(pack)
+        selectedDestination = .pack(pack)
+        newPackName = ""
+    }
+
+    private func filterPacks(_ packs: [PackSummary]) -> [PackSummary] {
+        guard !trimmedSearch.isEmpty else {
+            return packs.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
         }
+        return packs
+            .filter { $0.title.localizedCaseInsensitiveContains(trimmedSearch) }
+            .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+    }
+
+    @ViewBuilder
+    private func packRow(title: String, subtitle: String?, destination: PackDestination) -> some View {
+        Button {
+            selectedDestination = destination
+        } label: {
+            HStack(alignment: subtitle == nil ? .center : .firstTextBaseline, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+                if selectedDestination == destination {
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityValue(selectedDestination == destination ? "Selected" : "")
     }
 }
 
@@ -1635,6 +1844,79 @@ private struct PackInfoSheet: View {
             Spacer(minLength: 0)
         }
         .padding(20)
+    }
+}
+
+private struct PackRecentsStore {
+    static let maxCount = 5
+
+    static func load() -> [String] {
+        guard let data = UserDefaults.standard.data(forKey: SettingsKeys.libraryRecentPackIDsJSON) else {
+            return []
+        }
+        return (try? JSONDecoder().decode([String].self, from: data)) ?? []
+    }
+
+    static func record(packID: String) {
+        var ids = load()
+        ids.removeAll { $0 == packID }
+        ids.insert(packID, at: 0)
+        if ids.count > maxCount {
+            ids = Array(ids.prefix(maxCount))
+        }
+        save(ids)
+    }
+
+    private static func save(_ ids: [String]) {
+        if let data = try? JSONEncoder().encode(ids) {
+            UserDefaults.standard.set(data, forKey: SettingsKeys.libraryRecentPackIDsJSON)
+        }
+    }
+}
+
+private struct MoveToast: Identifiable {
+    let id = UUID()
+    let scaleID: UUID
+    let previousPack: PackRef?
+    let destinationTitle: String
+}
+
+private struct MoveToastView: View {
+    let title: String
+    let onUndo: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(title)
+                .font(.callout.weight(.semibold))
+                .lineLimit(2)
+            Spacer(minLength: 8)
+            Button("Undo") {
+                onUndo()
+            }
+            .font(.callout.weight(.semibold))
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(toastBackground)
+        .overlay(
+            Capsule()
+                .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+        )
+        .clipShape(Capsule())
+        .padding(.horizontal, 16)
+        .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private var toastBackground: some View {
+        let shape = Capsule()
+        if #available(iOS 26.0, *) {
+            Color.clear.glassEffect(.regular, in: shape)
+        } else {
+            shape.fill(.ultraThinMaterial)
+        }
     }
 }
 
@@ -1907,10 +2189,47 @@ private extension ScaleLibrarySheet {
         }
     }
 
-    func userPackRefs(from scales: [TenneyScale]) -> [PackRef] {
-        let packs = scales.compactMap(\.pack).filter { $0.source == .user }
-        let deduped = Dictionary(grouping: packs, by: { $0.id }).compactMap { $0.value.first }
-        return deduped.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+    func openScaleActions(_ scale: TenneyScale) {
+        scaleSheetRoute = .actions(scaleID: scale.id)
+    }
+
+    func beginMoveToPack(scaleID: UUID) {
+        if library.scales[scaleID]?.provenance?.kind == .communityPack {
+            return
+        }
+        scaleSheetRoute = .organize(.pickPack(scaleID: scaleID))
+    }
+
+    func duplicateScaleToUser(scaleID: UUID) {
+        guard let newID = library.duplicateScaleToUser(id: scaleID) else { return }
+        scaleSheetRoute = .organize(.pickPack(scaleID: newID))
+    }
+
+    func handleMove(scaleID: UUID, to pack: PackRef?) {
+        let outcome = library.moveScale(id: scaleID, to: pack)
+        guard case let .moved(previous, current) = outcome else { return }
+        if let packID = current?.id {
+            PackRecentsStore.record(packID: packID)
+        }
+        let destinationTitle = current?.title ?? "Loose Scales"
+        showMoveToast(scaleID: scaleID, previousPack: previous, destinationTitle: destinationTitle)
+    }
+
+    func showMoveToast(scaleID: UUID, previousPack: PackRef?, destinationTitle: String) {
+        moveToastTask?.cancel()
+        moveToast = MoveToast(scaleID: scaleID, previousPack: previousPack, destinationTitle: destinationTitle)
+        moveToastTask = Task {
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            await MainActor.run {
+                moveToast = nil
+            }
+        }
+    }
+
+    func undoMove(toast: MoveToast) {
+        moveToastTask?.cancel()
+        moveToast = nil
+        _ = library.moveScale(id: toast.scaleID, to: toast.previousPack)
     }
 }
 // MARK: - Per-scale Action Sheet (Open • Add • Play)
@@ -1921,6 +2240,7 @@ struct ScaleActionsSheet: View {
     let onOpen: () -> Void
     let onAdd:  () -> Void
     let onMoveToPack: () -> Void
+    let onDuplicateToUserPack: () -> Void
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var library = ScaleLibraryStore.shared
     @ObservedObject private var tagStore = TagStore.shared
@@ -2025,6 +2345,11 @@ struct ScaleActionsSheet: View {
         updated.lastPlayed = Date()
         library.updateScale(updated)
     }
+
+    private func toggleFavorite() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        _ = library.toggleFavorite(id: currentScale.id)
+    }
     
     private var currentScale: TenneyScale {
         library.scales[scale.id] ?? scale
@@ -2043,6 +2368,14 @@ struct ScaleActionsSheet: View {
     private var shouldOfferUninstall: Bool {
         guard let packID = communityPackID else { return false }
         return communityPacks.isInstalled(packID)
+    }
+
+    private var isCommunityScale: Bool {
+        currentScale.provenance?.kind == .communityPack
+    }
+
+    private var currentPackTitle: String {
+        currentScale.pack?.title ?? "Loose Scales"
     }
 
     private var exportFormats: ExportFormat {
@@ -2145,6 +2478,9 @@ struct ScaleActionsSheet: View {
                                 headerSummary: headerSummary,
                                 referenceSummary: referenceSummary,
                                 tags: tagRefs,
+                                isFavorite: library.isFavorite(id: currentScale.id),
+                                currentPackTitle: currentPackTitle,
+                                isCommunityScale: isCommunityScale,
                                 onOpen: { onOpen(); dismiss() },
                                 onAdd: { onAdd(); dismiss() },
                                 onExport: { showExportSheet = true },
@@ -2153,7 +2489,9 @@ struct ScaleActionsSheet: View {
                                 onCopySCL: { copySCL() },
                                 onCommitTitle: { commitScaleRename($0) },
                                 onTags: { showTagsSheet = true },
-                                onMoveToPack: { onMoveToPack(); dismiss() },
+                                onToggleFavorite: { toggleFavorite() },
+                                onMoveToPack: { onMoveToPack() },
+                                onDuplicateToUserPack: { onDuplicateToUserPack() },
                                 onDelete: {
                                     if shouldOfferUninstall {
                                         showUninstallConfirm = true
@@ -3202,6 +3540,9 @@ private struct OverviewPage: View {
     let headerSummary: String
     let referenceSummary: String
     let tags: [TagRef]
+    let isFavorite: Bool
+    let currentPackTitle: String
+    let isCommunityScale: Bool
     let onOpen: () -> Void
     let onAdd: () -> Void
     let onExport: () -> Void
@@ -3210,7 +3551,9 @@ private struct OverviewPage: View {
     let onCopySCL: () -> Void
     let onCommitTitle: (String) -> Void
     let onTags: () -> Void
+    let onToggleFavorite: () -> Void
     let onMoveToPack: () -> Void
+    let onDuplicateToUserPack: () -> Void
     let onDelete: () -> Void
     let destructiveTitle: String
 
@@ -3302,6 +3645,54 @@ private struct OverviewPage: View {
                 }
 
                 VStack(alignment: .leading, spacing: 10) {
+                    Text("Organize")
+                        .font(.footnote.weight(.semibold))
+                        .textCase(.uppercase)
+                        .foregroundStyle(.secondary)
+
+                    Button(action: onToggleFavorite) {
+                        OrganizeRow(
+                            title: isFavorite ? "Remove from Favorites" : "Add to Favorites",
+                            subtitle: nil,
+                            systemImage: isFavorite ? "star.fill" : "star",
+                            showsChevron: false,
+                            iconColor: .yellow
+                        )
+                    }
+                    .buttonStyle(.plain)
+
+                    Button(action: onMoveToPack) {
+                        OrganizeRow(
+                            title: "Move to Pack…",
+                            subtitle: currentPackTitle,
+                            systemImage: "folder",
+                            showsChevron: true,
+                            isEnabled: !isCommunityScale
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isCommunityScale)
+
+                    if isCommunityScale {
+                        Text("Community scales can’t be moved. Duplicate to a User Pack first.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    if isCommunityScale {
+                        Button(action: onDuplicateToUserPack) {
+                            OrganizeRow(
+                                title: "Duplicate to User Pack…",
+                                subtitle: nil,
+                                systemImage: "doc.on.doc",
+                                showsChevron: true
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
                     Text("Actions")
                         .font(.footnote.weight(.semibold))
                         .textCase(.uppercase)
@@ -3379,14 +3770,6 @@ private struct OverviewPage: View {
                         }
                         .buttonStyle(.plain)
 
-                        Button(action: onMoveToPack) {
-                            ActionTile(
-                                title: "Move to Pack…",
-                                systemImage: "folder",
-                                style: .standard(.secondary)
-                            )
-                        }
-                        .buttonStyle(.plain)
                     }
                     Button(action: onDelete) {
                         ActionTile(
@@ -3405,6 +3788,39 @@ private struct OverviewPage: View {
         }
     }
 
+}
+
+private struct OrganizeRow: View {
+    let title: String
+    let subtitle: String?
+    let systemImage: String
+    let showsChevron: Bool
+    var isEnabled: Bool = true
+    var iconColor: Color? = nil
+
+    var body: some View {
+        HStack(alignment: subtitle == nil ? .center : .firstTextBaseline, spacing: 12) {
+            Image(systemName: systemImage)
+                .foregroundStyle(isEnabled ? (iconColor ?? .primary) : .secondary)
+                .font(.system(size: 16, weight: .semibold))
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .foregroundStyle(isEnabled ? .primary : .secondary)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            if showsChevron {
+                Image(systemName: "chevron.right")
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .padding(.vertical, 6)
+        .contentShape(Rectangle())
+    }
 }
 
 private struct HearPage: View {
