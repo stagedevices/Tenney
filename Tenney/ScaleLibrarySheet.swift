@@ -66,6 +66,7 @@ struct ScaleLibrarySheet: View {
     @AppStorage(SettingsKeys.libraryFavoritesOnly) private var libraryFavoritesOnly: Bool = false
     @AppStorage(SettingsKeys.librarySortKey) private var librarySortKeyRaw: String = ScaleLibraryStore.SortKey.recent.rawValue
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isSearchPresented = false
     @State private var filters: LibraryFilters = .defaultValue
     @State private var showFilterSheet = false
     @State private var didLoadFilters = false
@@ -82,6 +83,18 @@ struct ScaleLibrarySheet: View {
     @Namespace private var communityPackNamespace
     @State private var moveToast: MoveToast? = nil
     @State private var moveToastTask: Task<Void, Never>? = nil
+
+    private var isSearching: Bool {
+        isSearchPresented || !librarySearchText.isEmpty
+    }
+    
+    private var overlayTransition: AnyTransition {
+        reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.92))
+    }
+
+    private var overlayAnimation: Animation? {
+        reduceMotion ? nil : .snappy(duration: 0.2)
+    }
 
     // simple sort/local filter
     private var filteredScales: [TenneyScale] {
@@ -216,7 +229,12 @@ struct ScaleLibrarySheet: View {
                 }
                 .listStyle(.insetGrouped)
                 .navigationTitle("Library")
-                .searchable(text: $librarySearchText, placement: .navigationBarDrawer(displayMode: .automatic))
+                .searchable(
+                    text: $librarySearchText,
+                    isPresented: $isSearchPresented,
+                    placement: .navigationBarDrawer(displayMode: .automatic)
+                )
+                .modifier(SearchPresentationToolbarHidden())
                 .toolbar {
                     ToolbarItem(placement: .navigationBarTrailing) {
                         Button {
@@ -359,12 +377,27 @@ struct ScaleLibrarySheet: View {
             }
         }
         .overlay(alignment: .topTrailing) {
-                    // Overlay keeps dismissal off the nav bar and anchored to the sheet's top edge.
+            // Overlay keeps dismissal off the nav bar and anchored to the sheet's top edge.
+            Group {
+                if isSearching {
+                    Button(action: cancelSearch) {
+                        Image(systemName: "chevron.backward")
+                            .font(.system(size: 18, weight: .bold))
+                            .frame(width: 44, height: 44)
+                            .contentShape(Circle())
+                            .modifier(GlassWhiteCircle())
+                    }
+                    .buttonStyle(.plain)
+                    .transition(overlayTransition)
+                } else {
                     GlassDismissCircleButton { dismiss() }
-                        .padding(.top, 20)
-                        .padding(.trailing, 20)
-                        .transition(.opacity)
+                        .transition(overlayTransition)
                 }
+            }
+            .padding(.top, 20)
+            .padding(.trailing, 20)
+        }
+        .animation(overlayAnimation, value: isSearching)
         .toolbarBackground(.hidden, for: .navigationBar)
         .presentationBackground(.clear)
         .onAppear {
@@ -495,6 +528,16 @@ struct ScaleLibrarySheet: View {
         }
     }
 
+}
+
+private struct SearchPresentationToolbarHidden: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 17.0, *) {
+            content.searchPresentationToolbar(.hidden)
+        } else {
+            content
+        }
+    }
 }
 
 private struct LibraryControlsCard: View {
@@ -2138,6 +2181,23 @@ private extension ScaleLibrarySheet {
         filters = .defaultValue
         libraryFavoritesOnly = false
         librarySearchText = ""
+    }
+
+    // Acceptance checklist:
+    // - tap search → chevron appears, no extra X visible
+    // - tap chevron → search cancels, keyboard dismisses, checkmark returns
+    // - type search text → results filter; chevron remains until canceled
+    // - tap checkmark when not searching → sheet dismisses
+    private func cancelSearch() {
+        librarySearchText = ""
+        isSearchPresented = false
+        dismissKeyboard()
+    }
+
+    private func dismissKeyboard() {
+        #if canImport(UIKit)
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        #endif
     }
 
     func loadFiltersIfNeeded() {
