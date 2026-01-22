@@ -44,7 +44,13 @@ private func communityScaleForFiltering(pack: CommunityPackViewModel, scale: Com
         periodRatio: 2.0,
         maxTenneyHeight: TenneyScale.maxTenneyHeight(for: scale.payload.refs),
         author: pack.authorName,
-        provenance: provenance
+        provenance: provenance,
+        pack: PackRef(
+            source: .community,
+            id: "community:\(pack.packID)",
+            title: pack.title,
+            slug: pack.packID
+        )
     )
 }
 
@@ -892,7 +898,7 @@ private struct FullPageEmptyState: View {
     }
 }
 
-private struct CommunityPackDetailView: View {
+struct CommunityPackDetailView: View {
     let pack: CommunityPackViewModel
     let namespace: Namespace.ID
     let onPreviewRequested: (CommunityPackPreviewRequest) -> Void

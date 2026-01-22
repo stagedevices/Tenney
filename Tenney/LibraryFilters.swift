@@ -241,6 +241,13 @@ extension LibraryFilters {
                 parts.append(author)
             }
         }
+        if let pack = scale.pack {
+            parts.append(pack.title)
+            parts.append(pack.id)
+            if let slug = pack.slug {
+                parts.append(slug)
+            }
+        }
 
         if let author = scale.author {
             parts.append(author)
