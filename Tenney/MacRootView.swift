@@ -5,17 +5,20 @@ struct MacRootView: View {
     @EnvironmentObject private var latticeStore: LatticeStore
     @EnvironmentObject private var app: AppModel
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.tenneyTheme) private var theme
     @Environment(\.openWindow) private var openWindow
 
     @SceneStorage("tenney.mac.splitRatio") private var splitRatio: Double = 0.56
     @State private var stageActive = false
 
-    private var tintA: Color { TenneyTokens.Color.prime3 }
-    private var tintB: Color { TenneyTokens.Color.prime5 }
-
     var body: some View {
         ZStack(alignment: .top) {
-            TenneySceneBackground(isDark: scheme == .dark, tintA: tintA, tintB: tintB)
+            TenneySceneBackground(
+                isDark: scheme == .dark,
+                preset: theme.sceneBackgroundPreset,
+                tintA: theme.primeTint(3),
+                tintB: theme.primeTint(5)
+            )
 
             VStack(spacing: 0) {
                 ResizableSplitView(
