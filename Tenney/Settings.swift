@@ -80,23 +80,21 @@ private struct StageAccentPicker: View {
     private struct Option: Identifiable {
         let id: String
         let label: String
-        let colors: [Color]
+        let baseColor: Color
     }
 
     private let options: [Option] = [
-        .init(id: "system", label: "System", colors: [.accentColor, .accentColor.opacity(0.6)]),
-        .init(id: "amber",  label: "Amber",  colors: [.orange, .yellow]),
-        .init(id: "red",    label: "Red",    colors: [.red, .pink])
+        .init(id: "system", label: "System", baseColor: .accentColor),
+        .init(id: "amber",  label: "Amber",  baseColor: .orange),
+        .init(id: "red",    label: "Red",    baseColor: .red)
     ]
 
     @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.accessibilityContrast) private var contrast
 
-    private var strokeGrad: LinearGradient {
-        LinearGradient(
-            colors: [theme.e3, theme.e5],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
+    private var strokeStyle: AnyShapeStyle {
+        ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency, contrast: contrast)
     }
 
     var body: some View {
@@ -110,10 +108,10 @@ private struct StageAccentPicker: View {
                     VStack(spacing: 8) {
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .fill(
-                                LinearGradient(
-                                    colors: opt.colors,
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
+                                ThemeAccent.shapeStyle(
+                                    base: opt.baseColor,
+                                    reduceTransparency: reduceTransparency,
+                                    contrast: contrast
                                 )
                             )
                             .frame(width: 64, height: 40)
@@ -121,7 +119,7 @@ private struct StageAccentPicker: View {
                                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                                     .stroke(
                                         on
-                                        ? AnyShapeStyle(strokeGrad)
+                                        ? strokeStyle
                                         : AnyShapeStyle(Color.secondary.opacity(0.2)),
                                         lineWidth: on ? 2 : 1
                                     )
@@ -154,13 +152,11 @@ private struct StageToggleChip: View {
     var invertVisual: Bool = false
 
     @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.accessibilityContrast) private var contrast
 
-    private var grad: LinearGradient {
-        LinearGradient(
-            colors: [theme.e3, theme.e5],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
+    private var accentStyle: AnyShapeStyle {
+        ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency, contrast: contrast)
     }
 
     var body: some View {
@@ -174,7 +170,7 @@ private struct StageToggleChip: View {
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(
                         on
-                        ? AnyShapeStyle(grad)
+                        ? accentStyle
                         : AnyShapeStyle(Color.secondary)
                     )
                     .blendMode(on ? (theme.isDark ? .screen : .darken) : .normal)
@@ -200,7 +196,7 @@ private struct StageToggleChip: View {
             .overlay(
                 Capsule().stroke(
                     on
-                    ? AnyShapeStyle(grad)
+                    ? accentStyle
                     : AnyShapeStyle(Color.secondary.opacity(0.12)),
                     lineWidth: 1
                 )
@@ -655,9 +651,11 @@ struct StudioConsoleView: View {
         let tap: () -> Void
 
         @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
+        @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+        @Environment(\.accessibilityContrast) private var contrast
 
-        private var grad: LinearGradient {
-            LinearGradient(colors: [theme.e3, theme.e5], startPoint: .topLeading, endPoint: .bottomTrailing)
+        private var accentStyle: AnyShapeStyle {
+            ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency, contrast: contrast)
         }
 
         var body: some View {
@@ -668,7 +666,7 @@ struct StudioConsoleView: View {
                 HStack(spacing: 8) {
                     Image(systemName: systemImage)
                         .font(.footnote.weight(.semibold))
-                        .foregroundStyle(selected ? AnyShapeStyle(grad) : AnyShapeStyle(Color.secondary))
+                        .foregroundStyle(selected ? accentStyle : AnyShapeStyle(Color.secondary))
                         .blendMode(selected ? (theme.isDark ? .screen : .darken) : .normal)
                         .frame(width: 18)
                         .contentTransition(.symbolEffect(.replace))
@@ -684,7 +682,7 @@ struct StudioConsoleView: View {
                 .background(selected ? AnyShapeStyle(.thinMaterial) : AnyShapeStyle(.ultraThinMaterial), in: Capsule())
                 .overlay(
                     Capsule().stroke(
-                        selected ? AnyShapeStyle(grad) : AnyShapeStyle(Color.secondary.opacity(0.12)),
+                        selected ? accentStyle : AnyShapeStyle(Color.secondary.opacity(0.12)),
                         lineWidth: 1
                     )
                 )
@@ -851,13 +849,11 @@ struct StudioConsoleView: View {
         @Binding var current: Double
 
         @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
+        @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+        @Environment(\.accessibilityContrast) private var contrast
 
-        private var grad: LinearGradient {
-            LinearGradient(
-                colors: [theme.e3, theme.e5],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+        private var accentStyle: AnyShapeStyle {
+            ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency, contrast: contrast)
         }
 
         private var selected: Bool { current == value }
@@ -872,7 +868,7 @@ struct StudioConsoleView: View {
                     Image(systemName: systemImage)
                         .foregroundStyle(
                             selected
-                            ? AnyShapeStyle(grad)
+                            ? accentStyle
                             : AnyShapeStyle(Color.secondary)
                         )
                         .blendMode(selected ? (theme.isDark ? .screen : .darken) : .normal)
@@ -896,7 +892,7 @@ struct StudioConsoleView: View {
                 .overlay(
                     Capsule().stroke(
                         selected
-                        ? AnyShapeStyle(grad)
+                        ? accentStyle
                         : AnyShapeStyle(Color.secondary.opacity(0.12)),
                         lineWidth: 1
                     )
@@ -929,13 +925,11 @@ struct StudioConsoleView: View {
         let tap: () -> Void
 
         @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
+        @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+        @Environment(\.accessibilityContrast) private var contrast
 
-        private var grad: LinearGradient {
-            LinearGradient(
-                colors: [theme.e3, theme.e5],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+        private var accentStyle: AnyShapeStyle {
+            ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency, contrast: contrast)
         }
 
         var body: some View {
@@ -945,7 +939,7 @@ struct StudioConsoleView: View {
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(
                             selected
-                            ? AnyShapeStyle(grad)
+                            ? accentStyle
                             : AnyShapeStyle(Color.secondary)
                         )
                         .blendMode(selected ? (theme.isDark ? .screen : .darken) : .normal)
@@ -971,7 +965,7 @@ struct StudioConsoleView: View {
                 .overlay(
                     Capsule().stroke(
                         selected
-                        ? AnyShapeStyle(grad)
+                        ? accentStyle
                         : AnyShapeStyle(Color.secondary.opacity(0.12)),
                         lineWidth: 1
                     )
@@ -1021,13 +1015,10 @@ struct StudioConsoleView: View {
         @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
         @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+        @Environment(\.accessibilityContrast) private var contrast
 
-        private var pageGrad: LinearGradient {
-            LinearGradient(
-                colors: [theme.e3, theme.e5],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+        private var accentStyle: AnyShapeStyle {
+            ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency, contrast: contrast)
         }
 
         @State private var page: OscilloscopePage = .view
@@ -1127,7 +1118,7 @@ struct StudioConsoleView: View {
                     Image(systemName: icon(for: p))
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(
-                            active ? AnyShapeStyle(pageGrad) : AnyShapeStyle(Color.secondary)
+                            active ? accentStyle : AnyShapeStyle(Color.secondary)
                         )
                         .blendMode(active ? (theme.isDark ? .screen : .darken) : .normal)
                         .frame(width: 18)
@@ -1148,7 +1139,7 @@ struct StudioConsoleView: View {
                 )
                 .overlay(
                     Capsule().stroke(
-                        active ? AnyShapeStyle(pageGrad) : AnyShapeStyle(Color.secondary.opacity(0.12)),
+                        active ? accentStyle : AnyShapeStyle(Color.secondary.opacity(0.12)),
                         lineWidth: 1
                     )
                 )
@@ -1195,15 +1186,11 @@ struct StudioConsoleView: View {
             let systemImage: String
             @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
 
-            private var headerGradient: LinearGradient {
-                LinearGradient(colors: [theme.e3, theme.e5], startPoint: .topLeading, endPoint: .bottomTrailing)
-            }
-
             var body: some View {
                 HStack(spacing: 10) {
                     Image(systemName: systemImage)
                         .font(.title3.weight(.semibold))
-                        .foregroundStyle(headerGradient)
+                        .tenneyAccentForegroundStyle(theme.accent)
                         .blendMode(theme.isDark ? .screen : .darken)
                         .frame(width: 22)
 
@@ -1476,14 +1463,12 @@ struct StudioConsoleView: View {
         @Binding var safeAmp: Double
         
         @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
+        @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+        @Environment(\.accessibilityContrast) private var contrast
 
-                private var pageGrad: LinearGradient {
-                    LinearGradient(
-                        colors: [theme.e3, theme.e5],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                }
+        private var accentStyle: AnyShapeStyle {
+            ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency, contrast: contrast)
+        }
 
 
         private func setWave(_ w: ToneOutputEngine.GlobalWave) {
@@ -1580,7 +1565,7 @@ struct StudioConsoleView: View {
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(
                             active
-                            ? AnyShapeStyle(pageGrad)
+                            ? accentStyle
                             : AnyShapeStyle(Color.secondary)
                         )
                         .blendMode(active ? (theme.isDark ? .screen : .darken) : .normal)
@@ -1607,7 +1592,7 @@ struct StudioConsoleView: View {
                 .overlay(
                     Capsule().stroke(
                         active
-                        ? AnyShapeStyle(pageGrad)
+                        ? accentStyle
                         : AnyShapeStyle(Color.secondary.opacity(0.12)),
                         lineWidth: 1
                     )
@@ -1671,19 +1656,11 @@ struct StudioConsoleView: View {
             let systemImage: String
             @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
 
-            private var headerGradient: LinearGradient {
-                LinearGradient(
-                    colors: [theme.e3, theme.e5],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            }
-
             var body: some View {
                 HStack(spacing: 10) {
                     Image(systemName: systemImage)
                         .font(.title3.weight(.semibold))
-                        .foregroundStyle(headerGradient)
+                        .tenneyAccentForegroundStyle(theme.accent)
                         .blendMode(theme.isDark ? .screen : .darken)
                         .frame(width: 22)
 
@@ -1970,13 +1947,11 @@ struct StudioConsoleView: View {
         @Binding var latticeConnectionModeRaw: String
         @Binding var soundOn: Bool   // ✅ add
         @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
+        @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+        @Environment(\.accessibilityContrast) private var contrast
 
-        private var pageGrad: LinearGradient {
-            LinearGradient(
-                colors: [theme.e3, theme.e5],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+        private var accentStyle: AnyShapeStyle {
+            ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency, contrast: contrast)
         }
         
         private var latticeConnectionMode: LatticeConnectionMode {
@@ -1998,7 +1973,7 @@ struct StudioConsoleView: View {
         let previewToken: String
 
         @State private var page: LatticeUIPage = .view
-                private let pageAnim = Animation.easeInOut(duration: 0.22)
+        private let pageAnim = Animation.easeInOut(duration: 0.22)
 
                 // Smooth height animation so the surrounding LazyVGrid doesn't "jump" on page swaps.
                 @State private var panelHeights: [LatticeUIPage: CGFloat] = [:]
@@ -2053,19 +2028,11 @@ struct StudioConsoleView: View {
             let systemImage: String
             @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
 
-            private var headerGradient: LinearGradient {
-                LinearGradient(
-                    colors: [theme.e3, theme.e5],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            }
-
             var body: some View {
                 HStack(spacing: 10) {
                     Image(systemName: systemImage)
                         .font(.title3.weight(.semibold))
-                        .foregroundStyle(headerGradient)
+                        .tenneyAccentForegroundStyle(theme.accent)
                         .blendMode(theme.isDark ? .screen : .darken)
                         .frame(width: 22)
 
@@ -2167,7 +2134,7 @@ struct StudioConsoleView: View {
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(
                             active
-                            ? AnyShapeStyle(pageGrad)
+                            ? accentStyle
                             : AnyShapeStyle(Color.secondary)
                         )
                         .blendMode(active ? (theme.isDark ? .screen : .darken) : .normal)
@@ -2194,7 +2161,7 @@ struct StudioConsoleView: View {
                 .overlay(
                     Capsule().stroke(
                         active
-                        ? AnyShapeStyle(pageGrad)
+                        ? accentStyle
                         : AnyShapeStyle(Color.secondary.opacity(0.12)),
                         lineWidth: 1
                     )
@@ -3480,11 +3447,11 @@ private struct GlassNavTile<Destination: View>: View {
 
     @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.accessibilityContrast) private var contrast
 
-    private var grad: LinearGradient {
-        LinearGradient(colors: [theme.e3, theme.e5],
-                       startPoint: .topLeading,
-                       endPoint: .bottomTrailing)
+    private var accentStyle: AnyShapeStyle {
+        ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency, contrast: contrast)
     }
 
     var body: some View {
@@ -3495,8 +3462,7 @@ private struct GlassNavTile<Destination: View>: View {
                     .overlay(
                         RoundedRectangle(cornerRadius: 16, style: .continuous)
                             .stroke(
-                                isOn ? AnyShapeStyle(grad)
-                                     : AnyShapeStyle(Color.secondary.opacity(0.12)),
+                                isOn ? accentStyle : AnyShapeStyle(Color.secondary.opacity(0.12)),
                                 lineWidth: 1
                             )
                     )
@@ -3508,7 +3474,7 @@ private struct GlassNavTile<Destination: View>: View {
                         if let icon {
                             Image(systemName: icon)
                                 .font(.title3.weight(.semibold))
-                                .foregroundStyle(AnyShapeStyle(grad))
+                                .foregroundStyle(accentStyle)
                                 .blendMode(theme.isDark ? .screen : .darken)
                                 .frame(width: 22)
                         }
@@ -3565,11 +3531,11 @@ private struct GlassNavTile<Destination: View>: View {
 
         @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
+        @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+        @Environment(\.accessibilityContrast) private var contrast
 
-        private var grad: LinearGradient {
-            LinearGradient(colors: [theme.e3, theme.e5],
-                           startPoint: .topLeading,
-                           endPoint: .bottomTrailing)
+        private var accentStyle: AnyShapeStyle {
+            ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency, contrast: contrast)
         }
 
 
@@ -3647,8 +3613,7 @@ private struct GlassNavTile<Destination: View>: View {
                         .overlay(
                             RoundedRectangle(cornerRadius: 16, style: .continuous)
                                 .stroke(
-                                    isOn ? AnyShapeStyle(grad)
-                                         : AnyShapeStyle(Color.secondary.opacity(0.12)),
+                                    isOn ? accentStyle : AnyShapeStyle(Color.secondary.opacity(0.12)),
                                     lineWidth: 1
                                 )
                         )
@@ -3667,7 +3632,7 @@ private struct GlassNavTile<Destination: View>: View {
                             if let icon {
                                 Image(systemName: icon)
                                     .font(.title3.weight(.semibold))
-                                    .foregroundStyle(AnyShapeStyle(grad))
+                                    .foregroundStyle(accentStyle)
                                     .blendMode(theme.isDark ? .screen : .darken)
                                     .frame(width: 22)
                             }
@@ -3683,7 +3648,7 @@ private struct GlassNavTile<Destination: View>: View {
                                 Image(systemName: "checkmark.circle.fill")
                                     .imageScale(.small)
                                     .symbolRenderingMode(.hierarchical)
-                                    .foregroundStyle(AnyShapeStyle(grad))
+                                    .foregroundStyle(accentStyle)
                                     .blendMode(theme.isDark ? .screen : .darken)
                                     .transition(.opacity)
                             }
@@ -4539,14 +4504,12 @@ private struct GlassNavTile<Destination: View>: View {
 
     fileprivate struct WaveTile: View {
         @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
+        @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+        @Environment(\.accessibilityContrast) private var contrast
 
-            private var grad: LinearGradient {
-                LinearGradient(
-                    colors: [theme.e3, theme.e5],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            }
+        private var accentStyle: AnyShapeStyle {
+            ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency, contrast: contrast)
+        }
         let option: WaveOption
         let selected: Bool
         let tap: () -> Void
@@ -4566,7 +4529,7 @@ private struct GlassNavTile<Destination: View>: View {
                                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                                     .stroke(
                                         selected
-                                        ? AnyShapeStyle(grad)
+                                        ? accentStyle
                                         : AnyShapeStyle(Color.secondary.opacity(0.12)),
                                         lineWidth: 1
                                     )
@@ -4584,7 +4547,7 @@ private struct GlassNavTile<Destination: View>: View {
                                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                                         .stroke(
                                             selected
-                                            ? AnyShapeStyle(grad)
+                                            ? accentStyle
                                             : AnyShapeStyle(Color.secondary.opacity(0.12)),
                                             lineWidth: 1
                                         )
@@ -4597,7 +4560,7 @@ private struct GlassNavTile<Destination: View>: View {
                             Image(systemName: "checkmark.circle.fill")
                                 .imageScale(.small)
                                 .symbolRenderingMode(.hierarchical)
-                                .foregroundStyle(AnyShapeStyle(grad))
+                                .foregroundStyle(accentStyle)
                                 .blendMode(theme.isDark ? .screen : .darken)
                                 .padding(6)
                                 .transition(.opacity)
@@ -4707,20 +4670,12 @@ private struct GlassNavTile<Destination: View>: View {
         var subtitle: String?
         @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
 
-        private var headerGradient: LinearGradient {
-            LinearGradient(
-                colors: [theme.e3, theme.e5],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        }
-
         var body: some View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 10) {
                     Image(systemName: systemName)
                         .font(.title3.weight(.semibold))
-                        .foregroundStyle(headerGradient)
+                        .tenneyAccentForegroundStyle(theme.accent)
                         .blendMode(theme.isDark ? .screen : .darken)
                         .frame(width: 22)
 
@@ -4857,9 +4812,16 @@ private struct GlassNavTile<Destination: View>: View {
     // Accent tile matching your theme tiles (label outside, wave-style visuals)
     private struct StageAccentTile: View {
         let label: String
-        let colors: [Color]
+        let baseColor: Color
         let selected: Bool
         let tap: () -> Void
+
+        @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+        @Environment(\.accessibilityContrast) private var contrast
+
+        private var accentStyle: AnyShapeStyle {
+            ThemeAccent.shapeStyle(base: baseColor, reduceTransparency: reduceTransparency, contrast: contrast)
+        }
 
         var body: some View {
             VStack(spacing: 6) {
@@ -4868,7 +4830,7 @@ private struct GlassNavTile<Destination: View>: View {
                         if #available(iOS 26.0, *) {
                             GlassEffectContainer {
                                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .fill(LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing))
+                                    .fill(accentStyle)
                                     .frame(minWidth: 100, minHeight: 44)
                             }
                             .glassEffect(.regular, in: .rect(cornerRadius: 12))
@@ -4877,7 +4839,7 @@ private struct GlassNavTile<Destination: View>: View {
                                 .fill(.ultraThinMaterial)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                        .fill(LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing))
+                                        .fill(accentStyle)
                                         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                                 )
                                 .frame(minWidth: 100, minHeight: 44)
@@ -4893,8 +4855,8 @@ private struct GlassNavTile<Destination: View>: View {
                     }
                     .overlay(
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .stroke(selected ? Color.accentColor.opacity(0.35)
-                                             : Color.secondary.opacity(0.12), lineWidth: 1)
+                            .stroke(selected ? accentStyle : AnyShapeStyle(Color.secondary.opacity(0.12)), lineWidth: 1)
+                            .opacity(selected ? 0.35 : 1.0)
                     
                     )
                 }

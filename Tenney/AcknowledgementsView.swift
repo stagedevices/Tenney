@@ -16,6 +16,8 @@ import SwiftUI
 
 struct AcknowledgementsView: View {
     @Environment(\.tenneyTheme) private var theme
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.accessibilityContrast) private var contrast
 
     var body: some View {
         ScrollView {
@@ -44,7 +46,14 @@ struct AcknowledgementsView: View {
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(LinearGradient(colors: [theme.e3.opacity(0.55), theme.e5.opacity(0.55)], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1)
+                .strokeBorder(
+                    ThemeAccent.shapeStyle(
+                        base: theme.accent.opacity(0.55),
+                        reduceTransparency: reduceTransparency,
+                        contrast: contrast
+                    ),
+                    lineWidth: 1
+                )
         )
     }
 
@@ -147,4 +156,3 @@ private struct LicenseBlock: View {
         }
     }
 }
-
