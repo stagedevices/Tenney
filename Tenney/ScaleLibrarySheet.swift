@@ -988,7 +988,8 @@ private struct PackBrowserPageList: View {
                     NavigationLink {
                         CommunityPackFolderList(
                             packs: communityPacksSummaries,
-                            onOpenCommunityPack: onOpenCommunityPack
+                            onOpenCommunityPack: onOpenCommunityPack,
+                            onPickScale: onPickScale
                         )
                     } label: {
                         PackRow(pack: communitySuperFolderSummary, showsDisclosure: true)
@@ -1110,31 +1111,45 @@ private struct PackBrowserPageList: View {
 private struct CommunityPackFolderList: View {
     let packs: [PackSummary]
     let onOpenCommunityPack: (CommunityPackViewModel) -> Void
+    let onPickScale: (TenneyScale) -> Void
     @ObservedObject private var communityPacks = CommunityPacksStore.shared
+    @ObservedObject private var library = ScaleLibraryStore.shared
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var expandedPackIDs: Set<String> = []
+    @State private var didLoadExpandedPackIDs = false
+    private let expandedStorageKey = "communityPacks.expandedPackIDs"
 
     var body: some View {
-        List {
-            if packs.isEmpty {
-                Section {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 12) {
+                if packs.isEmpty {
                     ContentUnavailableView(
                         "No installed community packs",
                         systemImage: "shippingbox",
                         description: Text("Install a pack to see it here.")
                     )
-                }
-            } else {
-                Section("Installed Packs") {
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 24)
+                } else {
+                    Text("Installed Packs")
+                        .font(.headline)
+                        .padding(.horizontal, 4)
+
                     ForEach(packs) { pack in
                         let packViewModel = communityPackViewModel(for: pack)
-                        Button {
-                            if let packViewModel {
-                                onOpenCommunityPack(packViewModel)
-                            }
-                        } label: {
-                            PackRow(pack: pack, showsDisclosure: true)
-                        }
-                        .buttonStyle(.plain)
-                        .contextMenu {
+                        let packKey = stablePackKey(for: pack, packViewModel: packViewModel)
+                        let isExpanded = expandedPackIDs.contains(packKey)
+                        let installedScales = installedScales(for: packViewModel?.packID)
+                        CommunityPackDisclosureCard(
+                            title: pack.title,
+                            subtitle: packSubtitle(for: pack, scaleCount: installedScales.count),
+                            updateAvailable: packViewModel.map { communityPacks.isUpdateAvailable($0.packID) } ?? false,
+                            isExpanded: isExpanded,
+                            reduceMotion: reduceMotion,
+                            onToggle: { toggleExpanded(packKey) },
+                            scales: installedScales,
+                            onPickScale: onPickScale
+                        ) {
                             if let packViewModel {
                                 if communityPacks.isUpdateAvailable(packViewModel.packID) {
                                     Button("Update") {
@@ -1143,23 +1158,220 @@ private struct CommunityPackFolderList: View {
                                 }
                                 Button("Info") { onOpenCommunityPack(packViewModel) }
                                 Button("Uninstall", role: .destructive) {
-                                    Task {
-                                        await communityPacks.uninstallPack(packID: packViewModel.packID)
-                                    }
+                                    handleUninstall(packID: packViewModel.packID, packKey: packKey)
                                 }
                             }
                         }
                     }
                 }
             }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 16)
         }
         .navigationTitle("Community Packs")
+        .onAppear {
+            loadExpandedPackIDsIfNeeded()
+        }
+        .onChange(of: packs.map(\.id)) { _ in
+            sanitizeExpandedPackIDs()
+        }
+        .onChange(of: communityPacks.packs.map(\.packID)) { _ in
+            sanitizeExpandedPackIDs()
+        }
     }
 
     private func communityPackViewModel(for pack: PackSummary) -> CommunityPackViewModel? {
         let slug = pack.packRef?.slug ?? pack.packRef?.id.replacingOccurrences(of: "community:", with: "")
         guard let slug else { return nil }
         return communityPacks.packs.first(where: { $0.packID == slug })
+    }
+
+    private func stablePackKey(for pack: PackSummary, packViewModel: CommunityPackViewModel?) -> String {
+        if let id = pack.packRef?.id, id.hasPrefix("community:") {
+            return id
+        }
+        if let slug = pack.packRef?.slug ?? packViewModel?.packID {
+            return "community:\(slug)"
+        }
+        return "community:\(pack.id)"
+    }
+
+    private func packSubtitle(for pack: PackSummary, scaleCount: Int) -> String {
+        let count = max(scaleCount, pack.count)
+        return "\(count) scale\(count == 1 ? "" : "s") • Installed"
+    }
+
+    private func installedScales(for packID: String?) -> [TenneyScale] {
+        guard let packID else { return [] }
+        let scales = library.scales.values.filter { scale in
+            if scale.provenance?.packID == packID {
+                return true
+            }
+            if scale.pack?.source == .community, scale.pack?.slug == packID {
+                return true
+            }
+            return false
+        }
+        return scales.sorted {
+            $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+        }
+    }
+
+    private func toggleExpanded(_ key: String) {
+        let animation = reduceMotion ? Animation.easeOut(duration: 0.15) : .snappy(duration: 0.35)
+        withAnimation(animation) {
+            if expandedPackIDs.contains(key) {
+                expandedPackIDs.remove(key)
+            } else {
+                expandedPackIDs.insert(key)
+            }
+        }
+        persistExpandedPackIDs()
+    }
+
+    private func handleUninstall(packID: String, packKey: String) {
+        expandedPackIDs.remove(packKey)
+        persistExpandedPackIDs()
+        Task {
+            await communityPacks.uninstallPack(packID: packID)
+        }
+    }
+
+    private func loadExpandedPackIDsIfNeeded() {
+        guard !didLoadExpandedPackIDs else { return }
+        didLoadExpandedPackIDs = true
+        if let stored = UserDefaults.standard.stringArray(forKey: expandedStorageKey) {
+            expandedPackIDs = Set(stored)
+        }
+        sanitizeExpandedPackIDs()
+    }
+
+    private func sanitizeExpandedPackIDs() {
+        let validPackKeys = Set(packs.map { stablePackKey(for: $0, packViewModel: communityPackViewModel(for: $0)) })
+        let sanitized = expandedPackIDs.intersection(validPackKeys)
+        guard sanitized != expandedPackIDs else { return }
+        expandedPackIDs = sanitized
+        persistExpandedPackIDs()
+    }
+
+    private func persistExpandedPackIDs() {
+        UserDefaults.standard.set(Array(expandedPackIDs), forKey: expandedStorageKey)
+    }
+}
+
+private struct CommunityPackDisclosureCard<MenuContent: View>: View {
+    let title: String
+    let subtitle: String
+    let updateAvailable: Bool
+    let isExpanded: Bool
+    let reduceMotion: Bool
+    let onToggle: () -> Void
+    let scales: [TenneyScale]
+    let onPickScale: (TenneyScale) -> Void
+    @ViewBuilder let menuContent: () -> MenuContent
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Button(action: onToggle) {
+                    HStack(spacing: 12) {
+                        communityBadge
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(title)
+                                .font(.headline.weight(.semibold))
+                            HStack(spacing: 8) {
+                                Text(subtitle)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                if updateAvailable {
+                                    Text("Update available")
+                                        .font(.caption2.weight(.semibold))
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Capsule().fill(Color.accentColor.opacity(0.18)))
+                                }
+                            }
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .rotationEffect(isExpanded ? .degrees(90) : .degrees(0))
+                            .foregroundStyle(.secondary)
+                            .animation(
+                                reduceMotion ? .easeOut(duration: 0.15) : .snappy(duration: 0.35),
+                                value: isExpanded
+                            )
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+
+                Menu(content: menuContent) {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 30, height: 30)
+                }
+            }
+
+            if isExpanded {
+                LazyVStack(alignment: .leading, spacing: 8) {
+                    ForEach(scales) { scale in
+                        Button {
+                            onPickScale(scale)
+                        } label: {
+                            CommunityPackScaleInlineRow(scale: scale)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .padding(12)
+        .background(PremiumModalSurface.cardSurface(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
+        )
+    }
+
+    private var communityBadge: some View {
+        ZStack {
+            Circle()
+                .fill(Color.accentColor.opacity(0.18))
+            Image(systemName: "person.3.fill")
+                .font(.headline)
+                .foregroundStyle(Color.accentColor)
+        }
+        .frame(width: 36, height: 36)
+    }
+}
+
+private struct CommunityPackScaleInlineRow: View {
+    let scale: TenneyScale
+
+    var body: some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(scale.name)
+                    .font(.subheadline.weight(.semibold))
+                Text("\(scale.detectedLimit)-limit • \(scale.size) notes")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.secondary.opacity(0.08))
+        )
+        .contentShape(Rectangle())
     }
 }
 
