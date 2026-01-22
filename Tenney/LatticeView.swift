@@ -4115,22 +4115,23 @@ struct LatticeView: View {
     
     var body: some View {
         GeometryReader { geo in
+            let background = TenneySceneBackground(
+                isDark: effectiveIsDark,
+                preset: activeTheme.sceneBackgroundPreset,
+                tintA: activeTheme.primeTint(3),
+                tintB: activeTheme.primeTint(5)
+            )
             ZStack {
-                        TenneySceneBackground(
-                            isDark: effectiveIsDark,
-                            preset: activeTheme.sceneBackgroundPreset,
-                            tintA: activeTheme.primeTint(3),
-                            tintB: activeTheme.primeTint(5)
-                        )
+                background
             
-                        latticeStack(in: geo)
-                            .sensoryFeedback(.selection, trigger: selectionHapticTick)
-                            .sensoryFeedback(.selection, trigger: focusHapticTick)
-                            .navigationTitle("Lattice")
-                            .toolbar { clearToolbar }
-                            .onPreferenceChange(SelectionTrayHeightKey.self) { trayHeight = $0 }
-                            .onPreferenceChange(BottomHUDHeightKey.self) { bottomHUDHeight = $0 }
-                    }
+                latticeStack(in: geo)
+                    .sensoryFeedback(.selection, trigger: selectionHapticTick)
+                    .sensoryFeedback(.selection, trigger: focusHapticTick)
+                    .navigationTitle("Lattice")
+                    .toolbar { clearToolbar }
+                    .onPreferenceChange(SelectionTrayHeightKey.self) { trayHeight = $0 }
+                    .onPreferenceChange(BottomHUDHeightKey.self) { bottomHUDHeight = $0 }
+            }
             .onAppear { viewSize = geo.size }
             .onChange(of: geo.size) { viewSize = $0 }
 #if targetEnvironment(macCatalyst)
