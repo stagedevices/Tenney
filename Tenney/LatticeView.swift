@@ -4118,6 +4118,7 @@ struct LatticeView: View {
             ZStack {
                         TenneySceneBackground(
                             isDark: effectiveIsDark,
+                            preset: activeTheme.sceneBackgroundPreset,
                             tintA: activeTheme.primeTint(3),
                             tintB: activeTheme.primeTint(5)
                         )

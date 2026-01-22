@@ -100,6 +100,7 @@ enum TenneyThemeRegistry {
             name: id.displayName,
             scheme: scheme,
             palette: pal,
+            sceneBackgroundPreset: id == .nocturneBO ? .nocturneReadable : .standardAtmospheric,
             surfaceTint: surfaceTint,
             chromaShadow: chromaShadow,
             tunerNeedle: base.primeTint(5),
@@ -159,6 +160,7 @@ enum TenneyThemeRegistry {
             name: t.name,
             scheme: scheme,
             palette: pal,
+            sceneBackgroundPreset: .standardAtmospheric,
             surfaceTint: surfaceTint,
             chromaShadow: chromaShadow,
             tunerNeedle: Color(hex: t.tunerNeedleHex),
@@ -173,4 +175,3 @@ enum TenneyThemeRegistry {
         )
     }
 }
-
