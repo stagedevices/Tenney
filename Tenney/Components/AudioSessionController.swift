@@ -11,6 +11,7 @@ import SwiftUI
 #if canImport(UIKit)
 import UIKit
 #endif
+import Combine
 
 @MainActor
 final class AudioSessionController: ObservableObject {
@@ -306,7 +307,7 @@ final class AudioSessionController: ObservableObject {
         let outputs = session.currentRoute.outputs
         routeOutputs = outputs.map { output in
             let channelCount = output.channels?.count ?? 0
-            RouteOutputInfo(
+           return RouteOutputInfo(
                 id: output.uid,
                 name: output.portName,
                 portType: output.portType,
