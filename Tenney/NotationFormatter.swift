@@ -11,6 +11,12 @@ import Foundation
 
 public enum NotationFormatter {
 
+    public enum AccidentalPreference: Int, Codable {
+        case auto = 0
+        case preferSharps = 1
+        case preferFlats = 2
+    }
+
     // MARK: - Staff name surface (tuple for destructuring + dot access)
 
     /// Tuple on purpose:
@@ -28,6 +34,16 @@ public enum NotationFormatter {
         ("C", "", 0), ("C", "♯", 0), ("D", "", 0), ("D", "♯", 0),
         ("E", "", 0), ("F", "", 0), ("F", "♯", 0), ("G", "", 0),
         ("G", "♯", 0), ("A", "", 0), ("A", "♯", 0), ("B", "", 0)
+    ]
+    private static let chromaticSharps: [SpelledETNote] = [
+        ("C", "", 0), ("C", "♯", 0), ("D", "", 0), ("D", "♯", 0),
+        ("E", "", 0), ("F", "", 0), ("F", "♯", 0), ("G", "", 0),
+        ("G", "♯", 0), ("A", "", 0), ("A", "♯", 0), ("B", "", 0)
+    ]
+    private static let chromaticFlats: [SpelledETNote] = [
+        ("C", "", 0), ("D", "♭", 0), ("D", "", 0), ("E", "♭", 0),
+        ("E", "", 0), ("F", "", 0), ("G", "♭", 0), ("G", "", 0),
+        ("A", "♭", 0), ("A", "", 0), ("B", "♭", 0), ("B", "", 0)
     ]
 
     // MARK: - Public API
@@ -62,6 +78,22 @@ public enum NotationFormatter {
         let midiFloat = a4MIDINote + 12.0 * log2(freqHz / a4Hz)
         let nearest = midiFloat.rounded()
         return (midiFloat - nearest) * 100.0
+    }
+
+    /// Closest ET semitone rendered as a Helmholtz label (letter + accidental + octave marks).
+    public static func closestHelmholtzLabel(
+        freqHz: Double,
+        a4Hz: Double,
+        preference: AccidentalPreference
+    ) -> String {
+        guard freqHz.isFinite, freqHz > 0, a4Hz.isFinite, a4Hz > 0 else { return "—" }
+
+        let midi = nearestMIDINoteNumber(freqHz: freqHz, a4Hz: a4Hz)
+        let idx = mod12(midi)
+        let octave = midi / 12 - 1
+        let spelling = spelledChromatic(for: idx, preference: preference)
+        let helmholtz = helmholtzOctaveMarks(scientificOctave: octave, letter: spelling.letter)
+        return "\(helmholtz.caseAdjustedLetter)\(spelling.accidental)\(helmholtz.marks)"
     }
 
     /// HEJI-ish text label for ratio tiles / info cards.
@@ -105,6 +137,33 @@ public enum NotationFormatter {
     private static func nearestMIDINoteNumber(freqHz: Double, a4Hz: Double) -> Int {
         let midiFloat = a4MIDINote + 12.0 * log2(freqHz / a4Hz)
         return Int(midiFloat.rounded())
+    }
+
+    private static func spelledChromatic(for idx: Int, preference: AccidentalPreference) -> (letter: String, accidental: String) {
+        switch preference {
+        case .preferFlats:
+            let note = chromaticFlats[idx]
+            return (note.letter, note.accidental)
+        case .preferSharps, .auto:
+            let note = chromaticSharps[idx]
+            return (note.letter, note.accidental)
+        }
+    }
+
+    /// Helmholtz conversion for scientific octave numbers.
+    /// Examples: C4 → c′, A4 → a′, C5 → c″, B3 → B, B2 → B,
+    private static func helmholtzOctaveMarks(
+        scientificOctave: Int,
+        letter: String
+    ) -> (caseAdjustedLetter: String, marks: String) {
+        let lower = letter.lowercased()
+        let upper = letter.uppercased()
+        if scientificOctave >= 4 {
+            let primes = String(repeating: "′", count: max(1, scientificOctave - 3))
+            return (lower, primes)
+        }
+        let commas = String(repeating: ",", count: max(0, 3 - scientificOctave))
+        return (upper, commas)
     }
 
     private static func mod12(_ n: Int) -> Int {
