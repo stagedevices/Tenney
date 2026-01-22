@@ -732,10 +732,23 @@ extension Notification.Name {
     @StateObject private var hold = NeedleHoldState()
     @State private var currentNearest: RatioResult? = nil
     @Binding var stageActive: Bool
+    @State private var cardSize: CGSize = .zero
 
     @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
     @Environment(\.verticalSizeClass) private var vSize
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    private let dialHorizontalPadding: CGFloat = 16
+
+    private var isPadPortrait: Bool {
+#if targetEnvironment(macCatalyst)
+        return false
+#else
+        return UIDevice.current.userInterfaceIdiom == .pad
+            && cardSize.width > 0
+            && cardSize.width < cardSize.height
+#endif
+    }
      
     private var accentStyle: AnyShapeStyle {
         ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency)
@@ -930,19 +943,39 @@ extension Notification.Name {
                 let showFar = abs(rawCents) > 120
 
                 let stageAccent: Color = theme.inTuneHighlightColor(activeLimit: store.primeLimit)
+                let dialMinHeight: CGFloat = (store.viewStyle == .Gauge ? 320 : 260)
 
-                tunerDial(
-                    centsShown: centsShown,
-                    liveConf: liveConf,
-                    stageAccent: stageAccent,
-                    showFar: showFar,
-                    held: held,
-                    currentNearest: currentNearest,
-                    liveNearest: liveNearest
-                )
-                .frame(maxWidth: .infinity)
-                                .frame(minHeight: (store.viewStyle == .Gauge ? 320 : 260))
-                                .layoutPriority(1)
+                Group {
+                    if isPadPortrait {
+                        tunerDial(
+                            centsShown: centsShown,
+                            liveConf: liveConf,
+                            stageAccent: stageAccent,
+                            showFar: showFar,
+                            held: held,
+                            currentNearest: currentNearest,
+                            liveNearest: liveNearest
+                        )
+                        .frame(maxWidth: .infinity)
+                        .aspectRatio(1, contentMode: .fit)
+                        .frame(minHeight: dialMinHeight)
+                        .layoutPriority(1)
+                        .padding(.horizontal, dialHorizontalPadding)
+                    } else {
+                        tunerDial(
+                            centsShown: centsShown,
+                            liveConf: liveConf,
+                            stageAccent: stageAccent,
+                            showFar: showFar,
+                            held: held,
+                            currentNearest: currentNearest,
+                            liveNearest: liveNearest
+                        )
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: dialMinHeight)
+                        .layoutPriority(1)
+                    }
+                }
                 // add back in when ready to test phasescope
                           //      .frame(
                            //         minHeight: 260,
@@ -1066,6 +1099,16 @@ extension Notification.Name {
                 .onChange(of: store.primeLimit) { model.tunerPrimeLimit = $0 }
                 .onAppear { store.primeLimit = model.tunerPrimeLimit }
 
+            }
+            .background(
+                GeometryReader { geo in
+                    Color.clear.preference(key: TunerCardSizeKey.self, value: geo.size)
+                }
+            )
+            .onPreferenceChange(TunerCardSizeKey.self) { size in
+                if size != cardSize {
+                    cardSize = size
+                }
             }
          }
 
@@ -1287,6 +1330,14 @@ extension Notification.Name {
                 store.toggleLock(currentNearest: (currentNearest ?? liveNearest))
             }
         }
+    }
+}
+
+private struct TunerCardSizeKey: PreferenceKey {
+    static var defaultValue: CGSize = .zero
+
+    static func reduce(value: inout CGSize, nextValue: () -> CGSize) {
+        value = nextValue()
     }
 }
 
@@ -1680,6 +1731,32 @@ private struct UtilityBar: View {
         .background(.ultraThinMaterial)
     }
 }
+
+#if DEBUG
+#Preview("Tuner Card - iPad Portrait") {
+    TunerCard(store: TunerStore(), stageActive: .constant(false))
+        .environmentObject(AppModel())
+        .previewDevice(PreviewDevice(rawValue: "iPad Pro (12.9-inch) (6th generation)"))
+        .previewInterfaceOrientation(.portrait)
+        .padding()
+}
+
+#Preview("Tuner Card - iPad Landscape") {
+    TunerCard(store: TunerStore(), stageActive: .constant(false))
+        .environmentObject(AppModel())
+        .previewDevice(PreviewDevice(rawValue: "iPad Pro (12.9-inch) (6th generation)"))
+        .previewInterfaceOrientation(.landscapeLeft)
+        .padding()
+}
+
+#Preview("Tuner Card - iPhone") {
+    TunerCard(store: TunerStore(), stageActive: .constant(false))
+        .environmentObject(AppModel())
+        .previewDevice(PreviewDevice(rawValue: "iPhone 15 Pro"))
+        .previewInterfaceOrientation(.portrait)
+        .padding()
+}
+#endif
 // Small helper to apply glass on iOS 26 only
 fileprivate extension View {
     @ViewBuilder
