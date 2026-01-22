@@ -19,6 +19,7 @@ import SwiftUI
 struct ClipContentView: View {
     @EnvironmentObject private var m: CalibrateModel
     @Environment(\.scenePhase) private var phase
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     var body: some View {
         VStack(spacing: 16) {
@@ -119,9 +120,11 @@ struct ClipContentView: View {
     // MARK: hero visuals
 
     private var heroBackground: some ShapeStyle {
-        LinearGradient(colors: m.accent.colors,
-                       startPoint: .topLeading,
-                       endPoint: .bottomTrailing)
+        ThemeAccent.shapeStyle(
+            base: m.accent.baseColor,
+            reduceTransparency: reduceTransparency,
+
+        )
     }
 
     private var heroStroke: some View {
@@ -161,7 +164,13 @@ struct ClipContentView: View {
         } label: {
             ZStack {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(LinearGradient(colors: a.colors, startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .fill(
+                        ThemeAccent.shapeStyle(
+                            base: a.baseColor,
+                            reduceTransparency: reduceTransparency,
+
+                        )
+                    )
                     .frame(width: 64, height: 34)
                 if m.accent == a {
                     Image(systemName: "checkmark.circle.fill")
