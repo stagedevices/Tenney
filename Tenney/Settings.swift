@@ -3408,6 +3408,7 @@ struct StudioConsoleView: View {
         case .general:
             VStack(spacing: 14) {
                 quickSetupCard
+                labelingSection
                 defaultViewSection
                 selectionTrayClearBehaviorSection
                 whatsNewSection
