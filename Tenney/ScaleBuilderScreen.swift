@@ -19,18 +19,13 @@ struct ScaleBuilderScreen: View {
     @AppStorage(SettingsKeys.lissaDotSize)    private var lissaDotSize: Double = 2.0
     @AppStorage(SettingsKeys.lissaLiveSamples) private var lissaLiveSamples: Int = 768
     @AppStorage(SettingsKeys.lissaGlobalAlpha) private var lissaGlobalAlpha: Double = 1.0
-    @AppStorage(SettingsKeys.latticeThemeID) private var latticeThemeID: String = LatticeThemeID.classicBO.rawValue
-    @AppStorage(SettingsKeys.latticeThemeStyle) private var themeStyleRaw: String = ThemeStyleChoice.system.rawValue
     @AppStorage(SettingsKeys.accidentalPreference) private var accidentalPreferenceRaw: String = AccidentalPreference.auto.rawValue
     @AppStorage(SettingsKeys.staffA4Hz) private var staffA4Hz: Double = 440
 
-    @Environment(\.colorScheme) private var systemScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    private var effectiveIsDark: Bool {
-        (themeStyleRaw == "dark") || (themeStyleRaw == "system" && systemScheme == .dark)
-    }
-    
+    @Environment(\.tenneyTheme) private var theme
+
     private func finishBuilder() {
         persistBuilderDraftToSession(reason: "done")
         didPersistOnDismiss = true
@@ -647,11 +642,6 @@ struct ScaleBuilderScreen: View {
             // Large tap zones for performance; two columns by default
             ScrollView {
                 VStack(spacing: 10) {
-                    let theme = ThemeRegistry.theme(
-                        LatticeThemeID(rawValue: latticeThemeID) ?? .classicBO,
-                        dark: effectiveIsDark
-                    )
-
                     let pairs = builderLissajousPairs
                     let ch = builderLissajousChannels
 
