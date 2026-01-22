@@ -31,6 +31,12 @@ enum TenneyThemeRegistry {
         let mb = mixBasis ?? .complexityWeight
         let mm = mixMode  ?? .blend
         let sm = scopeMode ?? .constant
+        
+        // Monochrome is user-tinted (AppStorage). Its resolved theme must reflect live changes,
+            // so we bypass the cache to avoid stale palettes.
+            if themeIDRaw == LatticeThemeID.monochrome.rawValue {
+                return resolvedBuiltin(idRaw: themeIDRaw, scheme: scheme, mixBasis: mb, mixMode: mm, scopeMode: sm)
+            }
 
         let key = TenneyThemeCache.ResolvedKey(
             themeIDRaw: themeIDRaw,
