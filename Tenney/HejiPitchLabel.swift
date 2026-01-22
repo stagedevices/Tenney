@@ -32,7 +32,23 @@ struct HejiPitchLabel: View {
         }
     }
 
+    private var ratioSpelling: HejiRatioSpelling? {
+        guard case .ratio(let ratio) = pitch else { return nil }
+        let pref = context.preferred
+        let anchor = resolveRootAnchor(rootHz: context.rootHz, a4Hz: context.referenceA4Hz, preference: pref)
+        let ratioContext = PitchContext(
+            a4Hz: context.referenceA4Hz,
+            rootHz: context.rootHz,
+            rootAnchor: anchor,
+            accidentalPreference: pref,
+            maxPrime: context.maxPrime
+        )
+        let (adjP, adjQ) = applyOctaveToPQ(p: ratio.p, q: ratio.q, octave: ratio.octave)
+        return spellRatio(p: adjP, q: adjQ, context: ratioContext)
+    }
+
     var body: some View {
+        let unsupported = ratioSpelling?.unsupportedPrimes ?? spelling.unsupportedPrimes
         VStack(spacing: mode == .combined ? 4 : 0) {
             if mode == .staff || mode == .combined {
                 let layout = HejiNotation.staffLayout(spelling, context: context)
@@ -41,11 +57,16 @@ struct HejiPitchLabel: View {
             }
 
             if mode == .text || mode == .combined {
-                Text(HejiNotation.textLabel(spelling, showCents: showCentsWhenApproximate))
-                    .font(.headline.monospaced())
+                if let ratioSpelling {
+                    Text(ratioSpelling.labelText)
+                        .font(.headline.monospaced())
+                } else {
+                    Text(HejiNotation.textLabel(spelling, showCents: showCentsWhenApproximate))
+                        .font(.headline.monospaced())
+                }
             }
 
-            if !spelling.unsupportedPrimes.isEmpty {
+            if !unsupported.isEmpty {
                 Text("Unsupported primes")
                     .font(.caption2.weight(.semibold))
                     .padding(.horizontal, 6)
