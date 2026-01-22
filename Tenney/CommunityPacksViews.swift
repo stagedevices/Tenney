@@ -890,6 +890,7 @@ private struct CommunityPackDetailView: View {
     let namespace: Namespace.ID
     let onPreviewRequested: (CommunityPackPreviewRequest) -> Void
     @ObservedObject private var store = CommunityPacksStore.shared
+    @Environment(\.openURL) private var openURL
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(SettingsKeys.communityPackLastPreviewedScaleIDs) private var lastPreviewedScaleIDsJSON: String = ""
@@ -960,7 +961,7 @@ private struct CommunityPackDetailView: View {
         }
         if !isInstalled { return "Install" }
         if updateAvailable { return "Update" }
-        return "Installed"
+        return "Installed" // not shown; uninstall button is shown instead
     }
 
     private var isSelecting: Bool {
@@ -1276,16 +1277,40 @@ private struct CommunityPackDetailView: View {
                 previewControl
             }
 
-            PackPrimaryActionButton(
-                mode: primaryButtonMode,
-                title: primaryActionTitle,
-                systemImage: actionIcon,
-                isBusy: primaryIsBusy,
-                isEnabled: !isPrimaryDisabled,
-                animateSymbol: updateAvailable,
-                action: handlePrimaryAction,
-                corner: corner
-            )
+            if selectionMode != .none || !isInstalled || updateAvailable {
+                            PackPrimaryActionButton(
+                                mode: primaryButtonMode,
+                                title: primaryActionTitle,
+                                systemImage: actionIcon,
+                                isBusy: primaryIsBusy,
+                                isEnabled: !isPrimaryDisabled,
+                                animateSymbol: updateAvailable,
+                                action: handlePrimaryAction,
+                                corner: corner
+                            )
+                        } else {
+                            Button(action: { showUninstallConfirm = true }) {
+                                Text("Uninstall")
+                                    .font(.callout.weight(.semibold))
+                                    .frame(height: 44)
+                                    .padding(.horizontal, 14)
+                                    .foregroundStyle(.white)
+                            }
+                            .buttonStyle(.plain)
+                            .modifier(GlassRedRoundedRect(corner: corner))
+                        }
+            
+                        Menu {
+                            Button("Contribute a Pack") { openURL(CommunityPacksEndpoints.submitURL) }
+                            Button("How to submit")     { openURL(CommunityPacksEndpoints.issuesURL) }
+                        } label: {
+                            Image(systemName: "ellipsis")
+                                .font(.system(size: 16, weight: .semibold))
+                                .frame(width: 44, height: 44)
+                                .modifier(GlassWhiteCircle())
+                                .contentShape(Circle())
+                        }
+                        .buttonStyle(.plain)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -1455,9 +1480,6 @@ private struct CommunityPackDetailView: View {
 
     private var isPrimaryDisabled: Bool {
         if store.installingPackIDs.contains(pack.packID) {
-            return true
-        }
-        if selectionMode == .none && isInstalled && !updateAvailable {
             return true
         }
         if selectionMode == .installSelecting {
