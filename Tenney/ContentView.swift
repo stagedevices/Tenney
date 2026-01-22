@@ -24,12 +24,14 @@ struct ContentView: View {
     @AppStorage(SettingsKeys.tenneyThemeMixBasis) private var mixBasisRaw: String = TenneyMixBasis.complexityWeight.rawValue
     @AppStorage(SettingsKeys.tenneyThemeMixMode) private var mixModeRaw: String = TenneyMixMode.blend.rawValue
     @AppStorage(SettingsKeys.tenneyThemeScopeMode) private var scopeModeRaw: String = TenneyScopeColorMode.constant.rawValue
+    @AppStorage(SettingsKeys.tenneyMonochromeTintHex) private var monochromeTintHex: String = "#000000"
 
     @AppStorage(SettingsKeys.setupWizardDone) private var setupWizardDone: Bool = false
 private let libraryStore = ScaleLibraryStore.shared
     @Environment(\.colorScheme) private var systemScheme
     @AppStorage(SettingsKeys.latticeThemeStyle) private var themeStyleRaw: String = "system"
     private var resolvedTheme: ResolvedTenneyTheme {
+        let _ = monochromeTintHex
         TenneyThemeRegistry.resolvedCurrent(
             themeIDRaw: tenneyThemeIDRaw,
             scheme: effectiveIsDark ? .dark : .light,

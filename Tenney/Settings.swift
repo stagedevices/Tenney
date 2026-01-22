@@ -391,6 +391,7 @@ struct StudioConsoleView: View {
     @AppStorage(SettingsKeys.tenneyThemeMixBasis) private var mixBasisRaw: String = TenneyMixBasis.complexityWeight.rawValue
     @AppStorage(SettingsKeys.tenneyThemeMixMode) private var mixModeRaw: String = TenneyMixMode.blend.rawValue
     @AppStorage(SettingsKeys.tenneyThemeScopeMode) private var scopeModeRaw: String = TenneyScopeColorMode.constant.rawValue
+    @AppStorage(SettingsKeys.tenneyMonochromeTintHex) private var monochromeTintHex: String = "#000000"
     @EnvironmentObject private var tunerRailStore: TunerRailStore
     @State private var showTunerRailPalette: Bool = false
     @State private var shouldScrollToTunerRail: Bool = false
@@ -2718,6 +2719,7 @@ struct StudioConsoleView: View {
     
     // MARK: - Body (split to keep type-checker happy)
     var body: some View {
+        let _ = monochromeTintHex
                 NavigationStack {
                     contentStack
                         .navigationBarBackButtonHidden(true)
@@ -3878,11 +3880,6 @@ private struct GlassNavTile<Destination: View>: View {
             subtitle: ""
         ) {
             VStack(alignment: .leading, spacing: 12) {
-                let theme = ThemeRegistry.theme(
-                    LatticeThemeID(rawValue: tenneyThemeIDRaw) ?? .classicBO,
-                    dark: effectiveIsDark
-                )
-
                 // ✅ static preview window (same “preview then pager” pattern as Lattice UI)
                 LissajousPreviewFrame(contentPadding: 0, showsFill: false) {
                     LissajousCanvasPreview(
