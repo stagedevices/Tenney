@@ -25,25 +25,13 @@ struct PackPrimaryActionButton: View {
     var corner: CGFloat = 12
 
     private var isDisabled: Bool { (!isEnabled) || isBusy }
-    private var isPreview: Bool {
-        if case .preview = mode { return true }
-        return false
-    }
-
     var body: some View {
         Group {
             switch mode {
-            case .preview:
+            case .preview, .install, .update:
                 Button(action: action) { label }
                     .buttonStyle(GlassPressFeedback())
                     .modifier(GlassRoundedRect(corner: corner))
-
-            case .install(let tint), .update(let tint):
-                // Keep the existing path: borderedProminent + tint.
-                Button(action: action) { label }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                    .tint(tint)
             }
         }
         .disabled(isDisabled)
@@ -53,7 +41,9 @@ struct PackPrimaryActionButton: View {
     private var label: some View {
         HStack(spacing: 8) {
             if isBusy {
-                ProgressView().controlSize(.small)
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(labelForeground)
             } else {
                 symbol
             }
@@ -62,8 +52,8 @@ struct PackPrimaryActionButton: View {
                 .font(.callout.weight(.semibold))
         }
         .frame(maxWidth: .infinity, minHeight: 44)
-        .padding(.horizontal, isPreview ? 14 : 0)
-        .foregroundStyle(.primary)
+        .padding(.horizontal, 14)
+        .foregroundStyle(labelForeground)
     }
 
     @ViewBuilder
@@ -73,6 +63,15 @@ struct PackPrimaryActionButton: View {
                 .symbolEffect(.bounce, value: animateSymbol)
         } else {
             Image(systemName: systemImage)
+        }
+    }
+
+    private var labelForeground: Color {
+        switch mode {
+        case .install(let tint), .update(let tint):
+            return tint ?? .primary
+        case .preview:
+            return .primary
         }
     }
 }
