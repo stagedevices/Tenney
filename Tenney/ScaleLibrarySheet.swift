@@ -43,6 +43,9 @@ struct ScaleLibrarySheet: View {
     @State private var showFilterSheet = false
     @State private var didLoadFilters = false
     @State private var actionTarget: TenneyScale? = nil   // ← selected row for the action sheet
+    @State private var isSearchPresented = false
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     // simple sort/local filter
     private var filteredScales: [TenneyScale] {
@@ -163,6 +166,7 @@ struct ScaleLibrarySheet: View {
     }
 
     var body: some View {
+        let isSearchActive = isSearchPresented || !librarySearchText.isEmpty
         NavigationStack {
             ZStack {
                 libraryGlassBackground
@@ -230,7 +234,11 @@ struct ScaleLibrarySheet: View {
             }
             .listStyle(.insetGrouped)
             .navigationTitle("Library")
-            .searchable(text: $librarySearchText, placement: .navigationBarDrawer(displayMode: .automatic))
+            .searchable(
+                text: $librarySearchText,
+                isPresented: $isSearchPresented,
+                placement: .navigationBarDrawer(displayMode: .automatic)
+            )
             
             // Per-scale actions presented as a medium detent sheet
             .sheet(item: $actionTarget) { s in
@@ -254,10 +262,32 @@ struct ScaleLibrarySheet: View {
         }
         .overlay(alignment: .topTrailing) {
                     // Overlay keeps dismissal off the nav bar and anchored to the sheet's top edge.
-                    GlassDismissCircleButton { dismiss() }
-                        .padding(.top, 20)
-                        .padding(.trailing, 20)
-                        .transition(.opacity)
+                    Group {
+                        if isSearchActive {
+                            Button {
+                                cancelLibrarySearch()
+                            } label: {
+                                Image(systemName: "chevron.backward")
+                                    .font(.system(size: 18, weight: .bold))
+                                    .frame(width: 44, height: 44)
+                                    .contentShape(Circle())
+                                    .modifier(GlassWhiteCircle())
+                            }
+                            .buttonStyle(.plain)
+                            .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale))
+                            // Acceptance checklist:
+                            // - Tap search → chevron appears, no extra X visible.
+                            // - Tap chevron → search cancels, keyboard dismisses, checkmark returns.
+                            // - Type search text → results filter; chevron remains until canceled.
+                            // - Tap checkmark when not searching → sheet dismisses.
+                        } else {
+                            GlassDismissCircleButton { dismiss() }
+                                .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale))
+                        }
+                    }
+                    .padding(.top, 20)
+                    .padding(.trailing, 20)
+                    .animation(reduceMotion ? .easeInOut(duration: 0.2) : .snappy, value: isSearchActive)
                 }
         .toolbarBackground(.hidden, for: .navigationBar)
         .presentationBackground(.clear)
@@ -308,6 +338,14 @@ struct ScaleLibrarySheet: View {
             libraryPage = 0
             actionTarget = request.scale
         }
+    }
+
+    private func cancelLibrarySearch() {
+        librarySearchText = ""
+        isSearchPresented = false
+        #if canImport(UIKit)
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        #endif
     }
 
 }
