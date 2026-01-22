@@ -1010,6 +1010,7 @@ struct StudioConsoleView: View {
         @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
         @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+        @Environment(\.accessibilityIncreaseContrast) private var increaseContrast
 
         private var accentStyle: AnyShapeStyle {
             ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency)
