@@ -148,6 +148,7 @@ struct LatticeView: View {
     @EnvironmentObject private var app: AppModel
     @EnvironmentObject private var store: LatticeStore   // shared from LatticeScreen
     @Environment(\.colorScheme) private var systemScheme
+    @Environment(\.tenneyTheme) private var theme
     
     private var effectiveIsDark: Bool {
         (themeStyleRaw == "dark") || (themeStyleRaw == "system" && systemScheme == .dark)
@@ -4117,9 +4118,9 @@ struct LatticeView: View {
         GeometryReader { geo in
             let background = TenneySceneBackground(
                 isDark: effectiveIsDark,
-                preset: activeTheme.sceneBackgroundPreset,
-                tintA: activeTheme.primeTint(3),
-                tintB: activeTheme.primeTint(5)
+                preset: theme.sceneBackgroundPreset,
+                tintA: theme.primeTint(3),
+                tintB: theme.primeTint(5)
             )
             ZStack {
                 background

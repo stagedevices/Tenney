@@ -35,7 +35,7 @@ struct TenneySceneBackground: View {
                     // Push light mode back toward “paper-white”; keep dark mode off-black.
                     return isDark ? Color(white: 0.045) : Color(white: 0.992)
                 case .nocturneReadable:
-                    return isDark ? Color(hex: "#0C121A") : Color(hex: "#F6F0E6")
+                    return isDark ? Color(hex: "#0E1A33") : Color(hex: "#F6F0E6")
                 }
             }()
 
@@ -61,13 +61,13 @@ struct TenneySceneBackground: View {
                                     .init(color: Color.black.opacity(0.030), location: 1.00)
                                   ]
                             case .nocturneReadable:
-                                let topLift = isDark ? Color(hex: "#243244") : Color(hex: "#FFF9F1")
-                                let lowShade = isDark ? Color(hex: "#05070A") : Color(hex: "#2A1F18")
+                                let topLift = isDark ? Color(hex: "#2B3C60") : Color(hex: "#FFF9F1")
+                                let lowShade = isDark ? Color(hex: "#071027") : Color(hex: "#2A1F18")
                                 return isDark
                                 ? [
-                                    .init(color: topLift.opacity(0.28),     location: 0.00),
+                                    .init(color: topLift.opacity(0.22),     location: 0.00),
                                     .init(color: Color.clear,               location: 0.58),
-                                    .init(color: lowShade.opacity(0.20),    location: 1.00)
+                                    .init(color: lowShade.opacity(0.14),    location: 1.00)
                                   ]
                                 : [
                                     .init(color: topLift.opacity(0.70),     location: 0.00),

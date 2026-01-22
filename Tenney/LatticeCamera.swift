@@ -6,6 +6,9 @@
 
 import Foundation
 import CoreGraphics
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// Minimal camera model used by the lattice for pan/zoom.
 /// `scale` is treated as "screen pixels per world unit".
@@ -18,10 +21,18 @@ struct LatticeCamera: Equatable, Sendable {
     static let maxScale: CGFloat = 240.0
 
     /// Mac builds render slightly closer without changing stored zoom values or slider ranges.
+    /// Mac + iPad builds render slightly closer without changing stored zoom values or slider ranges.
     private static let macZoomBoost: CGFloat = {
 #if os(macOS) || targetEnvironment(macCatalyst)
+        // Native macOS + Mac Catalyst
         return 1.5
 #else
+        #if canImport(UIKit)
+        // On iOS, only boost on iPad
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            return 1.5
+        }
+        #endif
         return 1.0
 #endif
     }()
