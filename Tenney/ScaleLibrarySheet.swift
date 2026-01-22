@@ -43,6 +43,7 @@ struct ScaleLibrarySheet: View {
     @State private var showFilterSheet = false
     @State private var didLoadFilters = false
     @State private var actionTarget: TenneyScale? = nil   // ← selected row for the action sheet
+    @State private var isSearchPresented = false
 
     // simple sort/local filter
     private var filteredScales: [TenneyScale] {
@@ -163,6 +164,7 @@ struct ScaleLibrarySheet: View {
     }
 
     var body: some View {
+        let isSearchActive = isSearchPresented || !librarySearchText.isEmpty
         NavigationStack {
             ZStack {
                 libraryGlassBackground
@@ -230,7 +232,11 @@ struct ScaleLibrarySheet: View {
             }
             .listStyle(.insetGrouped)
             .navigationTitle("Library")
-            .searchable(text: $librarySearchText, placement: .navigationBarDrawer(displayMode: .automatic))
+            .searchable(
+                text: $librarySearchText,
+                isPresented: $isSearchPresented,
+                placement: .navigationBarDrawer(displayMode: .automatic)
+            )
             
             // Per-scale actions presented as a medium detent sheet
             .sheet(item: $actionTarget) { s in
@@ -254,10 +260,11 @@ struct ScaleLibrarySheet: View {
         }
         .overlay(alignment: .topTrailing) {
                     // Overlay keeps dismissal off the nav bar and anchored to the sheet's top edge.
-                    GlassDismissCircleButton { dismiss() }
-                        .padding(.top, 20)
-                        .padding(.trailing, 20)
-                        .transition(.opacity)
+                    if !isSearchActive {
+                        GlassDismissCircleButton { dismiss() }
+                            .padding(.top, 20)
+                            .padding(.trailing, 20)
+                    }
                 }
         .toolbarBackground(.hidden, for: .navigationBar)
         .presentationBackground(.clear)
