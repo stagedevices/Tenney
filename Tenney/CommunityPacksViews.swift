@@ -948,6 +948,11 @@ private struct CommunityPackDetailView: View {
         case updateSelecting
     }
 
+    private enum ActionBarState: Equatable {
+        case primary
+        case uninstall
+    }
+
     private var isInstalled: Bool {
         store.isInstalled(pack.packID)
     }
@@ -973,6 +978,21 @@ private struct CommunityPackDetailView: View {
 
     private var isSelecting: Bool {
         selectionMode != .none
+    }
+
+    private var actionBarState: ActionBarState {
+        if selectionMode != .none || !isInstalled || updateAvailable {
+            return .primary
+        }
+        return .uninstall
+    }
+
+    private var actionAnimation: Animation {
+        reduceMotion ? .easeOut(duration: 0.2) : .snappy(duration: 0.35)
+    }
+
+    private var actionTransition: AnyTransition {
+        reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.98))
     }
 
     var body: some View {
@@ -1280,11 +1300,13 @@ private struct CommunityPackDetailView: View {
 
     private var detailActionBar: some View {
         HStack(spacing: 12) {
-            if selectionMode == .none {
+            if selectionMode == .none && isInstalled {
                 previewControl
+                    .transition(actionTransition)
             }
 
-            if selectionMode != .none || !isInstalled || updateAvailable {
+            ZStack {
+                if actionBarState == .primary {
                             PackPrimaryActionButton(
                                 mode: primaryButtonMode,
                                 title: primaryActionTitle,
@@ -1295,17 +1317,24 @@ private struct CommunityPackDetailView: View {
                                 action: handlePrimaryAction,
                                 corner: corner
                             )
-                        } else {
-                            Button(action: { showUninstallConfirm = true }) {
-                                Text("Uninstall")
-                                    .font(.callout.weight(.semibold))
-                                    .frame(height: 44)
-                                    .padding(.horizontal, 14)
-                                    .foregroundStyle(.white)
-                            }
-                            .buttonStyle(.plain)
-                            .modifier(GlassRedRoundedRect(corner: corner))
-                        }
+                            .transition(actionTransition)
+                } else {
+                    Button(action: { showUninstallConfirm = true }) {
+                        Text("Uninstall")
+                            .font(.callout.weight(.semibold))
+                            .frame(height: 44)
+                            .padding(.horizontal, 14)
+                            .foregroundStyle(.white)
+                    }
+                    .buttonStyle(.plain)
+                    .modifier(GlassRedRoundedRect(corner: corner))
+                    .transition(actionTransition)
+                }
+            }
+            .frame(minWidth: 150)
+            .animation(actionAnimation, value: actionBarState)
+            .animation(actionAnimation, value: primaryButtonMode)
+            .animation(actionAnimation, value: primaryIsBusy)
             
                         Menu {
                             Button("Contribute a Pack") { openURL(CommunityPacksEndpoints.submitURL) }
@@ -1327,6 +1356,8 @@ private struct CommunityPackDetailView: View {
             }
         )
         .opacity(contentVisible ? 1 : 0)
+        .animation(actionAnimation, value: isInstalled)
+        .animation(actionAnimation, value: selectionMode)
     }
 
     @ViewBuilder
@@ -1340,11 +1371,6 @@ private struct CommunityPackDetailView: View {
                 }
             } label: {
                 previewLabel(showsChevron: true)
-            }
-            .buttonStyle(GlassPressFeedback())
-        } else {
-            Button(action: { handleDefaultPreview(allowLastPreviewed: false) }) {
-                previewLabel(showsChevron: false)
             }
             .buttonStyle(GlassPressFeedback())
         }

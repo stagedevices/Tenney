@@ -31,7 +31,7 @@ struct PackPrimaryActionButton: View {
             case .preview, .install, .update:
                 Button(action: action) { label }
                     .buttonStyle(GlassPressFeedback())
-                    .modifier(GlassRoundedRect(corner: corner))
+                    .modifier(buttonBackground)
             }
         }
         .disabled(isDisabled)
@@ -48,8 +48,14 @@ struct PackPrimaryActionButton: View {
                 symbol
             }
 
-            Text(isBusy ? "Installing…" : title)
-                .font(.callout.weight(.semibold))
+            if #available(iOS 17.0, *) {
+                Text(isBusy ? "Installing…" : title)
+                    .font(.callout.weight(.semibold))
+                    .contentTransition(.opacity)
+            } else {
+                Text(isBusy ? "Installing…" : title)
+                    .font(.callout.weight(.semibold))
+            }
         }
         .frame(maxWidth: .infinity, minHeight: 44)
         .padding(.horizontal, 14)
@@ -68,10 +74,50 @@ struct PackPrimaryActionButton: View {
 
     private var labelForeground: Color {
         switch mode {
-        case .install(let tint), .update(let tint):
-            return tint ?? .primary
+        case .install, .update:
+            return .white.opacity(0.98)
         case .preview:
             return .primary
+        }
+    }
+
+    private var buttonBackground: some ViewModifier {
+        switch mode {
+        case .install(let tint), .update(let tint):
+            return GlassTintedCapsule(tint: tint ?? .blue, isEnabled: !isDisabled)
+        case .preview:
+            return GlassRoundedRect(corner: corner)
+        }
+    }
+}
+
+private struct GlassTintedCapsule: ViewModifier {
+    let tint: Color
+    let isEnabled: Bool
+
+    private var fillOpacity: Double {
+        isEnabled ? 0.32 : 0.18
+    }
+
+    func body(content: Content) -> some View {
+        let shape = Capsule()
+        if #available(iOS 26.0, *) {
+            content
+                .background {
+                    shape.fill(tint.opacity(fillOpacity))
+                }
+                .glassEffect(.regular, in: shape)
+                .overlay(
+                    shape.stroke(Color.white.opacity(0.25), lineWidth: 0.9)
+                        .blendMode(.overlay)
+                )
+        } else {
+            content
+                .background(.ultraThinMaterial, in: shape)
+                .background(shape.fill(tint.opacity(fillOpacity)))
+                .overlay(
+                    shape.stroke(Color.white.opacity(0.22), lineWidth: 0.9)
+                )
         }
     }
 }
