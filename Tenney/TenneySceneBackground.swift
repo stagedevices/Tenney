@@ -17,6 +17,7 @@ private let USE_STOP_GRADIENTS = true
 /// No visible grain/noise; depth comes from subtle multi-layer gradients + vignette.
 struct TenneySceneBackground: View {
     let isDark: Bool
+    var preset: TenneySceneBackgroundPreset = .standardAtmospheric
     /// Optional theme identity (very subtle): typically prime 3 + prime 5 tints.
     var tintA: Color = .accentColor
     var tintB: Color = .accentColor
@@ -28,8 +29,15 @@ struct TenneySceneBackground: View {
         GeometryReader { geo in
             let s = geo.size
 
-            // Push light mode back toward “paper-white”; keep dark mode off-black.
-            let base: Color = isDark ? Color(white: 0.045) : Color(white: 0.992)
+            let base: Color = {
+                switch preset {
+                case .standardAtmospheric:
+                    // Push light mode back toward “paper-white”; keep dark mode off-black.
+                    return isDark ? Color(white: 0.045) : Color(white: 0.992)
+                case .nocturneReadable:
+                    return isDark ? Color(hex: "#0C121A") : Color(hex: "#F6F0E6")
+                }
+            }()
 
             ZStack {
                 base
@@ -38,17 +46,36 @@ struct TenneySceneBackground: View {
                 if !reduceTransparency {
                     // Gentle vertical lift (light mode should NOT darken at the top)
                     LinearGradient(
-                        stops: isDark
-                        ? [
-                            .init(color: Color.white.opacity(0.060), location: 0.00),
-                            .init(color: Color.clear,               location: 0.55),
-                            .init(color: Color.black.opacity(0.220), location: 1.00)
-                          ]
-                        : [
-                            .init(color: Color.white.opacity(0.55),  location: 0.00),
-                            .init(color: Color.clear,               location: 0.55),
-                            .init(color: Color.black.opacity(0.030), location: 1.00)
-                          ],
+                        stops: {
+                            switch preset {
+                            case .standardAtmospheric:
+                                return isDark
+                                ? [
+                                    .init(color: Color.white.opacity(0.060), location: 0.00),
+                                    .init(color: Color.clear,               location: 0.55),
+                                    .init(color: Color.black.opacity(0.220), location: 1.00)
+                                  ]
+                                : [
+                                    .init(color: Color.white.opacity(0.55),  location: 0.00),
+                                    .init(color: Color.clear,               location: 0.55),
+                                    .init(color: Color.black.opacity(0.030), location: 1.00)
+                                  ]
+                            case .nocturneReadable:
+                                let topLift = isDark ? Color(hex: "#243244") : Color(hex: "#FFF9F1")
+                                let lowShade = isDark ? Color(hex: "#05070A") : Color(hex: "#2A1F18")
+                                return isDark
+                                ? [
+                                    .init(color: topLift.opacity(0.28),     location: 0.00),
+                                    .init(color: Color.clear,               location: 0.58),
+                                    .init(color: lowShade.opacity(0.20),    location: 1.00)
+                                  ]
+                                : [
+                                    .init(color: topLift.opacity(0.70),     location: 0.00),
+                                    .init(color: Color.clear,               location: 0.60),
+                                    .init(color: lowShade.opacity(0.06),    location: 1.00)
+                                  ]
+                            }
+                        }(),
                         startPoint: .top,
                         endPoint: .bottom
                     )
@@ -59,12 +86,31 @@ struct TenneySceneBackground: View {
                     ? Gradient(stops: [
                         .init(color: Color.clear, location: 0.00),
                         .init(color: Color.clear, location: isDark ? 0.54 : 0.62),
-                        .init(color: Color.black.opacity(isDark ? 0.72 : 0.10), location: 1.00)
+                        .init(
+                            color: {
+                                switch preset {
+                                case .standardAtmospheric:
+                                    return Color.black.opacity(isDark ? 0.72 : 0.10)
+                                case .nocturneReadable:
+                                    let tint = isDark ? Color(hex: "#05070A") : Color(hex: "#2A1F18")
+                                    return tint.opacity(isDark ? 0.68 : 0.14)
+                                }
+                            }(),
+                            location: 1.00
+                        )
                     ])
                     : Gradient(colors: [
                         Color.clear,
                         Color.clear,
-                        Color.black.opacity(isDark ? 0.72 : 0.10)
+                        {
+                            switch preset {
+                            case .standardAtmospheric:
+                                return Color.black.opacity(isDark ? 0.72 : 0.10)
+                            case .nocturneReadable:
+                                let tint = isDark ? Color(hex: "#05070A") : Color(hex: "#2A1F18")
+                                return tint.opacity(isDark ? 0.68 : 0.14)
+                            }
+                        }()
                     ])
 
                     RadialGradient(
@@ -79,13 +125,45 @@ struct TenneySceneBackground: View {
                     // Top-left “ambient” bloom (tinted identity)
                     let ambientGradient = USE_STOP_GRADIENTS
                     ? Gradient(stops: [
-                        .init(color: tintA.opacity(isDark ? 0.095 : 0.070), location: 0.00),
-                        .init(color: tintB.opacity(isDark ? 0.050 : 0.035), location: 0.36),
-                        .init(color: Color.clear,                           location: 0.74)
+                        .init(color: {
+                            switch preset {
+                            case .standardAtmospheric:
+                                return tintA.opacity(isDark ? 0.095 : 0.070)
+                            case .nocturneReadable:
+                                let ambientA = isDark ? Color(hex: "#D07A44") : Color(hex: "#C96A3A")
+                                return ambientA.opacity(isDark ? 0.035 : 0.085)
+                            }
+                        }(), location: 0.00),
+                        .init(color: {
+                            switch preset {
+                            case .standardAtmospheric:
+                                return tintB.opacity(isDark ? 0.050 : 0.035)
+                            case .nocturneReadable:
+                                let ambientB = isDark ? Color(hex: "#E2C06A") : Color(hex: "#D7B25A")
+                                return ambientB.opacity(isDark ? 0.020 : 0.045)
+                            }
+                        }(), location: 0.36),
+                        .init(color: Color.clear, location: 0.74)
                     ])
                     : Gradient(colors: [
-                        tintA.opacity(isDark ? 0.095 : 0.070),
-                        tintB.opacity(isDark ? 0.050 : 0.035),
+                        {
+                            switch preset {
+                            case .standardAtmospheric:
+                                return tintA.opacity(isDark ? 0.095 : 0.070)
+                            case .nocturneReadable:
+                                let ambientA = isDark ? Color(hex: "#D07A44") : Color(hex: "#C96A3A")
+                                return ambientA.opacity(isDark ? 0.035 : 0.085)
+                            }
+                        }(),
+                        {
+                            switch preset {
+                            case .standardAtmospheric:
+                                return tintB.opacity(isDark ? 0.050 : 0.035)
+                            case .nocturneReadable:
+                                let ambientB = isDark ? Color(hex: "#E2C06A") : Color(hex: "#D7B25A")
+                                return ambientB.opacity(isDark ? 0.020 : 0.045)
+                            }
+                        }(),
                         Color.clear
                     ])
 
@@ -96,20 +174,55 @@ struct TenneySceneBackground: View {
                         endRadius: max(s.width, s.height) * 0.62
                     )
                     .blendMode(isDark ? .screen : .plusLighter)
-                    .opacity(isDark ? 0.78 : 0.55)
+                    .opacity({
+                        switch preset {
+                        case .standardAtmospheric:
+                            return isDark ? 0.78 : 0.55
+                        case .nocturneReadable:
+                            return isDark ? 0.50 : 0.60
+                        }
+                    }())
 
                     // Bottom-right “sink” (dark mode only; in light mode this is what was pushing you to mid-gray)
                     if isDark {
                         let sinkGradient = USE_STOP_GRADIENTS
                         ? Gradient(stops: [
                             .init(color: Color.clear,                 location: 0.00),
-                            .init(color: Color.black.opacity(0.55),   location: 0.78),
-                            .init(color: Color.black.opacity(0.86),   location: 1.00)
+                            .init(color: {
+                                switch preset {
+                                case .standardAtmospheric:
+                                    return Color.black.opacity(0.55)
+                                case .nocturneReadable:
+                                    return Color(hex: "#05070A").opacity(0.48)
+                                }
+                            }(), location: 0.78),
+                            .init(color: {
+                                switch preset {
+                                case .standardAtmospheric:
+                                    return Color.black.opacity(0.86)
+                                case .nocturneReadable:
+                                    return Color(hex: "#05070A").opacity(0.72)
+                                }
+                            }(), location: 1.00)
                         ])
                         : Gradient(colors: [
                             Color.clear,
-                            Color.black.opacity(0.55),
-                            Color.black.opacity(0.86)
+                            {
+                                switch preset {
+                                case .standardAtmospheric:
+                                    return Color.black.opacity(0.55)
+                                case .nocturneReadable:
+                                    return Color(hex: "#05070A").opacity(0.48)
+                                }
+                            }(),
+                            {
+                                switch preset {
+                                case .standardAtmospheric:
+                                    return Color.black.opacity(0.86)
+                                case .nocturneReadable:
+                                    return Color(hex: "#05070A").opacity(0.72)
+                                }
+                            }()
                         ])
 
                         RadialGradient(
@@ -125,7 +238,15 @@ struct TenneySceneBackground: View {
                     if !reduceMotion {
                         LinearGradient(
                             stops: [
-                                .init(color: Color.white.opacity(isDark ? 0.030 : 0.018), location: 0.00),
+                                .init(color: {
+                                    switch preset {
+                                    case .standardAtmospheric:
+                                        return Color.white.opacity(isDark ? 0.030 : 0.018)
+                                    case .nocturneReadable:
+                                        let lift = isDark ? Color(hex: "#243244") : Color(hex: "#FFF9F1")
+                                        return lift.opacity(isDark ? 0.08 : 0.05)
+                                    }
+                                }(), location: 0.00),
                                 .init(color: Color.clear,                                   location: 0.42),
                                 .init(color: Color.clear,                                   location: 1.00)
                             ],

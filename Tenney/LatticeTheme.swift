@@ -168,15 +168,15 @@ struct ThemeRegistry {
             
         case .nocturneBO:
             return LatticeTheme(
-                e3: Color(hex: "#80B3FF"),
-                e5: Color(hex: "#FFB47B"),
+                e3: Color(hex: "#B35133"),
+                e5: Color(hex: "#C9A448"),
                 mix: .blendByWeight,
                 isDark: dark,
-                axisE3: Color.white.opacity(0.14),
-                axisE5: Color.white.opacity(0.14),
-                path: Color.white.opacity(0.58),
-                labelPrimary: Color(hex: "#D9E3F7"),
-                labelSecondary: Color(hex: "#9AA9C1"),
+                axisE3: Color(hex: "#B35133").opacity(dark ? 0.20 : 0.14),
+                axisE5: Color(hex: "#C9A448").opacity(dark ? 0.20 : 0.14),
+                path: Color(hex: dark ? "#EFE6D9" : "#2A211C").opacity(dark ? 0.60 : 0.50),
+                labelPrimary: dark ? Color(hex: "#F2EADF") : Color(hex: "#1A1410"),
+                labelSecondary: dark ? Color(hex: "#B9B0A4") : Color(hex: "#5C5046"),
                 overlayPrime: overlayNocturne(dark: dark)
             )
         }
@@ -298,10 +298,10 @@ struct ThemeRegistry {
     // Nocturne: cool night tones with neon warmth
     private static func overlayNocturne(dark: Bool) -> [Int:Color] {
         dark
-        ? palette([ 7:"#C7A1FF", 11:"#77E4DD", 13:"#FFA7C6", 17:"#F4D37B",
-                    19:"#ADEF77", 23:"#9EDCFF", 29:"#E3A9FF", 31:"#FFBE94"])
-        : palette([ 7:"#AD88FF", 11:"#55D6D1", 13:"#FF94B4", 17:"#F2C259",
-                    19:"#86DF63", 23:"#7FD2FF", 29:"#D389FF", 31:"#FFAC7A"])
+        ? palette([ 7:"#9A6A52", 11:"#6F7A4A", 13:"#8B3F3B", 17:"#C2A35C",
+                    19:"#4F6B5B", 23:"#5B6A7A", 29:"#7A4A5A", 31:"#B07B52"])
+        : palette([ 7:"#8A5B46", 11:"#5C6B3E", 13:"#783536", 17:"#B08E45",
+                    19:"#3E5C4E", 23:"#4B5C6D", 29:"#693C4C", 31:"#9A6846"])
     }
     
 }

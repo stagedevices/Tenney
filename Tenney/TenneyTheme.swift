@@ -42,6 +42,11 @@ public enum TenneyScopeColorMode: String, CaseIterable, Identifiable {
     public var id: String { rawValue }
 }
 
+public enum TenneySceneBackgroundPreset: String, Codable, CaseIterable {
+    case standardAtmospheric
+    case nocturneReadable
+}
+
 // MARK: - Ratio signature (stable key)
 public struct RatioSignature: Hashable, Sendable {
     public struct PrimeExp: Hashable, Sendable {
@@ -100,6 +105,7 @@ public struct ResolvedTenneyTheme: Equatable {
          name: String,
          scheme: ColorScheme,
          palette: [Int: Color],
+         sceneBackgroundPreset: TenneySceneBackgroundPreset,
          surfaceTint: Color,
          chromaShadow: Color,
          tunerNeedle: Color,
@@ -116,6 +122,7 @@ public struct ResolvedTenneyTheme: Equatable {
          self.name = name
          self.scheme = scheme
          self.palette = palette
+         self.sceneBackgroundPreset = sceneBackgroundPreset
          self.surfaceTint = surfaceTint
          self.chromaShadow = chromaShadow
          self.tunerNeedle = tunerNeedle
@@ -136,6 +143,8 @@ public struct ResolvedTenneyTheme: Equatable {
 
     // Prime palette (includes 3/5 + overlays)
     private let palette: [Int: Color]
+
+    public let sceneBackgroundPreset: TenneySceneBackgroundPreset
 
     // Surface tint (“museum glass”, subtle, scheme-aware)
     public let surfaceTint: Color        // already contains strength via opacity
