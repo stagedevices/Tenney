@@ -133,6 +133,43 @@ final class ScaleLibraryStore: ObservableObject {
         }
     }
 
+    enum MoveScaleOutcome: Equatable {
+        case moved(previous: PackRef?, current: PackRef?)
+        case blockedCommunity
+        case unchanged
+    }
+
+    @discardableResult
+    func moveScale(id scaleID: UUID, to pack: PackRef?) -> MoveScaleOutcome {
+        guard var scale = scales[scaleID] else { return .unchanged }
+        if scale.provenance?.kind == .communityPack {
+            return .blockedCommunity
+        }
+        if scale.pack?.id == pack?.id,
+           scale.pack?.title == pack?.title,
+           scale.pack?.source == pack?.source {
+            return .unchanged
+        }
+        let previous = scale.pack
+        scale.pack = pack
+        scales[scaleID] = scale
+        scheduleSave()
+        return .moved(previous: previous, current: pack)
+    }
+
+    func duplicateScaleToUser(id scaleID: UUID) -> UUID? {
+        guard let scale = scales[scaleID] else { return nil }
+        let newID = UUID()
+        let newName = uniqueDuplicateName(for: scale.name)
+        var duplicated = scale
+        duplicated.id = newID
+        duplicated.name = newName
+        duplicated.pack = nil
+        duplicated.provenance = nil
+        addScale(duplicated)
+        return newID
+    }
+
     func assignPack(_ pack: PackRef?, to scaleID: UUID) {
         assignPack(pack, to: [scaleID])
     }
@@ -143,6 +180,7 @@ final class ScaleLibraryStore: ObservableObject {
         var didChange = false
         for id in scaleIDs {
             guard var scale = updated[id] else { continue }
+            if scale.provenance?.kind == .communityPack { continue }
             if scale.pack?.id == pack?.id && scale.pack?.title == pack?.title && scale.pack?.source == pack?.source {
                 continue
             }
@@ -153,6 +191,27 @@ final class ScaleLibraryStore: ObservableObject {
         guard didChange else { return }
         scales = updated
         scheduleSave()
+    }
+
+    func allPackSummaries() -> [PackSummary] {
+        let grouped = Dictionary(grouping: scales.values.compactMap { scale in
+            scale.pack.map { ($0, scale) }
+        }, by: { $0.0.id })
+        return grouped.compactMap { _, values in
+            guard let packRef = values.first?.0 else { return nil }
+            let count = values.count
+            let subtitle = "\(count) scale\(count == 1 ? "" : "s")"
+            return PackSummary(
+                id: packRef.id,
+                title: packRef.title,
+                subtitle: subtitle,
+                count: count,
+                source: packRef.source,
+                packRef: packRef,
+                kind: .realPack(packRef)
+            )
+        }
+        .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
     }
 
     func renamePack(id packID: String, newTitle: String) {
@@ -339,5 +398,18 @@ final class ScaleLibraryStore: ObservableObject {
             saveFavorites()
             scheduleSave()
         }
+    }
+
+    private func uniqueDuplicateName(for baseName: String) -> String {
+        let trimmed = baseName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedBase = trimmed.isEmpty ? "Untitled Scale" : trimmed
+        let existingNames = Set(scales.values.map { $0.name.lowercased() })
+        var suffixIndex = 1
+        var candidate = "\(resolvedBase) (Copy)"
+        while existingNames.contains(candidate.lowercased()) {
+            suffixIndex += 1
+            candidate = "\(resolvedBase) (Copy \(suffixIndex))"
+        }
+        return candidate
     }
 }
