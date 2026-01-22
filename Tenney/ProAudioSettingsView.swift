@@ -22,13 +22,12 @@ public struct ProAudioSettingsView: View {
     @State private var diagnosticsExpanded: Bool = false
     @Environment(\.tenneyTheme) private var theme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Environment(\.accessibilityIncreaseContrast) private var increaseContrast
 
     private let deviceCols = [GridItem(.adaptive(minimum: 150, maximum: 220), spacing: 12, alignment: .top)]
     private let optCols = [GridItem(.adaptive(minimum: 110, maximum: 160), spacing: 12, alignment: .top)]
 
     private var accentStyle: AnyShapeStyle {
-        ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency, increaseContrast: increaseContrast)
+        ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency)
     }
 
     public init(showsOuterCard: Bool = true) {

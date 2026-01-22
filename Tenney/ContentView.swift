@@ -734,10 +734,9 @@ extension Notification.Name {
     @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
     @Environment(\.verticalSizeClass) private var vSize
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Environment(\.accessibilityIncreaseContrast) private var increaseContrast
      
     private var accentStyle: AnyShapeStyle {
-        ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency, increaseContrast: increaseContrast)
+        ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency)
     }
      
      @ViewBuilder
@@ -1331,7 +1330,6 @@ private struct UtilityBar: View {
     @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
     @Environment(\.tenneyPracticeActive) private var practiceActive
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Environment(\.accessibilityIncreaseContrast) private var increaseContrast
     
     @Namespace private var modeSwitchNS
     @Namespace private var auditionNS
@@ -1449,7 +1447,7 @@ private struct UtilityBar: View {
 
 
     private var accentStyle: AnyShapeStyle {
-        ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency, increaseContrast: increaseContrast)
+        ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency)
     }
     
     private var rimStroke: Color {
@@ -2153,10 +2151,9 @@ private struct PrimeLimitCard: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Environment(\.accessibilityIncreaseContrast) private var increaseContrast
 
     private var accentStyle: AnyShapeStyle {
-        ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency, increaseContrast: increaseContrast)
+        ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency)
     }
 
     var body: some View {
@@ -2237,10 +2234,9 @@ struct GlassSelectTile: View {
 
     @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Environment(\.accessibilityIncreaseContrast) private var increaseContrast
 
     private var accentStyle: AnyShapeStyle {
-        ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency, increaseContrast: increaseContrast)
+        ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency)
     }
 
     var body: some View {
@@ -2297,7 +2293,6 @@ struct GlassSelectTile: View {
 private struct RootChip<Trailing: View>: View {
     @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Environment(\.accessibilityIncreaseContrast) private var increaseContrast
 
     let value: Double
     var highlighted: Bool = false
@@ -2305,7 +2300,7 @@ private struct RootChip<Trailing: View>: View {
     @ViewBuilder let trailing: () -> Trailing
 
     private var accentStyle: AnyShapeStyle {
-        ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency, increaseContrast: increaseContrast)
+        ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency)
     }
 
     init(
@@ -2387,10 +2382,9 @@ private struct WizardFooter: View {
     @State private var breathe = false
     @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Environment(\.accessibilityIncreaseContrast) private var increaseContrast
 
     private var accentStyle: AnyShapeStyle {
-        ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency, increaseContrast: increaseContrast)
+        ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency)
     }
 
     var body: some View {
@@ -2457,10 +2451,9 @@ private struct WizardFooterRail: View {
     @State private var routeLabel: String = "Built-in Speaker • 48 kHz"
     @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Environment(\.accessibilityIncreaseContrast) private var increaseContrast
 
     private var accentStyle: AnyShapeStyle {
-        ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency, increaseContrast: increaseContrast)
+        ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency)
     }
 
     var body: some View {

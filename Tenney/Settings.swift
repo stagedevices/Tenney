@@ -91,10 +91,9 @@ private struct StageAccentPicker: View {
 
     @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Environment(\.accessibilityIncreaseContrast) private var increaseContrast
 
     private var strokeStyle: AnyShapeStyle {
-        ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency, increaseContrast: increaseContrast)
+        ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency)
     }
 
     var body: some View {
@@ -111,7 +110,7 @@ private struct StageAccentPicker: View {
                                 ThemeAccent.shapeStyle(
                                     base: opt.baseColor,
                                     reduceTransparency: reduceTransparency,
-                                    increaseContrast: increaseContrast
+
                                 )
                             )
                             .frame(width: 64, height: 40)
@@ -153,10 +152,9 @@ private struct StageToggleChip: View {
 
     @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Environment(\.accessibilityIncreaseContrast) private var increaseContrast
 
     private var accentStyle: AnyShapeStyle {
-        ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency, increaseContrast: increaseContrast)
+        ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency)
     }
 
     var body: some View {
@@ -652,10 +650,9 @@ struct StudioConsoleView: View {
 
         @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
         @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-        @Environment(\.accessibilityIncreaseContrast) private var increaseContrast
 
         private var accentStyle: AnyShapeStyle {
-            ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency, increaseContrast: increaseContrast)
+            ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency)
         }
 
         var body: some View {
@@ -850,10 +847,9 @@ struct StudioConsoleView: View {
 
         @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
         @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-        @Environment(\.accessibilityIncreaseContrast) private var increaseContrast
 
         private var accentStyle: AnyShapeStyle {
-            ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency, increaseContrast: increaseContrast)
+            ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency)
         }
 
         private var selected: Bool { current == value }
@@ -926,10 +922,9 @@ struct StudioConsoleView: View {
 
         @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
         @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-        @Environment(\.accessibilityIncreaseContrast) private var increaseContrast
 
         private var accentStyle: AnyShapeStyle {
-            ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency, increaseContrast: increaseContrast)
+            ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency)
         }
 
         var body: some View {
@@ -1018,7 +1013,7 @@ struct StudioConsoleView: View {
         @Environment(\.accessibilityIncreaseContrast) private var increaseContrast
 
         private var accentStyle: AnyShapeStyle {
-            ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency, increaseContrast: increaseContrast)
+            ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency)
         }
 
         @State private var page: OscilloscopePage = .view
@@ -1464,10 +1459,9 @@ struct StudioConsoleView: View {
         
         @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
         @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-        @Environment(\.accessibilityIncreaseContrast) private var increaseContrast
 
         private var accentStyle: AnyShapeStyle {
-            ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency, increaseContrast: increaseContrast)
+            ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency)
         }
 
 
@@ -1948,10 +1942,9 @@ struct StudioConsoleView: View {
         @Binding var soundOn: Bool   // ✅ add
         @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
         @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-        @Environment(\.accessibilityIncreaseContrast) private var increaseContrast
 
         private var accentStyle: AnyShapeStyle {
-            ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency, increaseContrast: increaseContrast)
+            ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency)
         }
         
         private var latticeConnectionMode: LatticeConnectionMode {
@@ -3448,10 +3441,9 @@ private struct GlassNavTile<Destination: View>: View {
     @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Environment(\.accessibilityIncreaseContrast) private var increaseContrast
 
     private var accentStyle: AnyShapeStyle {
-        ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency, increaseContrast: increaseContrast)
+        ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency)
     }
 
     var body: some View {
@@ -3532,10 +3524,9 @@ private struct GlassNavTile<Destination: View>: View {
         @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
         @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-        @Environment(\.accessibilityIncreaseContrast) private var increaseContrast
 
         private var accentStyle: AnyShapeStyle {
-            ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency, increaseContrast: increaseContrast)
+            ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency)
         }
 
 
@@ -4505,10 +4496,9 @@ private struct GlassNavTile<Destination: View>: View {
     fileprivate struct WaveTile: View {
         @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
         @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-        @Environment(\.accessibilityIncreaseContrast) private var increaseContrast
 
         private var accentStyle: AnyShapeStyle {
-            ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency, increaseContrast: increaseContrast)
+            ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency)
         }
         let option: WaveOption
         let selected: Bool
@@ -4817,10 +4807,9 @@ private struct GlassNavTile<Destination: View>: View {
         let tap: () -> Void
 
         @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-        @Environment(\.accessibilityIncreaseContrast) private var increaseContrast
 
         private var accentStyle: AnyShapeStyle {
-            ThemeAccent.shapeStyle(base: baseColor, reduceTransparency: reduceTransparency, increaseContrast: increaseContrast)
+            ThemeAccent.shapeStyle(base: baseColor, reduceTransparency: reduceTransparency)
         }
 
         var body: some View {

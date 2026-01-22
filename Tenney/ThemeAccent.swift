@@ -7,6 +7,16 @@ import AppKit
 #endif
 
 enum ThemeAccent {
+    static func increaseContrastEnabled() -> Bool {
+        #if canImport(UIKit)
+        return UIAccessibility.isDarkerSystemColorsEnabled
+        #elseif canImport(AppKit)
+        return NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+        #else
+        return false
+        #endif
+    }
+
     static func gradient(from base: Color) -> LinearGradient {
         let a = base
         let b = adjusted(base, satMul: 1.15, brightMul: 0.72, brightAddIfDark: 0.18)
@@ -24,6 +34,17 @@ enum ThemeAccent {
         } else {
             return AnyShapeStyle(gradient(from: base))
         }
+    }
+
+    static func shapeStyle(
+        base: Color,
+        reduceTransparency: Bool
+    ) -> AnyShapeStyle {
+        shapeStyle(
+            base: base,
+            reduceTransparency: reduceTransparency,
+            increaseContrast: increaseContrastEnabled()
+        )
     }
 
     static func adjusted(
@@ -63,14 +84,12 @@ extension View {
 private struct TenneyAccentForeground: ViewModifier {
     let base: Color
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Environment(\.accessibilityIncreaseContrast) private var increaseContrast
 
     func body(content: Content) -> some View {
         content.foregroundStyle(
             ThemeAccent.shapeStyle(
                 base: base,
-                reduceTransparency: reduceTransparency,
-                increaseContrast: increaseContrast
+                reduceTransparency: reduceTransparency
             )
         )
     }
