@@ -17,9 +17,9 @@ enum ThemeAccent {
     static func shapeStyle(
         base: Color,
         reduceTransparency: Bool,
-        contrast: AccessibilityContrast
+        increaseContrast: Bool
     ) -> AnyShapeStyle {
-        if reduceTransparency || contrast == .increased {
+        if reduceTransparency || increaseContrast {
             return AnyShapeStyle(base)
         } else {
             return AnyShapeStyle(gradient(from: base))
@@ -63,14 +63,14 @@ extension View {
 private struct TenneyAccentForeground: ViewModifier {
     let base: Color
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Environment(\.accessibilityContrast) private var contrast
+    @Environment(\.accessibilityIncreaseContrast) private var increaseContrast
 
     func body(content: Content) -> some View {
         content.foregroundStyle(
             ThemeAccent.shapeStyle(
                 base: base,
                 reduceTransparency: reduceTransparency,
-                contrast: contrast
+                increaseContrast: increaseContrast
             )
         )
     }

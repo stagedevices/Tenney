@@ -142,10 +142,10 @@ private struct A4Card: View {
 
     @Environment(\.tenneyTheme) private var theme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Environment(\.accessibilityContrast) private var contrast
+    @Environment(\.accessibilityIncreaseContrast) private var increaseContrast
 
     private var accentStyle: AnyShapeStyle {
-        ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency, contrast: contrast)
+        ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency, increaseContrast: increaseContrast)
     }
 
     var body: some View {

@@ -17,7 +17,7 @@ import SwiftUI
 struct AcknowledgementsView: View {
     @Environment(\.tenneyTheme) private var theme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Environment(\.accessibilityContrast) private var contrast
+    @Environment(\.accessibilityIncreaseContrast) private var increaseContrast
 
     var body: some View {
         ScrollView {
@@ -50,7 +50,7 @@ struct AcknowledgementsView: View {
                     ThemeAccent.shapeStyle(
                         base: theme.accent.opacity(0.55),
                         reduceTransparency: reduceTransparency,
-                        contrast: contrast
+                        increaseContrast: increaseContrast
                     ),
                     lineWidth: 1
                 )

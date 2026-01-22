@@ -55,7 +55,7 @@ struct AboutView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.tenneyTheme) private var theme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Environment(\.accessibilityContrast) private var contrast
+    @Environment(\.accessibilityIncreaseContrast) private var increaseContrast
 
     @AppStorage(SettingsKeys.tenneyThemeID) private var tenneyThemeIDRaw: String = "default"
 
@@ -416,7 +416,7 @@ struct AboutView: View {
     // MARK: - Theme helpers
 
     private var themeAccentStyle: AnyShapeStyle {
-        ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency, contrast: contrast)
+        ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency, increaseContrast: increaseContrast)
     }
 
     private var themeGradientStroke: some ShapeStyle {
@@ -429,7 +429,7 @@ private struct MuseumCard: ViewModifier {
     let theme: ResolvedTenneyTheme
     var emphasize: Bool = false
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Environment(\.accessibilityContrast) private var contrast
+    @Environment(\.accessibilityIncreaseContrast) private var increaseContrast
 
     func body(content: Content) -> some View {
         content
@@ -447,7 +447,7 @@ private struct MuseumCard: ViewModifier {
                         ThemeAccent.shapeStyle(
                             base: theme.accent.opacity(emphasize ? 0.9 : 0.55),
                             reduceTransparency: reduceTransparency,
-                            contrast: contrast
+                            increaseContrast: increaseContrast
                         ),
                         lineWidth: emphasize ? 2.0 : 1.0
                     )
@@ -616,7 +616,7 @@ private struct IconChoiceCell: View {
     let action: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Environment(\.accessibilityContrast) private var contrast
+    @Environment(\.accessibilityIncreaseContrast) private var increaseContrast
 
     var body: some View {
         Button(action: action) {
@@ -665,7 +665,7 @@ private struct IconChoiceCell: View {
                 return ThemeAccent.shapeStyle(
                     base: theme.accent.opacity(emphasize ? 0.95 : 1.0),
                     reduceTransparency: reduceTransparency,
-                    contrast: contrast
+                    increaseContrast: increaseContrast
                 )
             } else {
                 return AnyShapeStyle(Color.secondary.opacity(0.18))
@@ -684,7 +684,7 @@ private struct IconChoiceCell: View {
                         ThemeAccent.shapeStyle(
                             base: theme.accent.opacity(0.35),
                             reduceTransparency: reduceTransparency,
-                            contrast: contrast
+                            increaseContrast: increaseContrast
                         )
                     )
                     Image(systemName: "app.fill")

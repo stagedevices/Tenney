@@ -20,7 +20,7 @@ struct ClipContentView: View {
     @EnvironmentObject private var m: CalibrateModel
     @Environment(\.scenePhase) private var phase
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Environment(\.accessibilityContrast) private var contrast
+    @Environment(\.accessibilityIncreaseContrast) private var increaseContrast
 
     var body: some View {
         VStack(spacing: 16) {
@@ -124,7 +124,7 @@ struct ClipContentView: View {
         ThemeAccent.shapeStyle(
             base: m.accent.baseColor,
             reduceTransparency: reduceTransparency,
-            contrast: contrast
+            increaseContrast: increaseContrast
         )
     }
 
@@ -169,7 +169,7 @@ struct ClipContentView: View {
                         ThemeAccent.shapeStyle(
                             base: a.baseColor,
                             reduceTransparency: reduceTransparency,
-                            contrast: contrast
+                            increaseContrast: increaseContrast
                         )
                     )
                     .frame(width: 64, height: 34)
