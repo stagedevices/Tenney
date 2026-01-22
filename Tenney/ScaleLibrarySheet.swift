@@ -35,6 +35,7 @@ struct ScaleLibrarySheet: View {
     @EnvironmentObject private var model: AppModel
     @ObservedObject private var library = ScaleLibraryStore.shared
     @ObservedObject private var tagStore = TagStore.shared
+    @ObservedObject private var communityPacks = CommunityPacksStore.shared
     @AppStorage(SettingsKeys.libraryFiltersJSON) private var libraryFiltersJSON: String = ""
     @AppStorage(SettingsKeys.librarySearchText) private var librarySearchText: String = ""
     @AppStorage(SettingsKeys.libraryFavoritesOnly) private var libraryFavoritesOnly: Bool = false
@@ -43,6 +44,17 @@ struct ScaleLibrarySheet: View {
     @State private var showFilterSheet = false
     @State private var didLoadFilters = false
     @State private var actionTarget: TenneyScale? = nil   // ← selected row for the action sheet
+    @State private var selectedPack: PackSummary? = nil
+    @State private var selectedCommunityPack: CommunityPackViewModel? = nil
+    @State private var packPickerTarget: TenneyScale? = nil
+    @State private var newPackName: String = ""
+    @State private var showNewPackPrompt: Bool = false
+    @State private var packCreationContext: PackCreationContext? = nil
+    @State private var renamePackTarget: PackRef? = nil
+    @State private var renamePackTitle: String = ""
+    @State private var deletePackTarget: PackRef? = nil
+    @State private var infoPackTarget: PackSummary? = nil
+    @Namespace private var communityPackNamespace
 
     // simple sort/local filter
     private var filteredScales: [TenneyScale] {
@@ -185,9 +197,16 @@ struct ScaleLibrarySheet: View {
                     GeometryReader { proxy in
                         TabView(selection: $libraryPage) {
                             
-                            MyScalesPageList(
+                            PackBrowserPageList(
                                 filteredScales: filteredScales,
+                                searchText: librarySearchText,
                                 onPickScale: { actionTarget = $0 },
+                                onMoveToPack: { packPickerTarget = $0 },
+                                onOpenPack: { selectedPack = $0 },
+                                onOpenPackInfo: { infoPackTarget = $0 },
+                                onRenamePack: beginRenamePack,
+                                onDeletePack: { deletePackTarget = $0 },
+                                onOpenCommunityPack: { selectedCommunityPack = $0 },
                                 openInBuilder: openInBuilder,
                                 addToBuilder: addToBuilder,
                                 playScalePreview: playScalePreview,
@@ -224,23 +243,90 @@ struct ScaleLibrarySheet: View {
                         .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
                     }
                     
-                    PagePips(page: $libraryPage, labels: ["My Scales", "Collections by Limit", "Community Packs"])
+                    PagePips(page: $libraryPage, labels: ["Packs", "Collections by Limit", "Community Packs"])
                         .padding(.bottom, 10)
                 }
             }
             .listStyle(.insetGrouped)
             .navigationTitle("Library")
             .searchable(text: $librarySearchText, placement: .navigationBarDrawer(displayMode: .automatic))
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        showNewPackPrompt = true
+                    } label: {
+                        Label("New Pack", systemImage: "folder.badge.plus")
+                    }
+                }
+            }
             
             // Per-scale actions presented as a medium detent sheet
             .sheet(item: $actionTarget) { s in
                 ScaleActionsSheet(
                     scale: s,
                     onOpen: { openInBuilder(s) },
-                    onAdd:  { addToBuilder(s) }
+                    onAdd:  { addToBuilder(s) },
+                    onMoveToPack: { packPickerTarget = s }
                 )
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
+            }
+            .fullScreenCover(item: $selectedPack) { pack in
+                PackDetailSheet(
+                    pack: pack,
+                    scales: scalesForPack(pack),
+                    onPickScale: { actionTarget = $0 },
+                    onMoveToPack: { packPickerTarget = $0 },
+                    openInBuilder: openInBuilder,
+                    addToBuilder: addToBuilder,
+                    playScalePreview: playScalePreview
+                )
+            }
+            .fullScreenCover(item: $selectedCommunityPack) { pack in
+                NavigationStack {
+                    CommunityPackDetailView(
+                        pack: pack,
+                        namespace: communityPackNamespace,
+                        onPreviewRequested: handleCommunityPackPreviewRequest
+                    )
+                }
+                .presentationBackground(PremiumModalSurface.background)
+            }
+            .sheet(item: $packPickerTarget) { scale in
+                PackPickerSheet(
+                    scale: scale,
+                    userPacks: userPackRefs(from: Array(library.scales.values)),
+                    onSelectPack: { pack in
+                        library.assignPack(pack, to: scale.id)
+                        packPickerTarget = nil
+                    },
+                    onCreatePack: { title in
+                        let packRef = makeUserPack(title: title)
+                        library.assignPack(packRef, to: scale.id)
+                        packPickerTarget = nil
+                    }
+                )
+                .presentationDetents([.medium, .large])
+            }
+            .sheet(item: $packCreationContext) { context in
+                PackCreationSheet(
+                    title: context.title,
+                    scales: filteredScales,
+                    onCancel: { packCreationContext = nil },
+                    onCreate: { selected in
+                        guard !selected.isEmpty else {
+                            packCreationContext = nil
+                            return
+                        }
+                        let packRef = makeUserPack(title: context.title)
+                        library.assignPack(packRef, to: selected)
+                        packCreationContext = nil
+                    }
+                )
+            }
+            .sheet(item: $infoPackTarget) { info in
+                PackInfoSheet(pack: info)
+                    .presentationDetents([.medium])
             }
             .sheet(isPresented: $showFilterSheet) {
                 LibraryFilterSheet(
@@ -250,6 +336,51 @@ struct ScaleLibrarySheet: View {
                     onDone: { showFilterSheet = false }
                 )
                 .presentationDetents([.medium, .large])
+            }
+            .alert("New Pack", isPresented: $showNewPackPrompt) {
+                TextField("Pack name", text: $newPackName)
+                Button("Create") {
+                    let trimmed = newPackName.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !trimmed.isEmpty else { return }
+                    packCreationContext = PackCreationContext(title: trimmed)
+                    newPackName = ""
+                }
+                Button("Cancel", role: .cancel) {
+                    newPackName = ""
+                }
+            } message: {
+                Text("Create a new pack and pick scales to include.")
+            }
+            .alert("Rename Pack", isPresented: Binding(
+                get: { renamePackTarget != nil },
+                set: { if !$0 { renamePackTarget = nil } }
+            )) {
+                TextField("Pack name", text: $renamePackTitle)
+                Button("Rename") {
+                    guard let target = renamePackTarget else { return }
+                    library.renamePack(id: target.id, newTitle: renamePackTitle)
+                    renamePackTarget = nil
+                    renamePackTitle = ""
+                }
+                Button("Cancel", role: .cancel) {
+                    renamePackTarget = nil
+                    renamePackTitle = ""
+                }
+            } message: {
+                Text("Rename this pack across its scales.")
+            }
+            .alert("Delete Pack?", isPresented: Binding(
+                get: { deletePackTarget != nil },
+                set: { if !$0 { deletePackTarget = nil } }
+            )) {
+                Button("Delete Pack", role: .destructive) {
+                    guard let target = deletePackTarget else { return }
+                    library.deletePack(id: target.id)
+                    deletePackTarget = nil
+                }
+                Button("Cancel", role: .cancel) { deletePackTarget = nil }
+            } message: {
+                Text("Scales in this pack will move to Loose Scales.")
             }
         }
         .overlay(alignment: .topTrailing) {
@@ -285,6 +416,10 @@ struct ScaleLibrarySheet: View {
             case .favorites:
                 libraryFavoritesOnly = true
             }
+            library.repairCommunityPackMetadata(using: communityPacks.packs)
+        }
+        .onChange(of: communityPacks.packs) { packs in
+            library.repairCommunityPackMetadata(using: packs)
         }
         .onChange(of: filters) { _ in
             persistFilters()
@@ -660,16 +795,101 @@ private struct LibraryFilterPicker<Option: Hashable & CaseIterable & Identifiabl
 }
 
 
-private struct MyScalesPageList: View {
+private struct PackSummary: Identifiable, Hashable {
+    enum Kind: Hashable {
+        case favorites
+        case recents
+        case communitySuperFolder
+        case loose
+        case realPack(PackRef)
+    }
+
+    var id: String
+    var title: String
+    var subtitle: String?
+    var count: Int
+    var source: PackRef.Source?
+    var packRef: PackRef?
+    var kind: Kind
+}
+
+private struct PackCreationContext: Identifiable {
+    let id = UUID()
+    let title: String
+}
+
+private struct PackBrowserPageList: View {
     @ObservedObject private var library = ScaleLibraryStore.shared
     @ObservedObject private var tagStore = TagStore.shared
 
     let filteredScales: [TenneyScale]
+    let searchText: String
     let onPickScale: (TenneyScale) -> Void
+    let onMoveToPack: (TenneyScale) -> Void
+    let onOpenPack: (PackSummary) -> Void
+    let onOpenPackInfo: (PackSummary) -> Void
+    let onRenamePack: (PackRef) -> Void
+    let onDeletePack: (PackRef) -> Void
+    let onOpenCommunityPack: (CommunityPackViewModel) -> Void
     let openInBuilder: (TenneyScale) -> Void
     let addToBuilder: (TenneyScale) -> Void
     let playScalePreview: (TenneyScale) -> Void
     let onClearFilters: () -> Void
+
+    private var trimmedSearch: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var isSearching: Bool {
+        !trimmedSearch.isEmpty
+    }
+
+    private var favorites: [TenneyScale] {
+        filteredScales.filter { library.favoriteIDs.contains($0.id) }
+    }
+
+    private var recents: [TenneyScale] {
+        filteredScales
+            .filter { $0.lastPlayed != nil }
+            .sorted { ($0.lastPlayed ?? .distantPast) > ($1.lastPlayed ?? .distantPast) }
+    }
+
+    private var looseScales: [TenneyScale] {
+        filteredScales.filter { $0.pack == nil }
+    }
+
+    private var packGroups: [PackSummary] {
+        let grouped = Dictionary(grouping: filteredScales.compactMap { scale in
+            scale.pack.map { ($0, scale) }
+        }, by: { $0.0.id })
+        return grouped.compactMap { _, values in
+            guard let packRef = values.first?.0 else { return nil }
+            let count = values.count
+            let subtitle = "\(count) scale\(count == 1 ? "" : "s")"
+            return PackSummary(
+                id: packRef.id,
+                title: packRef.title,
+                subtitle: subtitle,
+                count: count,
+                source: packRef.source,
+                packRef: packRef,
+                kind: .realPack(packRef)
+            )
+        }
+        .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+    }
+
+    private var communityPacksSummaries: [PackSummary] {
+        packGroups.filter { $0.source == .community }
+    }
+
+    private var builtInSummaries: [PackSummary] {
+        packGroups.filter { $0.source == .builtIn }
+    }
+
+    private var userSummaries: [PackSummary] {
+        packGroups.filter { $0.source == .user }
+    }
 
     var body: some View {
         if #available(iOS 16.0, *) {
@@ -705,11 +925,16 @@ private struct MyScalesPageList: View {
                         .buttonStyle(.bordered)
                     }
                 }
-            } else {
-                Section("My Scales (\(filteredScales.count))") {
+            } else if isSearching {
+                Section("Results (\(filteredScales.count))") {
                     ForEach(filteredScales) { s in
                         Button { onPickScale(s) } label: {
-                            ScaleRow(scale: s, tagRefs: tagStore.tags(for: s.tagIDs), disclosure: true)
+                            ScaleRow(
+                                scale: s,
+                                tagRefs: tagStore.tags(for: s.tagIDs),
+                                disclosure: true,
+                                packBadge: packBadgeInfo(for: s)
+                            )
                         }
                         .buttonStyle(.plain)
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
@@ -735,15 +960,477 @@ private struct MyScalesPageList: View {
                             Button("Open in Builder") { openInBuilder(s) }
                             Button("Add to Builder") { addToBuilder(s) }
                             Button("Play Scale") { playScalePreview(s) }
+                            Button("Move to Pack…") { onMoveToPack(s) }
                         }
                     }
+                }
+            } else {
+                Section {
+                    Button { onOpenPack(favoritesSummary) } label: {
+                        PackRow(pack: favoritesSummary, showsDisclosure: true)
+                    }
+                    .buttonStyle(.plain)
+
+                    Button { onOpenPack(recentsSummary) } label: {
+                        PackRow(pack: recentsSummary, showsDisclosure: true)
+                    }
+                    .buttonStyle(.plain)
+                } header: {
+                    Text("Library")
+                }
+
+                Section {
+                    NavigationLink {
+                        CommunityPackFolderList(
+                            packs: communityPacksSummaries,
+                            onOpenCommunityPack: onOpenCommunityPack
+                        )
+                    } label: {
+                        PackRow(pack: communitySuperFolderSummary, showsDisclosure: true)
+                    }
+                }
+
+                if !builtInSummaries.isEmpty {
+                    Section("Built-in Packs") {
+                        ForEach(builtInSummaries) { pack in
+                            Button { onOpenPack(pack) } label: {
+                                PackRow(pack: pack, showsDisclosure: true)
+                            }
+                            .buttonStyle(.plain)
+                            .contextMenu {
+                                Button("Info") { onOpenPackInfo(pack) }
+                            }
+                        }
+                    }
+                }
+
+                if !userSummaries.isEmpty {
+                    Section("Your Packs") {
+                        ForEach(userSummaries) { pack in
+                            Button { onOpenPack(pack) } label: {
+                                PackRow(pack: pack, showsDisclosure: true)
+                            }
+                            .buttonStyle(.plain)
+                            .contextMenu {
+                                Button("Rename") {
+                                    guard let packRef = pack.packRef else { return }
+                                    onRenamePack(packRef)
+                                }
+                                Button("Info") { onOpenPackInfo(pack) }
+                                Button("Delete", role: .destructive) {
+                                    guard let packRef = pack.packRef else { return }
+                                    onDeletePack(packRef)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Section {
+                    Button { onOpenPack(looseSummary) } label: {
+                        PackRow(pack: looseSummary, showsDisclosure: true)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }
         .scrollContentBackground(.hidden)
         .background(Color.clear)
-
         .listStyle(.insetGrouped)
+    }
+
+    private var favoritesSummary: PackSummary {
+        let count = favorites.count
+        return PackSummary(
+            id: "favorites",
+            title: "Favorites",
+            subtitle: "\(count) scale\(count == 1 ? "" : "s")",
+            count: count,
+            source: nil,
+            packRef: nil,
+            kind: .favorites
+        )
+    }
+
+    private var recentsSummary: PackSummary {
+        let count = recents.count
+        return PackSummary(
+            id: "recents",
+            title: "Recents",
+            subtitle: "\(count) scale\(count == 1 ? "" : "s")",
+            count: count,
+            source: nil,
+            packRef: nil,
+            kind: .recents
+        )
+    }
+
+    private var communitySuperFolderSummary: PackSummary {
+        let count = communityPacksSummaries.count
+        return PackSummary(
+            id: "community",
+            title: "Community Packs",
+            subtitle: "\(count) pack\(count == 1 ? "" : "s")",
+            count: count,
+            source: .community,
+            packRef: nil,
+            kind: .communitySuperFolder
+        )
+    }
+
+    private var looseSummary: PackSummary {
+        let count = looseScales.count
+        return PackSummary(
+            id: "loose",
+            title: "Loose Scales",
+            subtitle: "\(count) scale\(count == 1 ? "" : "s")",
+            count: count,
+            source: nil,
+            packRef: nil,
+            kind: .loose
+        )
+    }
+
+    private func packBadgeInfo(for scale: TenneyScale) -> PackBadgeInfo? {
+        if let pack = scale.pack {
+            return PackBadgeInfo(title: pack.title, source: pack.source)
+        }
+        if let provenance = scale.provenance, provenance.kind == .communityPack {
+            return PackBadgeInfo(title: provenance.packName, source: .community)
+        }
+        return PackBadgeInfo(title: "Loose", source: nil)
+    }
+}
+
+private struct CommunityPackFolderList: View {
+    let packs: [PackSummary]
+    let onOpenCommunityPack: (CommunityPackViewModel) -> Void
+    @ObservedObject private var communityPacks = CommunityPacksStore.shared
+
+    var body: some View {
+        List {
+            if packs.isEmpty {
+                Section {
+                    ContentUnavailableView(
+                        "No installed community packs",
+                        systemImage: "shippingbox",
+                        description: Text("Install a pack to see it here.")
+                    )
+                }
+            } else {
+                Section("Installed Packs") {
+                    ForEach(packs) { pack in
+                        let packViewModel = communityPackViewModel(for: pack)
+                        Button {
+                            if let packViewModel {
+                                onOpenCommunityPack(packViewModel)
+                            }
+                        } label: {
+                            PackRow(pack: pack, showsDisclosure: true)
+                        }
+                        .buttonStyle(.plain)
+                        .contextMenu {
+                            if let packViewModel {
+                                if communityPacks.isUpdateAvailable(packViewModel.packID) {
+                                    Button("Update") {
+                                        communityPacks.enqueueInstall(pack: packViewModel, action: .update)
+                                    }
+                                }
+                                Button("Info") { onOpenCommunityPack(packViewModel) }
+                                Button("Uninstall", role: .destructive) {
+                                    Task {
+                                        await communityPacks.uninstallPack(packID: packViewModel.packID)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .navigationTitle("Community Packs")
+    }
+
+    private func communityPackViewModel(for pack: PackSummary) -> CommunityPackViewModel? {
+        let slug = pack.packRef?.slug ?? pack.packRef?.id.replacingOccurrences(of: "community:", with: "")
+        guard let slug else { return nil }
+        return communityPacks.packs.first(where: { $0.packID == slug })
+    }
+}
+
+private struct PackRow: View {
+    let pack: PackSummary
+    let showsDisclosure: Bool
+
+    var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(pack.title)
+                    .font(.headline.weight(.semibold))
+                HStack(spacing: 8) {
+                    if let subtitle = pack.subtitle {
+                        Text(subtitle)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    if let source = pack.source {
+                        PackSourceBadge(source: source)
+                    }
+                }
+            }
+            Spacer()
+            if showsDisclosure {
+                Image(systemName: "chevron.right")
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .contentShape(Rectangle())
+    }
+}
+
+private struct PackBadgeInfo {
+    let title: String
+    let source: PackRef.Source?
+}
+
+private struct PackSourceBadge: View {
+    let source: PackRef.Source
+
+    var body: some View {
+        Text(source.label)
+            .font(.caption2.weight(.semibold))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(Color.secondary.opacity(0.15)))
+    }
+}
+
+private struct PackDetailSheet: View {
+    let pack: PackSummary
+    let scales: [TenneyScale]
+    let onPickScale: (TenneyScale) -> Void
+    let onMoveToPack: (TenneyScale) -> Void
+    let openInBuilder: (TenneyScale) -> Void
+    let addToBuilder: (TenneyScale) -> Void
+    let playScalePreview: (TenneyScale) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var library = ScaleLibraryStore.shared
+    @ObservedObject private var tagStore = TagStore.shared
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if scales.isEmpty {
+                    Section {
+                        ContentUnavailableView(
+                            "No scales in this pack",
+                            systemImage: "tray",
+                            description: Text("Move a scale into this pack to get started.")
+                        )
+                    }
+                } else {
+                    Section {
+                        ForEach(scales) { s in
+                            Button { onPickScale(s) } label: {
+                                ScaleRow(scale: s, tagRefs: tagStore.tags(for: s.tagIDs), disclosure: true)
+                            }
+                            .buttonStyle(.plain)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button("Open") { openInBuilder(s) }.tint(.accentColor)
+                                Button("Add")  { addToBuilder(s) }.tint(.blue)
+                                Button("Play") { playScalePreview(s) }.tint(.gray)
+                                Button(role: .destructive) {
+                                    library.deleteScale(id: s.id)
+                                } label: { Label("Delete", systemImage: "trash") }
+                            }
+                            .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                                Button {
+                                    library.toggleFavorite(id: s.id)
+                                } label: {
+                                    Label(
+                                        s.favorite ? "Unfavorite" : "Favorite",
+                                        systemImage: s.favorite ? "star.slash" : "star"
+                                    )
+                                }
+                                .tint(.yellow)
+                            }
+                            .contextMenu {
+                                Button("Open in Builder") { openInBuilder(s) }
+                                Button("Add to Builder") { addToBuilder(s) }
+                                Button("Play Scale") { playScalePreview(s) }
+                                Button("Move to Pack…") { onMoveToPack(s) }
+                            }
+                        }
+                    } header: {
+                        Text("\(pack.title) (\(scales.count))")
+                    }
+                }
+            }
+            .navigationTitle(pack.title)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
+}
+
+private struct PackPickerSheet: View {
+    let scale: TenneyScale
+    let userPacks: [PackRef]
+    let onSelectPack: (PackRef?) -> Void
+    let onCreatePack: (String) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var newPackName: String = ""
+    @State private var showNewPackPrompt = false
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("Move to") {
+                    Button {
+                        onSelectPack(nil)
+                        dismiss()
+                    } label: {
+                        packRow(title: "Loose Scales", isSelected: scale.pack == nil)
+                    }
+
+                    ForEach(userPacks, id: \.id) { pack in
+                        Button {
+                            onSelectPack(pack)
+                            dismiss()
+                        } label: {
+                            packRow(title: pack.title, isSelected: scale.pack?.id == pack.id)
+                        }
+                    }
+                }
+
+                Section {
+                    Button("New Pack…") {
+                        showNewPackPrompt = true
+                    }
+                }
+            }
+            .navigationTitle("Move to Pack")
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") { dismiss() }
+                }
+            }
+            .alert("New Pack", isPresented: $showNewPackPrompt) {
+                TextField("Pack name", text: $newPackName)
+                Button("Create") {
+                    let trimmed = newPackName.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !trimmed.isEmpty else { return }
+                    onCreatePack(trimmed)
+                    newPackName = ""
+                    dismiss()
+                }
+                Button("Cancel", role: .cancel) { newPackName = "" }
+            }
+        }
+    }
+
+    private func packRow(title: String, isSelected: Bool) -> some View {
+        HStack {
+            Text(title)
+            Spacer()
+            if isSelected {
+                Image(systemName: "checkmark")
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+private struct PackCreationSheet: View {
+    let title: String
+    let scales: [TenneyScale]
+    let onCancel: () -> Void
+    let onCreate: ([UUID]) -> Void
+
+    @ObservedObject private var tagStore = TagStore.shared
+    @State private var selectedIDs: Set<UUID> = []
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("Select scales") {
+                    ForEach(scales) { scale in
+                        Button {
+                            toggle(scale.id)
+                        } label: {
+                            HStack {
+                                ScaleRow(scale: scale, tagRefs: tagStore.tags(for: scale.tagIDs))
+                                Spacer()
+                                if selectedIDs.contains(scale.id) {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(.accent)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .navigationTitle(title)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") { onCancel() }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Create") { onCreate(Array(selectedIDs)) }
+                        .disabled(selectedIDs.isEmpty)
+                }
+            }
+        }
+    }
+
+    private func toggle(_ id: UUID) {
+        if selectedIDs.contains(id) {
+            selectedIDs.remove(id)
+        } else {
+            selectedIDs.insert(id)
+        }
+    }
+}
+
+private struct PackInfoSheet: View {
+    let pack: PackSummary
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(pack.title)
+                .font(.title2.weight(.semibold))
+            if let subtitle = pack.subtitle {
+                Text(subtitle)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+            if let source = pack.source {
+                Text("Source: \(source.label)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(20)
+    }
+}
+
+private extension PackRef.Source {
+    var label: String {
+        switch self {
+        case .builtIn:
+            return "Built-in"
+        case .user:
+            return "User"
+        case .community:
+            return "Community"
+        }
     }
 }
 
@@ -821,6 +1508,7 @@ private struct ScaleRow: View {
     let scale: TenneyScale
     let tagRefs: [TagRef]
     var disclosure: Bool = false
+    var packBadge: PackBadgeInfo? = nil
     var body: some View {
         HStack(spacing: 12) {
             ZStack {
@@ -841,7 +1529,9 @@ private struct ScaleRow: View {
                     Text("\(scale.detectedLimit)-limit").font(.caption).foregroundStyle(.secondary)
                     Text("Root \(Int(scale.referenceHz)) Hz").font(.caption).foregroundStyle(.secondary)
                 }
-                if let provenance = scale.provenance, provenance.kind == .communityPack {
+                if let packBadge {
+                    PackBadge(info: packBadge)
+                } else if let provenance = scale.provenance, provenance.kind == .communityPack {
                     CommunityPackBadge(packName: provenance.packName)
                 }
                 if !tagRefs.isEmpty {
@@ -858,6 +1548,23 @@ private struct ScaleRow: View {
             }
         }
         .contentShape(Rectangle())
+    }
+}
+
+private struct PackBadge: View {
+    let info: PackBadgeInfo
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if let source = info.source {
+                Text(source.label)
+            }
+            Text(info.title)
+        }
+        .font(.caption2.weight(.semibold))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Capsule().fill(Color.secondary.opacity(0.15)))
     }
 }
 // MARK: - Actions & Helpers
@@ -951,6 +1658,43 @@ private extension ScaleLibrarySheet {
             libraryFiltersJSON = json
         }
     }
+
+    func makeUserPack(title: String) -> PackRef {
+        PackRef(
+            source: .user,
+            id: "user:\(UUID().uuidString)",
+            title: title.trimmingCharacters(in: .whitespacesAndNewlines),
+            slug: nil
+        )
+    }
+
+    func beginRenamePack(_ pack: PackRef) {
+        renamePackTarget = pack
+        renamePackTitle = pack.title
+    }
+
+    func scalesForPack(_ pack: PackSummary) -> [TenneyScale] {
+        switch pack.kind {
+        case .favorites:
+            return filteredScales.filter { library.favoriteIDs.contains($0.id) }
+        case .recents:
+            return filteredScales
+                .filter { $0.lastPlayed != nil }
+                .sorted { ($0.lastPlayed ?? .distantPast) > ($1.lastPlayed ?? .distantPast) }
+        case .loose:
+            return filteredScales.filter { $0.pack == nil }
+        case .realPack(let packRef):
+            return filteredScales.filter { $0.pack?.id == packRef.id }
+        case .communitySuperFolder:
+            return []
+        }
+    }
+
+    func userPackRefs(from scales: [TenneyScale]) -> [PackRef] {
+        let packs = scales.compactMap(\.pack).filter { $0.source == .user }
+        let deduped = Dictionary(grouping: packs, by: { $0.id }).compactMap { $0.value.first }
+        return deduped.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+    }
 }
 // MARK: - Per-scale Action Sheet (Open • Add • Play)
 struct ScaleActionsSheet: View {
@@ -959,6 +1703,7 @@ struct ScaleActionsSheet: View {
     let scale: TenneyScale
     let onOpen: () -> Void
     let onAdd:  () -> Void
+    let onMoveToPack: () -> Void
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var library = ScaleLibraryStore.shared
     @ObservedObject private var tagStore = TagStore.shared
@@ -1191,6 +1936,7 @@ struct ScaleActionsSheet: View {
                                 onCopySCL: { copySCL() },
                                 onCommitTitle: { commitScaleRename($0) },
                                 onTags: { showTagsSheet = true },
+                                onMoveToPack: { onMoveToPack(); dismiss() },
                                 onDelete: {
                                     if shouldOfferUninstall {
                                         showUninstallConfirm = true
@@ -2247,6 +2993,7 @@ private struct OverviewPage: View {
     let onCopySCL: () -> Void
     let onCommitTitle: (String) -> Void
     let onTags: () -> Void
+    let onMoveToPack: () -> Void
     let onDelete: () -> Void
     let destructiveTitle: String
 
@@ -2410,6 +3157,15 @@ private struct OverviewPage: View {
                             ActionTile(
                                 title: "Tags…",
                                 systemImage: "tag",
+                                style: .standard(.secondary)
+                            )
+                        }
+                        .buttonStyle(.plain)
+
+                        Button(action: onMoveToPack) {
+                            ActionTile(
+                                title: "Move to Pack…",
+                                systemImage: "folder",
                                 style: .standard(.secondary)
                             )
                         }

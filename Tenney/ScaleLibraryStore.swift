@@ -95,7 +95,13 @@ final class ScaleLibraryStore: ObservableObject {
 
     func removeScales(forPackID packID: String) {
         let idsToRemove = scales.values.compactMap { scale in
-            scale.provenance?.packID == packID ? scale.id : nil
+            if scale.provenance?.packID == packID {
+                return scale.id
+            }
+            if scale.pack?.source == .community, scale.pack?.slug == packID {
+                return scale.id
+            }
+            return nil
         }
         guard !idsToRemove.isEmpty else { return }
         for id in idsToRemove {
@@ -125,6 +131,118 @@ final class ScaleLibraryStore: ObservableObject {
             scales[id] = scale
             scheduleSave()
         }
+    }
+
+    func assignPack(_ pack: PackRef?, to scaleID: UUID) {
+        assignPack(pack, to: [scaleID])
+    }
+
+    func assignPack(_ pack: PackRef?, to scaleIDs: [UUID]) {
+        guard !scaleIDs.isEmpty else { return }
+        var updated = scales
+        var didChange = false
+        for id in scaleIDs {
+            guard var scale = updated[id] else { continue }
+            if scale.pack?.id == pack?.id && scale.pack?.title == pack?.title && scale.pack?.source == pack?.source {
+                continue
+            }
+            scale.pack = pack
+            updated[id] = scale
+            didChange = true
+        }
+        guard didChange else { return }
+        scales = updated
+        scheduleSave()
+    }
+
+    func renamePack(id packID: String, newTitle: String) {
+        let trimmed = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        var updated = scales
+        var didChange = false
+        for (id, scale) in scales {
+            guard var pack = scale.pack, pack.id == packID else { continue }
+            if pack.title == trimmed { continue }
+            pack.title = trimmed
+            var revised = scale
+            revised.pack = pack
+            updated[id] = revised
+            didChange = true
+        }
+        guard didChange else { return }
+        scales = updated
+        scheduleSave()
+    }
+
+    func deletePack(id packID: String) {
+        var updated = scales
+        var didChange = false
+        for (id, scale) in scales {
+            guard scale.pack?.id == packID else { continue }
+            var revised = scale
+            revised.pack = nil
+            updated[id] = revised
+            didChange = true
+        }
+        guard didChange else { return }
+        scales = updated
+        scheduleSave()
+    }
+
+    func repairCommunityPackMetadata(using packs: [CommunityPackViewModel]) {
+        guard !packs.isEmpty else { return }
+        let mapped: [UUID: (PackRef, String)] = Dictionary(uniqueKeysWithValues: packs.flatMap { pack in
+            let packRef = PackRef(
+                source: .community,
+                id: "community:\(pack.packID)",
+                title: pack.title,
+                slug: pack.packID
+            )
+            return pack.scales.map { scale in
+                let scaleTitle = scale.title.trimmingCharacters(in: .whitespacesAndNewlines)
+                let payloadTitle = scale.payload.title.trimmingCharacters(in: .whitespacesAndNewlines)
+                let resolvedName: String
+                if !scaleTitle.isEmpty {
+                    resolvedName = scaleTitle
+                } else if !payloadTitle.isEmpty {
+                    resolvedName = payloadTitle
+                } else {
+                    resolvedName = "Untitled Scale"
+                }
+                let stableID = communityScaleUUID(packID: pack.packID, scaleID: scale.id)
+                return (stableID, (packRef, resolvedName))
+            }
+        })
+
+        var updated = scales
+        var didChange = false
+        for (id, scale) in scales {
+            guard let (packRef, resolvedName) = mapped[id] else { continue }
+            var revised = scale
+            if revised.pack?.id != packRef.id || revised.pack?.title != packRef.title {
+                revised.pack = packRef
+                didChange = true
+            }
+            let trimmedName = revised.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmedName == packRef.title.trimmingCharacters(in: .whitespacesAndNewlines) {
+                revised.name = resolvedName
+                didChange = true
+            }
+            if var provenance = revised.provenance, provenance.kind == .communityPack, provenance.packName != packRef.title {
+                provenance.packName = packRef.title
+                revised.provenance = provenance
+                didChange = true
+            }
+            updated[id] = revised
+            #if DEBUG
+            if revised.pack?.source == .community {
+                assert(revised.name.trimmingCharacters(in: .whitespacesAndNewlines) != packRef.title.trimmingCharacters(in: .whitespacesAndNewlines))
+            }
+            #endif
+        }
+        guard didChange else { return }
+        scales = updated
+        scheduleSave()
     }
 
     // MARK: - Load / Save

@@ -359,7 +359,8 @@ final class CommunityPacksStore: ObservableObject {
             periodRatio: 2.0,
             maxTenneyHeight: TenneyScale.maxTenneyHeight(for: scale.payload.refs),
             author: pack.authorName,
-            provenance: provenance
+            provenance: provenance,
+            pack: communityPackRef(for: pack)
         )
     }
 
@@ -370,6 +371,15 @@ final class CommunityPacksStore: ObservableObject {
             packName: pack.title,
             authorName: pack.authorName,
             installedVersion: pack.version
+        )
+    }
+
+    private func communityPackRef(for pack: CommunityPackViewModel) -> PackRef {
+        PackRef(
+            source: .community,
+            id: "community:\(pack.packID)",
+            title: pack.title,
+            slug: pack.packID
         )
     }
 

@@ -85,7 +85,8 @@ final class ScaleBuilderStore: ObservableObject {
                 detectedLimit: TenneyScale.detectedLimit(for: payload.items),
                 periodRatio: existing.periodRatio,
                 maxTenneyHeight: TenneyScale.maxTenneyHeight(for: payload.items),
-                author: existing.author
+                author: existing.author,
+                pack: existing.pack
             )
         }
 
