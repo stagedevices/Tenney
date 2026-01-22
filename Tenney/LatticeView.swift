@@ -1625,6 +1625,14 @@ struct LatticeView: View {
         default:      return 12
         }
     }
+
+    private func helmholtzPreference(from preference: AccidentalPreference) -> NotationFormatter.AccidentalPreference {
+        switch preference {
+        case .preferFlats: return .preferFlats
+        case .preferSharps: return .preferSharps
+        case .auto: return .auto
+        }
+    }
     
     // MARK: - Info-card octave helpers (no-fold; do NOT force ratio back to 1–2)
     private func ratioWithOctaveOffsetNoFold(num: Int, den: Int, offset: Int) -> (Int, Int) {
@@ -4407,13 +4415,7 @@ struct LatticeView: View {
             let baseHz = foldToAudible(app.rootHz * (Double(f.num) / Double(f.den)), minHz: 20, maxHz: 5000)
             let hzAdj = baseHz * pow(2.0, Double(infoOctaveOffset))
             let pref = AccidentalPreference(rawValue: accidentalPreferenceRaw) ?? .auto
-            let helmholtzPref: NotationFormatter.AccidentalPreference = {
-                switch pref {
-                case .preferFlats: return .preferFlats
-                case .preferSharps: return .preferSharps
-                case .auto: return .auto
-                }
-            }()
+            let helmholtzPref = helmholtzPreference(from: pref)
             let noteLabel = NotationFormatter.closestHelmholtzLabel(
                 freqHz: hzAdj,
                 a4Hz: staffA4Hz,
@@ -4521,7 +4523,8 @@ struct LatticeView: View {
         .frame(maxWidth: 320, alignment: .leading)
         // Ensure octave changes always retune immediately (even if other gestures also fire while the card is up).
                 .onChange(of: infoOctaveOffset) { newOffset in
-                let hzNew = baseHz * pow(2.0, Double(newOffset))
+                let baseHzLocal = foldToAudible(app.rootHz * (Double(f.num) / Double(f.den)), minHz: 20, maxHz: 5000)
+                let hzNew = baseHzLocal * pow(2.0, Double(newOffset))
                     switchInfoTone(toHz: hzNew, newOffset: newOffset)
                 }
     }
