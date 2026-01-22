@@ -348,7 +348,7 @@ struct ScaleLibrarySheet: View {
             }
             library.repairCommunityPackMetadata(using: communityPacks.packs)
         }
-        .onChange(of: communityPacks.packs) { packs in
+        .onReceive(communityPacks.$packs) { packs in
             library.repairCommunityPackMetadata(using: packs)
         }
         .onChange(of: filters) { _ in
@@ -1585,7 +1585,7 @@ private struct PackCreationSheet: View {
                                 Spacer()
                                 if selectedIDs.contains(scale.id) {
                                     Image(systemName: "checkmark.circle.fill")
-                                        .foregroundStyle(.accentColor)
+                                        .foregroundColor(.accentColor)
                                 }
                             }
                         }
