@@ -218,21 +218,28 @@ private struct TickRing: View {
             let center = CGPoint(x: size.width / 2, y: size.height / 2)
             let radius = min(size.width, size.height) / 2
             let tickLength = radius * 0.12
+            let tickBaseRadius = radius * 0.72
+            let circle = Double.pi * 2
             for index in 0..<count {
                 let progress = Double(index) / Double(count)
-                let angle = progress * Double.pi * 2
+                let angle = progress * circle
+                let cosAngle = cos(angle)
+                let sinAngle = sin(angle)
+                let startRadius = tickBaseRadius
+                let endRadius = tickBaseRadius + tickLength
                 let start = CGPoint(
-                    x: center.x + cos(angle) * (radius * 0.72),
-                    y: center.y + sin(angle) * (radius * 0.72)
+                    x: center.x + cosAngle * startRadius,
+                    y: center.y + sinAngle * startRadius
                 )
                 let end = CGPoint(
-                    x: center.x + cos(angle) * (radius * 0.72 + tickLength),
-                    y: center.y + sin(angle) * (radius * 0.72 + tickLength)
+                    x: center.x + cosAngle * endRadius,
+                    y: center.y + sinAngle * endRadius
                 )
                 var path = Path()
                 path.move(to: start)
                 path.addLine(to: end)
-                let intensity = 0.24 + 0.26 * (0.5 + 0.5 * sin(progress * Double.pi * 2))
+                let phase = progress * circle
+                let intensity = 0.24 + 0.26 * (0.5 + 0.5 * sin(phase))
                 context.stroke(
                     path,
                     with: .color(Color.white.opacity(intensity)),
