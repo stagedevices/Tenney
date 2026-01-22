@@ -335,9 +335,16 @@ final class CommunityPacksStore: ObservableObject {
         provenance: TenneyScale.Provenance?
     ) -> TenneyScale {
         // Keep INDEX.json titles attached so installed packs retain per-scale names.
-        let indexTitle = scale.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let scaleTitle = scale.title.trimmingCharacters(in: .whitespacesAndNewlines)
         let payloadTitle = scale.payload.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let resolvedName = indexTitle.isEmpty ? payloadTitle : indexTitle
+        let resolvedName: String
+                if !scaleTitle.isEmpty {
+                    resolvedName = scaleTitle
+                } else if !payloadTitle.isEmpty {
+                    resolvedName = payloadTitle
+                } else {
+                    resolvedName = "Untitled Scale"
+                }
         return TenneyScale(
             id: id,
             name: resolvedName,

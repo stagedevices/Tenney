@@ -20,9 +20,16 @@ private func communityScaleForFiltering(pack: CommunityPackViewModel, scale: Com
         installedVersion: pack.version
     )
     // Preserve INDEX.json scale titles as the source of truth, even after install.
-    let indexTitle = scale.title.trimmingCharacters(in: .whitespacesAndNewlines)
+    let scaleTitle = scale.title.trimmingCharacters(in: .whitespacesAndNewlines)
     let payloadTitle = scale.payload.title.trimmingCharacters(in: .whitespacesAndNewlines)
-    let resolvedName = indexTitle.isEmpty ? payloadTitle : indexTitle
+    let resolvedName: String
+       if !scaleTitle.isEmpty {
+           resolvedName = scaleTitle
+       } else if !payloadTitle.isEmpty {
+           resolvedName = payloadTitle
+       } else {
+           resolvedName = "Untitled Scale"
+       }
     return TenneyScale(
         id: communityScaleUUID(packID: pack.packID, scaleID: scale.id),
         name: resolvedName,
