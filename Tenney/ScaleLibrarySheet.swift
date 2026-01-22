@@ -164,7 +164,7 @@ struct ScaleLibrarySheet: View {
     }
 
     var body: some View {
-        let isSearchActive = isSearchPresented || !librarySearchText.isEmpty
+        let isSearchActive = isSearchPresented
         NavigationStack {
             ZStack {
                 libraryGlassBackground
@@ -266,7 +266,7 @@ struct ScaleLibrarySheet: View {
                             .padding(.trailing, 20)
                     }
                 }
-        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
         .presentationBackground(.clear)
         .onAppear {
             loadFiltersIfNeeded()
