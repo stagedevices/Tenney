@@ -1320,14 +1320,15 @@ private struct CommunityPackDetailView: View {
                             .transition(actionTransition)
                 } else {
                     Button(action: { showUninstallConfirm = true }) {
-                        Text("Uninstall")
+                        Label("Uninstall", systemImage: "trash")
                             .font(.callout.weight(.semibold))
-                            .frame(height: 44)
+                            .frame(maxWidth: .infinity, minHeight: 44)
                             .padding(.horizontal, 14)
                             .foregroundStyle(.white)
+                            .modifier(GlassTintedCapsule(tint: .red, isEnabled: true))
+                            .contentShape(Capsule())
                     }
-                    .buttonStyle(.plain)
-                    .modifier(GlassRedRoundedRect(corner: corner))
+                    .buttonStyle(GlassPressFeedback())
                     .transition(actionTransition)
                 }
             }
