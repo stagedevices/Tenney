@@ -54,6 +54,7 @@ struct TenneyApp: App {
     @StateObject private var latticeStore = LatticeStore()
 
     init() {
+        BravuraFontRegistrar.registerIfNeeded()
         seedLatticeSoundDefaultIfNeeded()
         configureAudioSessionFromDefaults()
         let crashInfo = SessionCrashMarker.shared.onLaunch()

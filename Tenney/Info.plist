@@ -6,6 +6,11 @@
 	<false/>
 	<key>CFBundleExecutable</key>
 	<string></string>
+	<key>UIAppFonts</key>
+	<array>
+		<string>Resources/Fonts/Bravura/Bravura.otf</string>
+		<string>Resources/Fonts/Bravura/BravuraText.otf</string>
+	</array>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleDisplayName</key>
