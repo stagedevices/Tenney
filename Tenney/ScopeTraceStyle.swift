@@ -26,14 +26,18 @@ enum ScopeTraceStyle {
 
         let coreStyle = StrokeStyle(lineWidth: coreWidth, lineCap: .round, lineJoin: .round)
         let sheenStyle = StrokeStyle(lineWidth: sheenWidth, lineCap: .round, lineJoin: .round)
-
+        let bounds = path.boundingRect
+        let gradientStart = CGPoint(x: bounds.minX, y: bounds.midY)
+        let gradientEnd   = CGPoint(x: bounds.maxX, y: bounds.midY)
         if bloom {
             context.drawLayer { layer in
                 layer.addFilter(.blur(radius: 2))
                 layer.stroke(
                     path,
                     with: .linearGradient(
-                        LinearGradient(gradient: coreGradient, startPoint: .leading, endPoint: .trailing)
+                        coreGradient,
+                        startPoint: gradientStart,
+                        endPoint: gradientEnd
                     ),
                     style: StrokeStyle(lineWidth: coreWidth + 2, lineCap: .round, lineJoin: .round)
                 )
@@ -43,7 +47,9 @@ enum ScopeTraceStyle {
         context.stroke(
             path,
             with: .linearGradient(
-                LinearGradient(gradient: coreGradient, startPoint: .leading, endPoint: .trailing)
+                coreGradient,
+                startPoint: gradientStart,
+                endPoint: gradientEnd
             ),
             style: coreStyle
         )
@@ -51,7 +57,9 @@ enum ScopeTraceStyle {
         context.stroke(
             path,
             with: .linearGradient(
-                LinearGradient(gradient: sheenGradient, startPoint: .leading, endPoint: .trailing)
+                sheenGradient,
+                startPoint: gradientStart,
+                endPoint: gradientEnd
             ),
             style: sheenStyle
         )
