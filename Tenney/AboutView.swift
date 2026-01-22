@@ -54,6 +54,8 @@ struct AboutView: View {
     @Environment(\.horizontalSizeClass) private var hSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.tenneyTheme) private var theme
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.accessibilityIncreaseContrast) private var increaseContrast
 
     @AppStorage(SettingsKeys.tenneyThemeID) private var tenneyThemeIDRaw: String = "default"
 
@@ -413,16 +415,12 @@ struct AboutView: View {
 
     // MARK: - Theme helpers
 
-    private var themeGradient: LinearGradient {
-        LinearGradient(
-            colors: [theme.e3, theme.e5],
-            startPoint: .leading,
-            endPoint: .trailing
-        )
+    private var themeAccentStyle: AnyShapeStyle {
+        ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency, increaseContrast: increaseContrast)
     }
 
     private var themeGradientStroke: some ShapeStyle {
-        themeGradient
+        themeAccentStyle
     }
 }
 
@@ -430,6 +428,8 @@ private struct MuseumCard: ViewModifier {
     let corner: CGFloat
     let theme: ResolvedTenneyTheme
     var emphasize: Bool = false
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.accessibilityIncreaseContrast) private var increaseContrast
 
     func body(content: Content) -> some View {
         content
@@ -444,10 +444,10 @@ private struct MuseumCard: ViewModifier {
             .overlay(
                 RoundedRectangle(cornerRadius: corner, style: .continuous)
                     .strokeBorder(
-                        LinearGradient(
-                            colors: [theme.e3.opacity(emphasize ? 0.9 : 0.55), theme.e5.opacity(emphasize ? 0.9 : 0.55)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
+                        ThemeAccent.shapeStyle(
+                            base: theme.accent.opacity(emphasize ? 0.9 : 0.55),
+                            reduceTransparency: reduceTransparency,
+                            increaseContrast: increaseContrast
                         ),
                         lineWidth: emphasize ? 2.0 : 1.0
                     )
@@ -615,6 +615,8 @@ private struct IconChoiceCell: View {
     let theme: ResolvedTenneyTheme
     let action: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.accessibilityIncreaseContrast) private var increaseContrast
 
     var body: some View {
         Button(action: action) {
@@ -660,12 +662,10 @@ private struct IconChoiceCell: View {
     
     private var strokeStyle: AnyShapeStyle {
             if isSelected {
-                return AnyShapeStyle(
-                    LinearGradient(
-                        colors: [theme.e3.opacity(emphasize ? 0.95 : 1.0), theme.e5.opacity(emphasize ? 0.95 : 1.0)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
+                return ThemeAccent.shapeStyle(
+                    base: theme.accent.opacity(emphasize ? 0.95 : 1.0),
+                    reduceTransparency: reduceTransparency,
+                    increaseContrast: increaseContrast
                 )
             } else {
                 return AnyShapeStyle(Color.secondary.opacity(0.18))
@@ -680,7 +680,13 @@ private struct IconChoiceCell: View {
                     .scaledToFill()
             } else {
                 ZStack {
-                    LinearGradient(colors: [theme.e3.opacity(0.35), theme.e5.opacity(0.35)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                    Rectangle().fill(
+                        ThemeAccent.shapeStyle(
+                            base: theme.accent.opacity(0.35),
+                            reduceTransparency: reduceTransparency,
+                            increaseContrast: increaseContrast
+                        )
+                    )
                     Image(systemName: "app.fill")
                         .symbolRenderingMode(.hierarchical)
                         .font(.system(size: 22, weight: .semibold))
@@ -749,4 +755,3 @@ private struct CatalystBadgePicker: View {
 }
 
 #endif
-

@@ -97,11 +97,11 @@ final class CalibrateModel: ObservableObject {
     enum Accent: String, CaseIterable, Identifiable {
         case system, amber, red
         var id: String { rawValue }
-        var colors: [Color] {
+        var baseColor: Color {
             switch self {
-            case .system: return [ .accentColor, .accentColor.opacity(0.55) ]
-            case .amber:  return [ .orange, .yellow ]
-            case .red:    return [ .red, .pink ]
+            case .system: return .accentColor
+            case .amber:  return .orange
+            case .red:    return .red
             }
         }
     }

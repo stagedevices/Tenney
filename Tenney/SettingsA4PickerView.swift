@@ -22,16 +22,6 @@ struct SettingsA4PickerView: View {
     @AppStorage(SettingsKeys.staffA4Hz) private var staffA4Hz: Double = 440
 
     var onSelectionChanged: ((Double) -> Void)? = nil
-    
-    @Environment(\.tenneyTheme) private var theme
-
-        private var headerGrad: LinearGradient {
-            LinearGradient(
-                colors: [theme.e3, theme.e5],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        }
 
     private enum Preset: String, CaseIterable, Identifiable {
         case _425 = "425", _440 = "440", _442 = "442", _444 = "444", custom = "custom"
@@ -151,13 +141,11 @@ private struct A4Card: View {
     let isSelected: Bool
 
     @Environment(\.tenneyTheme) private var theme
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.accessibilityIncreaseContrast) private var increaseContrast
 
-    private var grad: LinearGradient {
-        LinearGradient(
-            colors: [theme.e3, theme.e5],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
+    private var accentStyle: AnyShapeStyle {
+        ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency, increaseContrast: increaseContrast)
     }
 
     var body: some View {
@@ -176,7 +164,7 @@ private struct A4Card: View {
             if isSelected {
                 Image(systemName: "checkmark.circle.fill")
                     .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(AnyShapeStyle(grad))
+                    .foregroundStyle(accentStyle)
                     .blendMode(theme.isDark ? .screen : .darken)
                     .padding(8)
                     .transition(.scale.combined(with: .opacity))
@@ -201,11 +189,10 @@ private struct A4Card: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(
                     isSelected
-                    ? AnyShapeStyle(grad)
+                    ? accentStyle
                     : AnyShapeStyle(Color.secondary.opacity(0.15)),
                     lineWidth: isSelected ? 1.5 : 1
                 )
         )
     }
 }
-

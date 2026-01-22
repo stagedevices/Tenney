@@ -20,9 +20,16 @@ public struct ProAudioSettingsView: View {
     @State private var micPermission: MicrophonePermission.Status = .undetermined
     @State private var advancedExpanded: Bool = false
     @State private var diagnosticsExpanded: Bool = false
+    @Environment(\.tenneyTheme) private var theme
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.accessibilityIncreaseContrast) private var increaseContrast
 
     private let deviceCols = [GridItem(.adaptive(minimum: 150, maximum: 220), spacing: 12, alignment: .top)]
     private let optCols = [GridItem(.adaptive(minimum: 110, maximum: 160), spacing: 12, alignment: .top)]
+
+    private var accentStyle: AnyShapeStyle {
+        ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency, increaseContrast: increaseContrast)
+    }
 
     public init(showsOuterCard: Bool = true) {
         self.showsOuterCard = showsOuterCard
@@ -506,14 +513,8 @@ public struct ProAudioSettingsView: View {
     private func headerRow(title: String, icon: String) -> some View {
         HStack(spacing: 10) {
             Image(systemName: icon)
-                .symbolRenderingMode(.palette)
-                .foregroundStyle(
-                    .linearGradient(
-                        colors: [.red, .orange],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(accentStyle)
                 .imageScale(.large)
             Text(title).font(.subheadline.weight(.semibold))
         }
