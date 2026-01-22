@@ -30,11 +30,12 @@ struct ScaleLibraryScreen: View {
                 }
             }
             .navigationTitle("Library")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Cancel") { isPresented = false }
-                }
-            }
+            .overlay(alignment: .topTrailing) {
+                GlassDismissCircleButton {  isPresented = false }
+                    .padding(.top, 20)
+                    .padding(.trailing, 20)
+                    .transition(.opacity)
+                        }
         }
     }
 }

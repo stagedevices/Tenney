@@ -231,11 +231,7 @@ struct ScaleLibrarySheet: View {
             .listStyle(.insetGrouped)
             .navigationTitle("Library")
             .searchable(text: $librarySearchText, placement: .navigationBarDrawer(displayMode: .automatic))
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Cancel") { dismiss() }
-                }
-            }
+            
             // Per-scale actions presented as a medium detent sheet
             .sheet(item: $actionTarget) { s in
                 ScaleActionsSheet(
@@ -256,6 +252,13 @@ struct ScaleLibrarySheet: View {
                 .presentationDetents([.medium, .large])
             }
         }
+        .overlay(alignment: .topTrailing) {
+                    // Overlay keeps dismissal off the nav bar and anchored to the sheet's top edge.
+                    GlassDismissCircleButton { dismiss() }
+                        .padding(.top, 20)
+                        .padding(.trailing, 20)
+                        .transition(.opacity)
+                }
         .toolbarBackground(.hidden, for: .navigationBar)
         .presentationBackground(.clear)
         .onAppear {
