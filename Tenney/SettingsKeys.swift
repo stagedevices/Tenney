@@ -83,6 +83,9 @@ enum SettingsKeys {
     static let showRatioAlongHeji = "tenney.label.showRatio"     // Bool
     static let infoCardNotationMode = "tenney.label.notationMode" // "staff" | "text" | "combined"
     static let accidentalPreference = "tenney.label.accidentalPreference" // "auto" | "preferSharps" | "preferFlats"
+    static let rootAnchorFifthsFromC = "tenney.label.rootAnchor.fifthsFromC" // Int
+    static let rootAnchorDiatonicNumber = "tenney.label.rootAnchor.diatonicNumber" // Int
+    static let rootAnchorIsFrozen = "tenney.label.rootAnchor.isFrozen" // Bool
 
     // Lattice UI
     static let nodeSize      = "tenney.ui.nodeSize"        // "s" | "m" | "mplus" | "l"

@@ -4675,19 +4675,18 @@ struct LatticeView: View {
     }
 
     private func hejiTextLabel(p: Int, q: Int, octave: Int, rootHz: Double) -> String {
-        let ratioRef = RatioRef(p: p, q: q, octave: octave, monzo: [:])
         let pref = AccidentalPreference(rawValue: accidentalPreferenceRaw) ?? .auto
-        let context = HejiContext(
-            referenceA4Hz: staffA4Hz,
+        let anchor = resolveRootAnchor(rootHz: rootHz, a4Hz: staffA4Hz, preference: pref)
+        let context = PitchContext(
+            a4Hz: staffA4Hz,
             rootHz: rootHz,
-            rootRatio: nil,
-            preferred: pref,
-            maxPrime: max(3, app.primeLimit),
-            allowApproximation: false,
-            scaleDegreeHint: ratioRef
+            rootAnchor: anchor,
+            accidentalPreference: pref,
+            maxPrime: max(3, app.primeLimit)
         )
-        let spelling = HejiNotation.spelling(forRatio: ratioRef, context: context)
-        return String(HejiNotation.textLabel(spelling, showCents: false).characters)
+        let (adjP, adjQ) = applyOctaveToPQ(p: p, q: q, octave: octave)
+        let spelling = spellRatio(p: adjP, q: adjQ, context: context)
+        return spelling.labelText
     }
 
 #if os(macOS) || targetEnvironment(macCatalyst)
