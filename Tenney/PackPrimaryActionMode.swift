@@ -29,13 +29,18 @@ struct PackPrimaryActionButton: View {
         Group {
             switch mode {
             case .install(let tint), .update(let tint):
-                Button(action: action) { label }
-                    .buttonStyle(GlassPressFeedback())
-                    .modifier(GlassTintedCapsule(tint: tint ?? .blue, isEnabled: !isDisabled))
-                               case .preview:
-                                   Button(action: action) { label }
-                                       .buttonStyle(GlassPressFeedback())
-                                       .modifier(GlassRoundedRect(corner: corner))
+                Button(action: action) {
+                    label
+                        .modifier(GlassTintedCapsule(tint: tint ?? .blue, isEnabled: !isDisabled))
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(GlassPressFeedback())
+            case .preview:
+                Button(action: action) {
+                    label
+                        .modifier(GlassRoundedRect(corner: corner))
+                }
+                .buttonStyle(GlassPressFeedback())
             }
         }
         .disabled(isDisabled)
@@ -87,7 +92,7 @@ struct PackPrimaryActionButton: View {
 
 }
 
-private struct GlassTintedCapsule: ViewModifier {
+struct GlassTintedCapsule: ViewModifier {
     let tint: Color
     let isEnabled: Bool
 
@@ -101,18 +106,27 @@ private struct GlassTintedCapsule: ViewModifier {
             content
                 .background {
                     shape.fill(tint.opacity(fillOpacity))
+                        .allowsHitTesting(false)
                 }
                 .glassEffect(.regular, in: shape)
                 .overlay(
                     shape.stroke(Color.white.opacity(0.25), lineWidth: 0.9)
                         .blendMode(.overlay)
+                        .allowsHitTesting(false)
                 )
         } else {
             content
-                .background(.ultraThinMaterial, in: shape)
-                .background(shape.fill(tint.opacity(fillOpacity)))
+                .background {
+                    shape.fill(.ultraThinMaterial)
+                        .allowsHitTesting(false)
+                }
+                .background {
+                    shape.fill(tint.opacity(fillOpacity))
+                        .allowsHitTesting(false)
+                }
                 .overlay(
                     shape.stroke(Color.white.opacity(0.22), lineWidth: 0.9)
+                        .allowsHitTesting(false)
                 )
         }
     }
