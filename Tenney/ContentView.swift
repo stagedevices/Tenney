@@ -66,6 +66,7 @@ private let libraryStore = ScaleLibraryStore.shared
     @AppStorage(SettingsKeys.stageKeepAwake)  private var stageKeepAwake: Bool = true
     @AppStorage(SettingsKeys.stageMinimalUI)  private var stageMinimalUI: Bool = false
     @AppStorage(SettingsKeys.defaultView) private var defaultView: String = "tuner" // "lattice" | "tuner"
+    
     @State private var swapFlashWhite: Bool = false // legacy, no longer used
         // ===== Footer (first-run wizard) =====
         @State private var footerRouteLabel: String = ""
@@ -714,6 +715,8 @@ extension Notification.Name {
 
 
  struct TunerCard: View {
+     @AppStorage(SettingsKeys.staffA4Hz)  private var a4Staff: Double = 440
+         @AppStorage(SettingsKeys.accidentalPreference) private var accidentalPreferenceRaw: String = AccidentalPreference.auto.rawValue
     @EnvironmentObject private var model: AppModel
     @ObservedObject var store: TunerStore
     private var liveHz: Double { model.display.hz }

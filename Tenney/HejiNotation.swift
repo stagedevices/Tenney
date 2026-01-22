@@ -133,9 +133,9 @@ enum HejiNotation {
         let value = ratio.value * pow(2.0, Double(octave))
         let folded = foldToUnit(value)
         let best = bestThreeLimitCandidate(for: folded, preference: context.preferred)
-        let letter = letter(for: best.e3).letter
+        let base = letter(for: best.e3)
         let accidental = HejiAccidental(
-            diatonicAccidental: letter(for: best.e3).accidentalCount,
+            diatonicAccidental: base.accidentalCount,
             microtonalComponents: microtonalComponents(for: ratio, maxPrime: context.maxPrime)
         )
 
@@ -146,7 +146,7 @@ enum HejiNotation {
         let unsupported = unsupportedPrimes(in: ratio)
 
         return HejiSpelling(
-            baseLetter: letter,
+            baseLetter: base.letter,
             helmholtzOctave: octaveOut,
             accidental: accidental,
             isApproximate: false,
