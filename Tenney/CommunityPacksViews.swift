@@ -300,66 +300,103 @@ struct CommunityPacksPageList: View {
     @State private var didTriggerRefresh = false
     @State private var selectedPack: CommunityPackViewModel?
     @Namespace private var packNamespace
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    // MARK: - Ceremonial Spotlight Open
+    private let packCardSpaceName = "community-packs-packcard-space"
+    @State private var packCardFrames: [String: CGRect] = [:]
+    @State private var ceremony: PackOpenCeremonyState? = nil
 
     var body: some View {
         GeometryReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 16) {
-                    if store.showingCachedBanner {
-                        OfflineBanner()
-                    }
+            ZStack {
+                ScrollView {
+                    LazyVStack(spacing: 16) {
+                        if store.showingCachedBanner {
+                            OfflineBanner()
+                        }
 
-                    CommunityPacksHeader(
-                        installedCount: installedCount,
-                        availableCount: availableCount,
-                        updatesCount: updatesCount
-                    )
-
-                    if case .schemaMismatch = store.state {
-                        ContentUnavailableView(
-                            "This pack format is newer than your app",
-                            systemImage: "exclamationmark.triangle",
-                            description: Text("Update Tenney to browse Community Packs.")
+                        CommunityPacksHeader(
+                            installedCount: installedCount,
+                            availableCount: availableCount,
+                            updatesCount: updatesCount
                         )
-                        .padding(.top, 12)
-                    } else if case .failed(let message) = store.state, store.packs.isEmpty {
-                        VStack(spacing: 12) {
+
+                        if case .schemaMismatch = store.state {
                             ContentUnavailableView(
-                                "Community Packs unavailable",
-                                systemImage: "wifi.slash",
-                                description: Text(message)
+                                "This pack format is newer than your app",
+                                systemImage: "exclamationmark.triangle",
+                                description: Text("Update Tenney to browse Community Packs.")
                             )
-                            Button("Retry") {
-                                Task {
-                                    await store.refresh(force: true)
+                            .padding(.top, 12)
+                        } else if case .failed(let message) = store.state, store.packs.isEmpty {
+                            VStack(spacing: 12) {
+                                ContentUnavailableView(
+                                    "Community Packs unavailable",
+                                    systemImage: "wifi.slash",
+                                    description: Text(message)
+                                )
+                                Button("Retry") {
+                                    Task {
+                                        await store.refresh(force: true)
+                                    }
                                 }
                             }
-                        }
-                        .padding(.top, 12)
-                    } else if store.packs.isEmpty, case .loading = store.state {
-                        CommunityPacksLoadingView()
-                            .frame(maxWidth: .infinity)
-                            .frame(minHeight: proxy.size.height * 0.65)
-                    } else {
-                        let filteredPacks = filteredPacks()
-                        if filteredPacks.isEmpty {
-                            FullPageEmptyState(
-                                onClearFilters: onClearFilters
-                            )
-                            .frame(minHeight: proxy.size.height * 0.6)
+                            .padding(.top, 12)
+                        } else if store.packs.isEmpty, case .loading = store.state {
+                            CommunityPacksLoadingView()
+                                .frame(maxWidth: .infinity)
+                                .frame(minHeight: proxy.size.height * 0.65)
                         } else {
-                            CommunityPacksSections(
-                                filteredPacks: filteredPacks,
-                                selectedPack: $selectedPack,
-                                namespace: packNamespace
-                            )
+                            let filteredPacks = filteredPacks()
+                            if filteredPacks.isEmpty {
+                                FullPageEmptyState(
+                                    onClearFilters: onClearFilters
+                                )
+                                .frame(minHeight: proxy.size.height * 0.6)
+                            } else {
+                                CommunityPacksSections(
+                                    filteredPacks: filteredPacks,
+                                    selectedPack: $selectedPack,
+                                    namespace: packNamespace,
+                                    coordinateSpaceName: packCardSpaceName,
+                                    isCeremonyActive: ceremony?.isActive ?? false,
+                                    ceremonyFocusPackID: ceremony?.packID,
+                                    onRequestOpen: { pack, kind in
+                                        requestOpen(pack: pack, kind: kind)
+                                    }
+                                )
+                            }
                         }
                     }
+                    .padding(.horizontal, 12)
+                    .padding(.top, 4)
+                    .padding(.bottom, 20)
                 }
-                .padding(.horizontal, 12)
-                .padding(.top, 4)
-                .padding(.bottom, 20)
+                .onPreferenceChange(PackCardFramePreferenceKey.self) { packCardFrames = $0 }
+                .modifier(PackScrollFreezeModifier(isFrozen: ceremony?.isActive ?? false))
+                // ensure nothing underneath responds while ceremony is active
+                .allowsHitTesting(!(ceremony?.isActive ?? false))
+                .refreshable {
+                    await store.refresh(force: true)
+                }
+
+                if let ceremony, ceremony.isActive {
+                    PackOpenSpotlightOverlay(
+                        rect: ceremony.currentRect,
+                        cornerRadius: ceremony.currentCornerRadius,
+                        scrimOpacity: ceremony.scrimOpacity,
+                        feather: ceremony.feather,
+                        rimOpacity: ceremony.rimOpacity,
+                        haloOpacity: ceremony.haloOpacity
+                    )
+                    .ignoresSafeArea()
+                    // Ignore taps (no cancel, no restart)
+                    .contentShape(Rectangle())
+                    .onTapGesture { }
+                }
             }
+            .coordinateSpace(name: packCardSpaceName)
             .refreshable {
                 await store.refresh(force: true)
             }
@@ -381,6 +418,88 @@ struct CommunityPacksPageList: View {
             guard store.packs.isEmpty || (store.state == .idle) else { return }
             didTriggerRefresh = true
             await store.refresh(force: false)
+        }
+    }
+
+    // MARK: - Ceremonial Spotlight Open
+    private func requestOpen(pack: CommunityPackViewModel, kind: PackOpenCeremonyKind) {
+        // ignore taps during ceremony (spec)
+        if ceremony?.isActive == true { return }
+        // don’t re-run ceremony if a sheet is already up
+        if selectedPack != nil { return }
+
+        guard var rect = packCardFrames[pack.packID] else {
+            // fallback: if geometry hasn’t resolved, still open (avoid dead tap)
+            selectedPack = pack
+            return
+        }
+
+        // Expand to include “shadow bounds”
+        rect = rect.insetBy(dx: -kind.shadowExpand, dy: -kind.shadowExpand)
+        let targetCorner = kind.cornerRadius + kind.cornerRadiusBump
+
+        let startRect: CGRect
+        let startCorner: CGFloat
+        if reduceMotion {
+            startRect = rect
+            startCorner = targetCorner
+        } else {
+            startRect = rect.insetBy(dx: -kind.startOvershoot, dy: -kind.startOvershoot)
+            startCorner = targetCorner + kind.startCornerBump
+        }
+
+        let token = UUID()
+        ceremony = PackOpenCeremonyState(
+            token: token,
+            packID: pack.packID,
+            kind: kind,
+            isActive: true,
+            currentRect: startRect,
+            currentCornerRadius: startCorner,
+            scrimOpacity: 0,
+            rimOpacity: 0,
+            haloOpacity: 0
+        )
+
+        let travel = reduceMotion ? kind.reduceMotionTravel : kind.travelDuration
+        let total = reduceMotion ? kind.reduceMotionTotal : kind.totalDuration
+
+        // Spotlight “lands” with intent
+        withAnimation(.easeOut(duration: travel)) {
+            ceremony?.currentRect = rect
+            ceremony?.currentCornerRadius = targetCorner
+            ceremony?.scrimOpacity = kind.scrimOpacity
+            ceremony?.rimOpacity = kind.rimOpacity
+            ceremony?.haloOpacity = kind.haloOpacity
+        }
+
+        // Single haptic near lock-on (70–85%)
+        let hapticDelay = total * kind.hapticFraction
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(hapticDelay * 1_000_000_000))
+            guard ceremony?.token == token, ceremony?.isActive == true else { return }
+            PackOpenHaptics.fire()
+        }
+
+        // Present sheet after ceremony completes (spec)
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(total * 1_000_000_000))
+            guard ceremony?.token == token, ceremony?.isActive == true else { return }
+
+            // open sheet
+            selectedPack = pack
+
+            // fade ceremony out quickly so it doesn’t linger behind the sheet
+            withAnimation(.easeOut(duration: 0.18)) {
+                ceremony?.scrimOpacity = 0
+                ceremony?.rimOpacity = 0
+                ceremony?.haloOpacity = 0
+            }
+
+            try? await Task.sleep(nanoseconds: 220_000_000)
+            guard ceremony?.token == token else { return }
+            ceremony?.isActive = false
+            ceremony = nil
         }
     }
 
@@ -504,6 +623,10 @@ private struct CommunityPacksSections: View {
     let filteredPacks: [CommunityPackViewModel]
     @Binding var selectedPack: CommunityPackViewModel?
     let namespace: Namespace.ID
+    let coordinateSpaceName: String
+    let isCeremonyActive: Bool
+    let ceremonyFocusPackID: String?
+    let onRequestOpen: (CommunityPackViewModel, PackOpenCeremonyKind) -> Void
     @ObservedObject private var store = CommunityPacksStore.shared
 
     var body: some View {
@@ -532,9 +655,12 @@ private struct CommunityPacksSections: View {
                                     updateAvailable: updateAvailable(pack),
                                     isInstalled: store.isInstalled(pack.packID),
                                     isMatchedSource: isSelected,
-                                    onOpen: { selectedPack = pack },
+                                    onOpen: { onRequestOpen(pack, .featured) },
                                     onInstall: { store.enqueueInstall(pack: pack, action: action(for: pack)) },
-                                    namespace: namespace
+                                    namespace: namespace,
+                                    coordinateSpaceName: coordinateSpaceName,
+                                    isCeremonyActive: isCeremonyActive,
+                                    ceremonyFocusPackID: ceremonyFocusPackID
                                 )
                                 .frame(width: 280)
                                 .modifier(FeaturedScrollTransition())
@@ -563,9 +689,12 @@ private struct CommunityPacksSections: View {
                                 isInstalling: store.installingPackIDs.contains(pack.packID),
                                 updateAvailable: updateAvailable(pack),
                                 isMatchedSource: isSelected,
-                                onOpen: { selectedPack = pack },
+                                onOpen: { onRequestOpen(pack, .compact) },
                                 onInstall: { store.enqueueInstall(pack: pack, action: .update) },
-                                namespace: namespace
+                                namespace: namespace,
+                                coordinateSpaceName: coordinateSpaceName,
+                                isCeremonyActive: isCeremonyActive,
+                                ceremonyFocusPackID: ceremonyFocusPackID
                             )
                         }
                         .opacity(isSelected ? 0 : 1)
@@ -584,9 +713,12 @@ private struct CommunityPacksSections: View {
                             isInstalling: store.installingPackIDs.contains(pack.packID),
                             updateAvailable: updateAvailable(pack),
                             isMatchedSource: isSelected,
-                            onOpen: { selectedPack = pack },
+                            onOpen: { onRequestOpen(pack, .compact) },
                             onInstall: { store.enqueueInstall(pack: pack, action: .install) },
-                            namespace: namespace
+                            namespace: namespace,
+                            coordinateSpaceName: coordinateSpaceName,
+                            isCeremonyActive: isCeremonyActive,
+                            ceremonyFocusPackID: ceremonyFocusPackID
                         )
                     }
                     .opacity(isSelected ? 0 : 1)
@@ -637,8 +769,14 @@ private struct FeaturedPackCard: View {
     let onOpen: () -> Void
     let onInstall: () -> Void
     let namespace: Namespace.ID
+    let coordinateSpaceName: String
+    let isCeremonyActive: Bool
+    let ceremonyFocusPackID: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
+        let kind: PackOpenCeremonyKind = .featured
+        let isFocused = isCeremonyActive && (ceremonyFocusPackID == pack.packID)
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 10) {
                 VStack(alignment: .leading, spacing: 6) {
@@ -686,6 +824,15 @@ private struct FeaturedPackCard: View {
         )
         .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .onTapGesture(perform: onOpen)
+        // subtle “elevation” during spotlight lock-on (spec)
+        .scaleEffect(isFocused ? kind.elevateScale : 1.0)
+        .shadow(color: Color.black.opacity(isFocused ? kind.elevateShadowOpacity : 0),
+                radius: isFocused ? kind.elevateShadowRadius : 0,
+                x: 0,
+                y: isFocused ? kind.elevateShadowY : 0)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.35), value: isFocused)
+        // capture real onscreen geometry for spotlight
+        .modifier(PackCardFrameReporter(packID: pack.packID, coordinateSpaceName: coordinateSpaceName))
     }
 
     private var featuredBadge: some View {
@@ -731,8 +878,14 @@ private struct CompactPackCard: View {
     let onOpen: () -> Void
     let onInstall: () -> Void
     let namespace: Namespace.ID
+    let coordinateSpaceName: String
+    let isCeremonyActive: Bool
+    let ceremonyFocusPackID: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
+        let kind: PackOpenCeremonyKind = .compact
+        let isFocused = isCeremonyActive && (ceremonyFocusPackID == pack.packID)
         HStack(spacing: 12) {
             if style == .installed {
                 Image(systemName: "checkmark.seal.fill")
@@ -777,6 +930,15 @@ private struct CompactPackCard: View {
         )
         .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .onTapGesture(perform: onOpen)
+        // subtle “elevation” during spotlight lock-on (spec)
+        .scaleEffect(isFocused ? kind.elevateScale : 1.0)
+        .shadow(color: Color.black.opacity(isFocused ? kind.elevateShadowOpacity : 0),
+                radius: isFocused ? kind.elevateShadowRadius : 0,
+                x: 0,
+                y: isFocused ? kind.elevateShadowY : 0)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.32), value: isFocused)
+        // capture real onscreen geometry for spotlight
+        .modifier(PackCardFrameReporter(packID: pack.packID, coordinateSpaceName: coordinateSpaceName))
     }
 
     private var buttonTitle: String {
@@ -2130,6 +2292,150 @@ private struct ActionBarHeightKey: PreferenceKey {
 
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = max(value, nextValue())
+    }
+}
+
+// MARK: - Ceremonial Spotlight Open helpers
+
+private enum PackOpenCeremonyKind {
+    case featured
+    case compact
+
+    var cornerRadius: CGFloat { self == .featured ? 24 : 16 }
+
+    // include “shadow bounds” (spec)
+    var shadowExpand: CGFloat { self == .featured ? 16 : 11 }
+
+    // “landing” overshoot
+    var startOvershoot: CGFloat { self == .featured ? 34 : 24 }
+
+    // keep the hole reading like the identity shape even when expanded
+    var cornerRadiusBump: CGFloat { self == .featured ? 3 : 2 }
+    var startCornerBump: CGFloat { self == .featured ? 6 : 4 }
+
+    // spotlight styling
+    var scrimOpacity: Double { self == .featured ? 0.62 : 0.52 }
+    var rimOpacity: Double { self == .featured ? 0.70 : 0.55 }
+    var haloOpacity: Double { self == .featured ? 0.45 : 0.30 }
+    var feather: CGFloat { self == .featured ? 18 : 14 }
+
+    // timing targets (spec)
+    var travelDuration: Double { self == .featured ? 0.78 : 0.50 }
+    var totalDuration: Double { self == .featured ? 0.96 : 0.64 }
+
+    // reduce motion: no travel (just gentle fade), shorter
+    var reduceMotionTravel: Double { 0.18 }
+    var reduceMotionTotal: Double { self == .featured ? 0.44 : 0.36 }
+
+    // haptic near lock-on (70–85%)
+    var hapticFraction: Double { 0.80 }
+
+    // card “elevation” while spotlight locks on (spec)
+    var elevateScale: CGFloat { self == .featured ? 1.028 : 1.018 }
+    var elevateShadowOpacity: Double { self == .featured ? 0.22 : 0.16 }
+    var elevateShadowRadius: CGFloat { self == .featured ? 26 : 18 }
+    var elevateShadowY: CGFloat { self == .featured ? 18 : 12 }
+}
+
+private struct PackOpenCeremonyState {
+    let token: UUID
+    let packID: String
+    let kind: PackOpenCeremonyKind
+    var isActive: Bool
+
+    var currentRect: CGRect
+    var currentCornerRadius: CGFloat
+
+    var scrimOpacity: Double
+    var rimOpacity: Double
+    var haloOpacity: Double
+
+    var feather: CGFloat { kind.feather }
+}
+
+private struct PackCardFramePreferenceKey: PreferenceKey {
+    static var defaultValue: [String: CGRect] = [:]
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
+    }
+}
+
+private struct PackCardFrameReporter: ViewModifier {
+    let packID: String
+    let coordinateSpaceName: String
+
+    func body(content: Content) -> some View {
+        content.background(
+            GeometryReader { proxy in
+                Color.clear.preference(
+                    key: PackCardFramePreferenceKey.self,
+                    value: [packID: proxy.frame(in: .named(coordinateSpaceName))]
+                )
+            }
+        )
+    }
+}
+
+private struct PackScrollFreezeModifier: ViewModifier {
+    let isFrozen: Bool
+    func body(content: Content) -> some View {
+        if #available(iOS 16.0, macOS 13.0, *) {
+            content.scrollDisabled(isFrozen)
+        } else {
+            content
+        }
+    }
+}
+
+private struct PackOpenSpotlightOverlay: View {
+    let rect: CGRect
+    let cornerRadius: CGFloat
+    let scrimOpacity: Double
+    let feather: CGFloat
+    let rimOpacity: Double
+    let haloOpacity: Double
+
+    var body: some View {
+        GeometryReader { _ in
+            let hole = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .frame(width: max(0, rect.width), height: max(0, rect.height))
+                .position(x: rect.midX, y: rect.midY)
+
+            ZStack {
+                Color.black.opacity(scrimOpacity)
+
+                // Cut-out hole with soft feather
+                hole
+                    .fill(Color.black)
+                    .blur(radius: feather)
+                    .blendMode(.destinationOut)
+
+                // Rim highlight (stage-lit edge)
+                hole
+                    .stroke(Color.white.opacity(rimOpacity), lineWidth: 1.25)
+                    .blur(radius: 0.9)
+                    .blendMode(.plusLighter)
+
+                // Halo (stronger on Featured via opacity)
+                hole
+                    .stroke(Color.white.opacity(haloOpacity), lineWidth: 10)
+                    .blur(radius: 18)
+                    .blendMode(.plusLighter)
+            }
+            .compositingGroup()
+        }
+    }
+}
+
+private enum PackOpenHaptics {
+    static func fire() {
+        #if canImport(UIKit)
+        let gen = UIImpactFeedbackGenerator(style: .soft)
+        gen.prepare()
+        gen.impactOccurred()
+        #elseif canImport(AppKit)
+        NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+        #endif
     }
 }
 #if canImport(UIKit)
