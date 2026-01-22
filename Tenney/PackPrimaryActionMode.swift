@@ -8,7 +8,7 @@
 
 import SwiftUI
 
-enum PackPrimaryActionMode {
+enum PackPrimaryActionMode: Equatable {
     case install(tint: Color?)
     case update(tint: Color?)
     case preview
@@ -28,10 +28,14 @@ struct PackPrimaryActionButton: View {
     var body: some View {
         Group {
             switch mode {
-            case .preview, .install, .update:
+            case .install(let tint), .update(let tint):
                 Button(action: action) { label }
                     .buttonStyle(GlassPressFeedback())
-                    .modifier(buttonBackground)
+                    .modifier(GlassTintedCapsule(tint: tint ?? .blue, isEnabled: !isDisabled))
+                               case .preview:
+                                   Button(action: action) { label }
+                                       .buttonStyle(GlassPressFeedback())
+                                       .modifier(GlassRoundedRect(corner: corner))
             }
         }
         .disabled(isDisabled)
@@ -81,14 +85,6 @@ struct PackPrimaryActionButton: View {
         }
     }
 
-    private var buttonBackground: some ViewModifier {
-        switch mode {
-        case .install(let tint), .update(let tint):
-            return GlassTintedCapsule(tint: tint ?? .blue, isEnabled: !isDisabled)
-        case .preview:
-            return GlassRoundedRect(corner: corner)
-        }
-    }
 }
 
 private struct GlassTintedCapsule: ViewModifier {
@@ -96,7 +92,7 @@ private struct GlassTintedCapsule: ViewModifier {
     let isEnabled: Bool
 
     private var fillOpacity: Double {
-        isEnabled ? 0.32 : 0.18
+        isEnabled ? 0.88 : 0.44
     }
 
     func body(content: Content) -> some View {
