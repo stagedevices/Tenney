@@ -19,8 +19,10 @@ private func communityScaleForFiltering(pack: CommunityPackViewModel, scale: Com
         authorName: pack.authorName,
         installedVersion: pack.version
     )
-    let title = scale.payload.title.trimmingCharacters(in: .whitespacesAndNewlines)
-    let resolvedName = title.isEmpty ? scale.title : title
+    // Preserve INDEX.json scale titles as the source of truth, even after install.
+    let indexTitle = scale.title.trimmingCharacters(in: .whitespacesAndNewlines)
+    let payloadTitle = scale.payload.title.trimmingCharacters(in: .whitespacesAndNewlines)
+    let resolvedName = indexTitle.isEmpty ? payloadTitle : indexTitle
     return TenneyScale(
         id: communityScaleUUID(packID: pack.packID, scaleID: scale.id),
         name: resolvedName,
@@ -888,7 +890,6 @@ private struct CommunityPackDetailView: View {
     let namespace: Namespace.ID
     let onPreviewRequested: (CommunityPackPreviewRequest) -> Void
     @ObservedObject private var store = CommunityPacksStore.shared
-    @Environment(\.openURL) private var openURL
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(SettingsKeys.communityPackLastPreviewedScaleIDs) private var lastPreviewedScaleIDsJSON: String = ""
@@ -920,19 +921,16 @@ private struct CommunityPackDetailView: View {
         }
     }
 
-    private var isPreviewMode: Bool {
-            showsPreviewActions && selectionMode == .none
+    private var primaryButtonMode: PackPrimaryActionMode {
+        if updateAvailable || selectionMode == .updateSelecting {
+            return .update(tint: primaryActionTint)
         }
-    
-        private var primaryButtonMode: PackPrimaryActionMode {
-            if isPreviewMode { return .preview }
-            if updateAvailable { return .update(tint: primaryActionTint) }
-            return .install(tint: primaryActionTint)
-        }
-    
-        private var primaryIsBusy: Bool {
-            store.installingPackIDs.contains(pack.packID)
-        }
+        return .install(tint: primaryActionTint)
+    }
+
+    private var primaryIsBusy: Bool {
+        store.installingPackIDs.contains(pack.packID)
+    }
 
 
     
@@ -962,7 +960,7 @@ private struct CommunityPackDetailView: View {
         }
         if !isInstalled { return "Install" }
         if updateAvailable { return "Update" }
-        return "Preview"
+        return "Installed"
     }
 
     private var isSelecting: Bool {
@@ -1233,7 +1231,7 @@ private struct CommunityPackDetailView: View {
         if updateAvailable {
             return "arrow.triangle.2.circlepath.circle.fill"
         }
-        return "arrow.up.forward.app"
+        return "checkmark.seal.fill"
     }
 
     private func handlePrimaryAction() {
@@ -1267,87 +1265,27 @@ private struct CommunityPackDetailView: View {
             }
             return
         }
-
-        handleDefaultPreview()
+        if isInstalled {
+            return
+        }
     }
 
     private var detailActionBar: some View {
         HStack(spacing: 12) {
-            if showsPreviewActions && pack.scales.count > 1 && selectionMode == .none {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 8) {
-                        PackPrimaryActionButton(
-                            mode: primaryButtonMode,
-                            title: primaryActionTitle,
-                            systemImage: actionIcon,
-                            isBusy: primaryIsBusy,
-                            isEnabled: !isPrimaryDisabled,
-                            animateSymbol: updateAvailable,
-                            action: handlePrimaryAction,
-                            corner: corner
-                        )
-
-                        Menu {
-                            ForEach(pack.scales) { scale in
-                                Button(action: { handleScalePreview(scale) }) {
-                                    Text(scaleMenuTitle(scale))
-                                }
-                            }
-                        } label: {
-                            Image(systemName: "chevron.down")
-                                .frame(width: 34, height: 34)
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.large)
-                        .accessibilityLabel("Choose scale")
-                    }
-
-                    if let lastPreviewedScaleName {
-                        Text("Last: \(lastPreviewedScaleName)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                PackPrimaryActionButton(
-                    mode: primaryButtonMode,
-                    title: primaryActionTitle,
-                    systemImage: actionIcon,
-                    isBusy: primaryIsBusy,
-                    isEnabled: !isPrimaryDisabled,
-                    animateSymbol: updateAvailable,
-                    action: handlePrimaryAction,
-                    corner: corner
-                )
+            if selectionMode == .none {
+                previewControl
             }
 
-            if isInstalled && !updateAvailable && selectionMode == .none {
-                Button(action: { showUninstallConfirm = true }) {
-                    Text("Uninstall").font(.callout.weight(.semibold))
-                        .frame(height: 44)
-                        .padding(.horizontal, 14)
-                        .foregroundStyle(.white)
-                }
-                .buttonStyle(.plain)
-                .modifier(GlassRedRoundedRect(corner: corner))
-            }
-
-            Menu {
-                Button("Contribute a Pack") {
-                    openURL(CommunityPacksEndpoints.submitURL)
-                }
-                Button("How to submit") {
-                    openURL(CommunityPacksEndpoints.issuesURL)
-                }
-            } label: {
-                Image(systemName: "ellipsis")
-                    .font(.system(size: 16, weight: .semibold))
-                    .frame(width: 44, height: 44)
-                    .modifier(GlassWhiteCircle())
-                    .contentShape(Circle())
-            }
-            .buttonStyle(.plain)
+            PackPrimaryActionButton(
+                mode: primaryButtonMode,
+                title: primaryActionTitle,
+                systemImage: actionIcon,
+                isBusy: primaryIsBusy,
+                isEnabled: !isPrimaryDisabled,
+                animateSymbol: updateAvailable,
+                action: handlePrimaryAction,
+                corner: corner
+            )
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -1359,6 +1297,43 @@ private struct CommunityPackDetailView: View {
         .opacity(contentVisible ? 1 : 0)
     }
 
+    @ViewBuilder
+    private var previewControl: some View {
+        if isInstalled {
+            Menu {
+                ForEach(pack.scales) { scale in
+                    Button(action: { handleScalePreview(scale) }) {
+                        Text(scaleMenuTitle(scale))
+                    }
+                }
+            } label: {
+                previewLabel(showsChevron: true)
+            }
+            .buttonStyle(GlassPressFeedback())
+        } else {
+            Button(action: { handleDefaultPreview(allowLastPreviewed: false) }) {
+                previewLabel(showsChevron: false)
+            }
+            .buttonStyle(GlassPressFeedback())
+        }
+    }
+
+    private func previewLabel(showsChevron: Bool) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "arrow.up.forward.app")
+            Text("Preview")
+                .font(.callout.weight(.semibold))
+            if showsChevron {
+                Image(systemName: "chevron.down")
+                    .font(.caption.weight(.semibold))
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 44)
+        .padding(.horizontal, 14)
+        .foregroundStyle(.primary)
+        .modifier(GlassRoundedRect(corner: corner))
+    }
+
     private var trimmedChangelog: String {
         pack.changelog.trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -1367,27 +1342,22 @@ private struct CommunityPackDetailView: View {
         isInstalled && !updateAvailable
     }
 
-
-    private var lastPreviewedScaleName: String? {
-        guard let scaleID = lastPreviewedScaleID(for: pack.packID) else { return nil }
-        return pack.scales.first(where: { $0.id == scaleID })?.title
-    }
-
     private func scaleMenuTitle(_ scale: CommunityPackScaleViewModel) -> String {
         "\(scale.title) • \(scale.primeLimit)-limit"
     }
 
-    private func handleDefaultPreview() {
-        guard let target = defaultPreviewScale() else { return }
+    private func handleDefaultPreview(allowLastPreviewed: Bool) {
+        guard let target = defaultPreviewScale(allowLastPreviewed: allowLastPreviewed) else { return }
         handleScalePreview(target)
     }
 
-    private func defaultPreviewScale() -> CommunityPackScaleViewModel? {
+    private func defaultPreviewScale(allowLastPreviewed: Bool) -> CommunityPackScaleViewModel? {
         guard !pack.scales.isEmpty else { return nil }
         if pack.scales.count == 1 {
             return pack.scales.first
         }
-        if let lastScaleID = lastPreviewedScaleID(for: pack.packID),
+        if allowLastPreviewed,
+           let lastScaleID = lastPreviewedScaleID(for: pack.packID),
            let lastScale = pack.scales.first(where: { $0.id == lastScaleID }) {
             return lastScale
         }
@@ -1485,6 +1455,9 @@ private struct CommunityPackDetailView: View {
 
     private var isPrimaryDisabled: Bool {
         if store.installingPackIDs.contains(pack.packID) {
+            return true
+        }
+        if selectionMode == .none && isInstalled && !updateAvailable {
             return true
         }
         if selectionMode == .installSelecting {
