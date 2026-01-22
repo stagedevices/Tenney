@@ -286,6 +286,7 @@ struct LatticeView: View {
     
     @State private var selectionHapticTick: Int = 0
     @State private var focusHapticTick: Int = 0
+    @State private var autoSelectInFlight: Bool = false
 #if os(macOS) || targetEnvironment(macCatalyst)
     @State private var pointerInLattice: CGPoint? = nil
     @State private var lastPointerLog: Date? = nil
@@ -1615,6 +1616,7 @@ struct LatticeView: View {
     @AppStorage(SettingsKeys.staffA4Hz) private var staffA4Hz: Double = 440
     
     @Environment(\.latticePreviewHideDistance) private var latticePreviewHideDistance
+    @Environment(\.displayScale) private var displayScale
     
     private func nodeBaseSize() -> CGFloat {
         switch nodeSize {
@@ -1699,9 +1701,14 @@ struct LatticeView: View {
                 
                 if cand.isPlane, let c = cand.coord, focusedPoint?.coord == c, store.selected.contains(c) {
                     releaseInfoVoice(hard: true)
-                    focusedPoint = nil
+                    autoSelectInFlight = true
                     store.toggleSelection(c)
                     selectionHapticTick &+= 1
+                    autoSelectNextNode(
+                        excluding: .plane(c),
+                        referencePoint: cand.pos,
+                        viewRect: viewRect
+                    )
                     return
                 }
 
@@ -1737,6 +1744,8 @@ struct LatticeView: View {
                 }
 
                 if cand.isPlane, let c = cand.coord {
+                    let wasSelected = store.selected.contains(c)
+                    if wasSelected { autoSelectInFlight = true }
                     // if this tap will deselect the currently focused plane node, add a touch more punch
                     if let fp = focusedPoint?.coord, fp == c, store.selected.contains(c) {
                 #if canImport(UIKit)
@@ -1746,10 +1755,27 @@ struct LatticeView: View {
                     store.toggleSelection(c)
                     infoOctaveOffset = store.octaveOffset(for: c)
                     selectionHapticTick &+= 1
+                    if wasSelected {
+                        autoSelectNextNode(
+                            excluding: .plane(c),
+                            referencePoint: cand.pos,
+                            viewRect: viewRect
+                        )
+                    }
                 } else if let g = cand.ghost {
+                    let ghostKey = LatticeStore.GhostMonzo(e3: g.e3, e5: g.e5, p: g.prime, eP: g.eP)
+                    let wasSelected = store.selectedGhosts.contains(ghostKey)
+                    if wasSelected { autoSelectInFlight = true }
                     store.toggleOverlay(prime: g.prime, e3: g.e3, e5: g.e5, eP: g.eP)
                     infoOctaveOffset = 0
                     selectionHapticTick &+= 1
+                    if wasSelected {
+                        autoSelectNextNode(
+                            excluding: .ghost(ghostKey),
+                            referencePoint: cand.pos,
+                            viewRect: viewRect
+                        )
+                    }
                 }
 
             }
@@ -1762,6 +1788,215 @@ struct LatticeView: View {
         while x < minHz { x *= 2 }
         while x > maxHz { x *= 0.5 }
         return x
+    }
+
+    private func autoSelectNextNode(
+        excluding excludedKey: LatticeStore.SelectionKey,
+        referencePoint: CGPoint,
+        viewRect: CGRect
+    ) {
+        defer { autoSelectInFlight = false }
+        let now = CACurrentMediaTime()
+        let candidates = nextSelectionCandidates(in: viewRect, now: now)
+        guard let nextKey = NextNodeSelection.pickNext(
+            from: candidates,
+            excluding: excludedKey,
+            referencePoint: referencePoint,
+            preferVisibleSubset: true,
+            priorDirection: nil,
+            displayScale: displayScale
+        ) else {
+            withAnimation(.easeOut(duration: 0.2)) { focusedPoint = nil }
+            return
+        }
+
+        guard let nextCandidate = candidates.first(where: { $0.id == nextKey }) else { return }
+
+        if !isSelectionKeySelected(nextKey) {
+            withAnimation(.snappy) {
+                toggleSelectionKey(nextKey)
+            }
+        }
+
+        if let newFocus = focusedPoint(for: nextKey, at: nextCandidate.position) {
+            focusedPoint = newFocus
+        }
+    }
+
+    private func focusedPoint(
+        for key: LatticeStore.SelectionKey,
+        at screenPoint: CGPoint
+    ) -> (pos: CGPoint, label: String, etCents: Double, hz: Double, coord: LatticeCoord?, num: Int, den: Int)? {
+        switch key {
+        case .plane(let c):
+            let e3m = c.e3 + (store.axisShift[3] ?? 0)
+            let e5m = c.e5 + (store.axisShift[5] ?? 0)
+            guard let (p, q) = planePQ(e3: e3m, e5: e5m) else { return nil }
+            let (cn, cd) = canonicalPQ(p, q)
+            let raw = app.rootHz * (Double(cn) / Double(cd))
+            let freq = foldToAudible(raw, minHz: 20, maxHz: 5000)
+            infoOctaveOffset = store.octaveOffset(for: c)
+            return (
+                pos: screenPoint,
+                label: "\(cn)/\(cd)",
+                etCents: RatioMath.centsFromET(freqHz: freq, refHz: app.rootHz),
+                hz: freq,
+                coord: c,
+                num: cn,
+                den: cd
+            )
+        case .ghost(let g):
+            guard let (p, q) = overlayPQ(e3: g.e3, e5: g.e5, prime: g.p, eP: g.eP) else { return nil }
+            let (cn, cd) = canonicalPQ(p, q)
+            let raw = app.rootHz * (Double(cn) / Double(cd))
+            let freq = foldToAudible(raw, minHz: 20, maxHz: 5000)
+            infoOctaveOffset = store.octaveOffset(for: g)
+            return (
+                pos: screenPoint,
+                label: "\(cn)/\(cd)",
+                etCents: RatioMath.centsFromET(freqHz: freq, refHz: app.rootHz),
+                hz: freq,
+                coord: nil,
+                num: cn,
+                den: cd
+            )
+        }
+    }
+
+    private func isSelectionKeySelected(_ key: LatticeStore.SelectionKey) -> Bool {
+        switch key {
+        case .plane(let c):
+            return store.selected.contains(c)
+        case .ghost(let g):
+            return store.selectedGhosts.contains(g)
+        }
+    }
+
+    private func toggleSelectionKey(_ key: LatticeStore.SelectionKey) {
+        switch key {
+        case .plane(let c):
+            store.toggleSelection(c)
+            infoOctaveOffset = store.octaveOffset(for: c)
+        case .ghost(let g):
+            store.toggleOverlay(prime: g.p, e3: g.e3, e5: g.e5, eP: g.eP)
+            infoOctaveOffset = store.octaveOffset(for: g)
+        }
+    }
+
+    private func nextSelectionCandidates(
+        in viewRect: CGRect,
+        now: Double
+    ) -> [NextNodeSelection.Candidate<LatticeStore.SelectionKey>] {
+        var out: [NextNodeSelection.Candidate<LatticeStore.SelectionKey>] = []
+
+        let radius = Int(max(8, min(48, store.camera.appliedScale / 5)))
+        let pad: CGFloat = 120
+
+        for de3 in (-radius...radius) {
+            for de5 in (-radius...radius) {
+                let coord = LatticeCoord(e3: store.pivot.e3 + de3, e5: store.pivot.e5 + de5)
+                let wp = layout.position(for: coord)
+                let sp = store.camera.worldToScreen(wp)
+
+                if sp.x < viewRect.minX - pad || sp.x > viewRect.maxX + pad || sp.y < viewRect.minY - pad || sp.y > viewRect.maxY + pad {
+                    continue
+                }
+
+                let e3m = coord.e3 + (store.axisShift[3] ?? 0)
+                let e5m = coord.e5 + (store.axisShift[5] ?? 0)
+                let complexity: Double = {
+                    guard let (p, q) = planePQ(e3: e3m, e5: e5m) else { return 1.0e12 }
+                    return complexityScore(num: p, den: q)
+                }()
+
+                out.append(
+                    .init(
+                        id: .plane(coord),
+                        stableID: "plane:\(coord.e3),\(coord.e5)",
+                        position: sp,
+                        isVisible: viewRect.contains(sp),
+                        isGhost: false,
+                        opacityOrPriority: nil,
+                        complexity: complexity
+                    )
+                )
+            }
+        }
+
+        let overlayPrimes = store.renderPrimes.filter { $0 != 2 && $0 != 3 && $0 != 5 }
+        let baseE3 = store.pivot.e3 + (store.axisShift[3] ?? 0)
+        let baseE5 = store.pivot.e5 + (store.axisShift[5] ?? 0)
+        let epSpan = max(6, min(12, Int(store.camera.appliedScale / 8)))
+        let center = store.camera.worldToScreen(.zero)
+        let maxR = maxRadius(from: center, in: viewRect)
+        let overlayPad: CGFloat = 60
+
+        for prime in overlayPrimes {
+            let phase = store.inkPhase(for: prime, now: now)
+            let isVisiblePrime = store.visiblePrimes.contains(prime)
+            let isAnimating = (phase != nil)
+
+            if !isVisiblePrime && !isAnimating { continue }
+
+            let targetOn: Bool = phase?.targetOn ?? true
+            let tNorm: CGFloat = phase?.t ?? 1.0
+            let dur: Double = phase?.duration ?? 0.65
+            let s = store.axisShift[prime] ?? 0
+
+            for ep in (-epSpan...epSpan) where ep != 0 {
+                let eP = ep + s
+                let monzo: [Int:Int] = [3: baseE3, 5: baseE5, prime: eP]
+                let wp = layout.position(monzo: monzo)
+                let sp = store.camera.worldToScreen(wp)
+
+                if sp.x < viewRect.minX - overlayPad || sp.x > viewRect.maxX + overlayPad || sp.y < viewRect.minY - overlayPad || sp.y > viewRect.maxY + overlayPad {
+                    continue
+                }
+
+                let dist = hypot(sp.x - center.x, sp.y - center.y)
+                let local: CGFloat = {
+                    guard isAnimating else { return 1.0 }
+                    let bandPx: CGFloat = 160
+                    let bandT: CGFloat = max(0.035, min(0.22, bandPx / maxR))
+
+                    let hitT = dist / maxR
+                    let jitter = inkJitterFrac(prime: prime, e3: baseE3, e5: baseE5, eP: eP, duration: dur)
+                    let x = (tNorm - (hitT + jitter)) / bandT
+                    let wave = smoothstep(x)
+                    return targetOn ? wave : (1 - wave)
+                }()
+
+                if local <= 0.001 { continue }
+
+                let complexity: Double = {
+                    guard let (p, q) = overlayPQ(e3: baseE3, e5: baseE5, prime: prime, eP: eP) else { return 1.0e12 }
+                    return complexityScore(num: p, den: q)
+                }()
+
+                let ghostKey = LatticeStore.GhostMonzo(e3: baseE3, e5: baseE5, p: prime, eP: eP)
+                out.append(
+                    .init(
+                        id: .ghost(ghostKey),
+                        stableID: "ghost:\(prime):\(baseE3):\(baseE5):\(eP)",
+                        position: sp,
+                        isVisible: viewRect.contains(sp),
+                        isGhost: true,
+                        opacityOrPriority: nil,
+                        complexity: complexity
+                    )
+                )
+            }
+        }
+
+        return out
+    }
+
+    private func complexityScore(num: Int, den: Int) -> Double {
+        let n = Double(max(1, num))
+        let d = Double(max(1, den))
+        let value = n * d
+        guard value.isFinite else { return 1.0e12 }
+        return log2(max(1.0, value))
     }
     
     
@@ -4061,11 +4296,11 @@ struct LatticeView: View {
                 }
 
                 .onChange(of: store.selected) { newValue in
-                    if let fp = focusedPoint, let c = fp.coord, !newValue.contains(c) {
+                    if let fp = focusedPoint, let c = fp.coord, !newValue.contains(c), !autoSelectInFlight {
                         releaseInfoVoice()
                         withAnimation(.easeOut(duration: 0.2)) { focusedPoint = nil }
                     }
-                    if newValue.isEmpty { releaseInfoVoice() }
+                    if newValue.isEmpty, !autoSelectInFlight { releaseInfoVoice() }
 
                     if !newValue.isEmpty {
                         LearnEventBus.shared.send(.latticeNodeSelected("selected"))
