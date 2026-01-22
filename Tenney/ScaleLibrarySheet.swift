@@ -971,6 +971,7 @@ struct ScaleActionsSheet: View {
     @ObservedObject private var tagStore = TagStore.shared
     @ObservedObject private var communityPacks = CommunityPacksStore.shared
     @AppStorage(SettingsKeys.staffA4Hz) private var staffA4Hz: Double = 440
+    @AppStorage(SettingsKeys.accidentalPreference) private var accidentalPreferenceRaw: String = AccidentalPreference.auto.rawValue
     @AppStorage(SettingsKeys.builderExportFormats) private var exportFormatsRaw: Int = ExportFormat.default.rawValue
     @AppStorage(SettingsKeys.builderExportRootMode) private var exportA4ModeRaw: String = ExportA4Mode.appDefault.rawValue
     @AppStorage(SettingsKeys.builderExportCustomA4Hz) private var customExportA4Hz: Double = 440.0
@@ -1131,9 +1132,21 @@ struct ScaleActionsSheet: View {
     }
 
     private var headerSummary: String {
-        let rootNote = NotationFormatter.spelledETNote(freqHz: currentScale.referenceHz, a4Hz: staffA4Hz)
+        let pref = AccidentalPreference(rawValue: accidentalPreferenceRaw) ?? .auto
+        let ratioRef = RatioRef(p: 1, q: 1, octave: 0, monzo: [:])
+        let context = HejiContext(
+            referenceA4Hz: staffA4Hz,
+            rootHz: currentScale.referenceHz,
+            rootRatio: ratioRef,
+            preferred: pref,
+            maxPrime: max(3, currentScale.detectedLimit),
+            allowApproximation: false,
+            scaleDegreeHint: ratioRef
+        )
+        let spelling = HejiNotation.spelling(forRatio: ratioRef, context: context)
+        let rootLabel = String(HejiNotation.textLabel(spelling, showCents: false).characters)
         let hzInt = Int(round(currentScale.referenceHz))
-        return "\(currentScale.size) notes · \(currentScale.detectedLimit)-limit · Root: \(rootNote.letter)\(rootNote.accidental)\(rootNote.octave) (\(hzInt) Hz)"
+        return "\(currentScale.size) notes · \(currentScale.detectedLimit)-limit · Root: \(rootLabel) (\(hzInt) Hz)"
     }
 
     private var referenceSummary: String {
@@ -2881,12 +2894,26 @@ private struct DegreeRow: View {
     let ratio: RatioRef
     let rootHz: Double
     let isSelected: Bool
+    @AppStorage(SettingsKeys.accidentalPreference) private var accidentalPreferenceRaw: String = AccidentalPreference.auto.rawValue
+    @AppStorage(SettingsKeys.staffA4Hz) private var staffA4Hz: Double = 440
 
     var body: some View {
         let (p, q) = RatioMath.canonicalPQUnit(ratio.p, ratio.q)
         let hz = RatioMath.hz(rootHz: rootHz, p: ratio.p, q: ratio.q, octave: ratio.octave, fold: true)
         let cents = NotationFormatter.centsFromNearestET(freqHz: hz)
-        let note = NotationFormatter.spelledETNote(freqHz: hz)
+        let pref = AccidentalPreference(rawValue: accidentalPreferenceRaw) ?? .auto
+        let ratioRef = RatioRef(p: p, q: q, octave: ratio.octave, monzo: ratio.monzo)
+        let context = HejiContext(
+            referenceA4Hz: staffA4Hz,
+            rootHz: rootHz,
+            rootRatio: RatioRef(p: 1, q: 1, octave: 0, monzo: [:]),
+            preferred: pref,
+            maxPrime: 13,
+            allowApproximation: false,
+            scaleDegreeHint: ratioRef
+        )
+        let spelling = HejiNotation.spelling(forRatio: ratioRef, context: context)
+        let hejiLabel = String(HejiNotation.textLabel(spelling, showCents: false).characters)
 
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
@@ -2901,7 +2928,7 @@ private struct DegreeRow: View {
                             .background(.thinMaterial, in: Capsule())
                     }
                 }
-                Text("\(note.letter)\(note.accidental)\(note.octave)")
+                Text(hejiLabel)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

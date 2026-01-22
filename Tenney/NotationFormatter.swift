@@ -67,19 +67,18 @@ public enum NotationFormatter {
     /// HEJI-ish text label for ratio tiles / info cards.
     /// Keeps this robust/legible: `C♯4 +14¢` (or no cents if near ET).
     public static func hejiLabel(p: Int, q: Int, freqHz: Double, rootHz: Double) -> String {
-        let note = spelledETNote(freqHz: freqHz, a4Hz: rootHz)
-        let cents = centsFromNearestET(freqHz: freqHz, a4Hz: rootHz)
-
-        let name = "\(note.letter)\(note.accidental)\(note.octave)"
-
-        // Don’t spam tiny offsets; show only if clearly off ET.
-        if abs(cents) < 6 {
-            return name
-        } else {
-            let rounded = Int(cents.rounded())
-            let sign = rounded >= 0 ? "+" : "−"
-            return "\(name) \(sign)\(abs(rounded))¢"
-        }
+        let ratio = RatioRef(p: p, q: q, octave: 0, monzo: [:])
+        let context = HejiContext(
+            referenceA4Hz: rootHz,
+            rootHz: rootHz,
+            rootRatio: nil,
+            preferred: .auto,
+            maxPrime: 13,
+            allowApproximation: false,
+            scaleDegreeHint: ratio
+        )
+        let spelling = HejiNotation.spelling(forRatio: ratio, context: context)
+        return String(HejiNotation.textLabel(spelling, showCents: false).characters)
     }
 
     /// Prime badges for p/q (unique primes dividing numerator or denominator), ascending.

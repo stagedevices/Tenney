@@ -21,6 +21,8 @@ struct ScaleBuilderScreen: View {
     @AppStorage(SettingsKeys.lissaGlobalAlpha) private var lissaGlobalAlpha: Double = 1.0
     @AppStorage(SettingsKeys.latticeThemeID) private var latticeThemeID: String = LatticeThemeID.classicBO.rawValue
     @AppStorage(SettingsKeys.latticeThemeStyle) private var themeStyleRaw: String = ThemeStyleChoice.system.rawValue
+    @AppStorage(SettingsKeys.accidentalPreference) private var accidentalPreferenceRaw: String = AccidentalPreference.auto.rawValue
+    @AppStorage(SettingsKeys.staffA4Hz) private var staffA4Hz: Double = 440
 
     @Environment(\.colorScheme) private var systemScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -1228,9 +1230,21 @@ struct ScaleBuilderScreen: View {
         // MARK: - Save helpers
     private var builderRootSummary: String {
         let hz = store.payload.rootHz
-        let (name, oct) = NotationFormatter.staffNoteName(freqHz: hz)
         let hzInt = Int(round(hz))
-        return "Root: \(name)\(oct) (\(hzInt) Hz)"
+        let pref = AccidentalPreference(rawValue: accidentalPreferenceRaw) ?? .auto
+        let ratioRef = RatioRef(p: 1, q: 1, octave: 0, monzo: [:])
+        let context = HejiContext(
+            referenceA4Hz: staffA4Hz,
+            rootHz: hz,
+            rootRatio: ratioRef,
+            preferred: pref,
+            maxPrime: max(3, store.detectedPrimeLimit),
+            allowApproximation: false,
+            scaleDegreeHint: ratioRef
+        )
+        let spelling = HejiNotation.spelling(forRatio: ratioRef, context: context)
+        let label = String(HejiNotation.textLabel(spelling, showCents: false).characters)
+        return "Root: \(label) (\(hzInt) Hz)"
     }
 
     private var exportSummaryText: String {

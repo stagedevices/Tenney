@@ -1209,7 +1209,22 @@ extension Notification.Name {
                     }
 
                     if store.viewStyle != .posterFraction {
-                        Text(ratioDisplayText)
+                        let pref = AccidentalPreference(rawValue: accidentalPreferenceRaw) ?? .auto
+                        let ratioHint = store.lockedTarget ?? liveNearest
+                        let ratioRef = ratioHint.map { RatioRef(p: $0.num, q: $0.den, octave: $0.octave, monzo: [:]) }
+                        let context = HejiContext(
+                            referenceA4Hz: a4Staff,
+                            rootHz: model.effectiveRootHz,
+                            rootRatio: nil,
+                            preferred: pref,
+                            maxPrime: max(3, store.primeLimit),
+                            allowApproximation: true,
+                            scaleDegreeHint: ratioRef
+                        )
+                        let spelling = ratioRef.map { HejiNotation.spelling(forRatio: $0, context: context) }
+                            ?? HejiNotation.spelling(forFrequency: liveHz, context: context)
+                        let hejiLabel = String(HejiNotation.textLabel(spelling, showCents: true).characters)
+                        Text(hejiLabel)
                             .font(.system(size: 58, weight: .semibold, design: .monospaced))
                             .foregroundStyle(.primary)
                             .lineLimit(1)
@@ -1876,6 +1891,7 @@ private struct RootStudioSheet: View {
     @AppStorage(SettingsKeys.a4Choice)   private var a4Choice = "440"
     @AppStorage(SettingsKeys.a4CustomHz) private var a4Custom: Double = 440
     @AppStorage(SettingsKeys.staffA4Hz)  private var a4Staff: Double = 440
+    @AppStorage(SettingsKeys.accidentalPreference) private var accidentalPreferenceRaw: String = AccidentalPreference.auto.rawValue
     @Environment(\.dismiss) private var dismiss
 
     @Binding var tab: RootStudioTab
