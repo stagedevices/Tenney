@@ -236,11 +236,11 @@ private func vFactor(_ prime: Int, _ value: Int) -> Int {
 }
 
 private func reduce(_ p: Int, _ q: Int) -> (Int, Int) {
-    let g = gcd(p, q)
+    let g = hejiGCD(p, q)
     return (p / g, q / g)
 }
 
-private func gcd(_ a: Int, _ b: Int) -> Int {
+private func hejiGCD(_ a: Int, _ b: Int) -> Int {
     var x = a
     var y = b
     while y != 0 {
