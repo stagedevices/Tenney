@@ -11,6 +11,7 @@ import SwiftUI
 #if canImport(UIKit)
 import UIKit
 #endif
+import Combine
 
 @MainActor
 final class AudioSessionController: ObservableObject {
@@ -305,12 +306,13 @@ final class AudioSessionController: ObservableObject {
         let session = AVAudioSession.sharedInstance()
         let outputs = session.currentRoute.outputs
         routeOutputs = outputs.map { output in
-            RouteOutputInfo(
+            let channelCount = output.channels?.count ?? 0
+           return RouteOutputInfo(
                 id: output.uid,
                 name: output.portName,
                 portType: output.portType,
                 uid: output.uid,
-                channels: output.channels.count
+                channels: channelCount
             )
         }
         currentRouteSummary = routeSummary(for: outputs)
@@ -319,7 +321,7 @@ final class AudioSessionController: ObservableObject {
         if outputs.isEmpty {
             negotiatedOutputChannels = 0
         } else {
-            negotiatedOutputChannels = max(1, outputs.reduce(0) { $0 + max(1, $1.channels.count) })
+            negotiatedOutputChannels = max(1, outputs.reduce(0) { $0 + max(1, $1.channels?.count ?? 0) })
         }
     }
 

@@ -3,6 +3,7 @@ import UIKit
 #if canImport(AppKit)
 import AppKit
 #endif
+import Combine
 
 struct CommunityPackPreviewRequest {
     let packID: String
