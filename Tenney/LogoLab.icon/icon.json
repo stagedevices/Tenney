@@ -1,22 +1,7 @@
 {
   "fill-specializations" : [
     {
-      "value" : {
-        "linear-gradient" : [
-          "display-p3:0.36667,0.60635,1.05199,1.00000",
-          "extended-srgb:0.00000,0.47843,1.00000,1.00000"
-        ],
-        "orientation" : {
-          "start" : {
-            "x" : 0.5,
-            "y" : 0
-          },
-          "stop" : {
-            "x" : 0.5,
-            "y" : 0.7
-          }
-        }
-      }
+      "value" : "system-light"
     },
     {
       "appearance" : "dark",
@@ -50,7 +35,8 @@
           "value" : "plus-darker"
         }
       ],
-      "blur-material" : 0.32,
+      "blur-material" : 0.43,
+      "hidden" : false,
       "layers" : [
         {
           "fill-specializations" : [
@@ -111,14 +97,86 @@
               }
             }
           ],
+          "hidden" : false,
           "image-name" : "assets2 2.png",
           "name" : "assets2 2",
           "opacity" : 0.55,
           "position" : {
-            "scale" : 0.05,
+            "scale" : 0.15,
             "translation-in-points" : [
-              -169.68000000000006,
-              178.6171875
+              -0.05999999999994543,
+              374.30220227822485
+            ]
+          }
+        },
+        {
+          "fill-specializations" : [
+            {
+              "value" : {
+                "linear-gradient" : [
+                  "display-p3:0.20784,0.54510,1.00000,1.00000",
+                  "display-p3:0.00000,0.29020,0.96471,1.00000"
+                ],
+                "orientation" : {
+                  "start" : {
+                    "x" : 0.2835548362528563,
+                    "y" : 0.08259540676416828
+                  },
+                  "stop" : {
+                    "x" : 0.7614442117288654,
+                    "y" : 0.8825554159049362
+                  }
+                }
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "linear-gradient" : [
+                  "display-p3:0.00000,0.80234,1.00000,1.00000",
+                  "display-p3:0.00000,0.28920,0.96611,1.00000"
+                ],
+                "orientation" : {
+                  "start" : {
+                    "x" : 0.2835548362528563,
+                    "y" : 0.08259540676416828
+                  },
+                  "stop" : {
+                    "x" : 0.7614442117288654,
+                    "y" : 0.8825554159049362
+                  }
+                }
+              }
+            },
+            {
+              "appearance" : "tinted",
+              "value" : {
+                "linear-gradient" : [
+                  "display-p3:0.27226,1.00000,0.83852,1.00000",
+                  "display-p3:0.13201,0.00000,0.96611,1.00000"
+                ],
+                "orientation" : {
+                  "start" : {
+                    "x" : 0.2835548362528563,
+                    "y" : 0.08259540676416828
+                  },
+                  "stop" : {
+                    "x" : 0.7614442117288654,
+                    "y" : 0.8825554159049362
+                  }
+                }
+              }
+            }
+          ],
+          "hidden" : false,
+          "image-name" : "assets2 2.png",
+          "name" : "assets2 2",
+          "opacity" : 0.55,
+          "position" : {
+            "scale" : 0.11,
+            "translation-in-points" : [
+              -0.11000000000001364,
+              216.5834661204451
             ]
           }
         },
@@ -181,21 +239,194 @@
               }
             }
           ],
+          "hidden" : false,
           "image-name" : "assets 2.png",
           "name" : "assets 2",
           "opacity" : 0.56,
           "position" : {
-            "scale" : 0.05,
+            "scale" : 0.15,
             "translation-in-points" : [
-              99.96999999999991,
-              -289.203125
+              0.03999999999996362,
+              -19.537797721775178
             ]
           }
         }
       ],
       "lighting" : "individual",
       "name" : "Group",
-      "opacity" : 0.11,
+      "opacity" : 0.1,
+      "shadow" : {
+        "kind" : "layer-color",
+        "opacity" : 0.36
+      },
+      "specular" : true,
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.44
+      }
+    },
+    {
+      "blend-mode-specializations" : [
+        {
+          "value" : "hard-light"
+        },
+        {
+          "appearance" : "dark",
+          "value" : "plus-lighter"
+        },
+        {
+          "appearance" : "tinted",
+          "value" : "plus-darker"
+        }
+      ],
+      "blur-material" : 0.32,
+      "layers" : [
+        {
+          "blend-mode" : "normal",
+          "fill-specializations" : [
+            {
+              "value" : {
+                "linear-gradient" : [
+                  "display-p3:0.20784,0.54510,1.00000,1.00000",
+                  "display-p3:0.00000,0.29020,0.96471,1.00000"
+                ],
+                "orientation" : {
+                  "start" : {
+                    "x" : 0.2835548362528563,
+                    "y" : 0.08259540676416828
+                  },
+                  "stop" : {
+                    "x" : 0.7614442117288654,
+                    "y" : 0.8825554159049362
+                  }
+                }
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "linear-gradient" : [
+                  "display-p3:0.00000,0.80234,1.00000,1.00000",
+                  "display-p3:0.00000,0.28920,0.96611,1.00000"
+                ],
+                "orientation" : {
+                  "start" : {
+                    "x" : 0.2835548362528563,
+                    "y" : 0.08259540676416828
+                  },
+                  "stop" : {
+                    "x" : 0.7614442117288654,
+                    "y" : 0.8825554159049362
+                  }
+                }
+              }
+            },
+            {
+              "appearance" : "tinted",
+              "value" : {
+                "linear-gradient" : [
+                  "display-p3:0.27226,1.00000,0.83852,1.00000",
+                  "display-p3:0.13201,0.00000,0.96611,1.00000"
+                ],
+                "orientation" : {
+                  "start" : {
+                    "x" : 0.2835548362528563,
+                    "y" : 0.08259540676416828
+                  },
+                  "stop" : {
+                    "x" : 0.7614442117288654,
+                    "y" : 0.8825554159049362
+                  }
+                }
+              }
+            }
+          ],
+          "image-name" : "assets2 2.png",
+          "name" : "assets2 2",
+          "opacity" : 1,
+          "position" : {
+            "scale" : 0.15,
+            "translation-in-points" : [
+              -0.05999999999994543,
+              374.30220227822485
+            ]
+          }
+        },
+        {
+          "blend-mode" : "normal",
+          "fill-specializations" : [
+            {
+              "value" : {
+                "linear-gradient" : [
+                  "display-p3:1.00000,0.62745,0.00000,1.00000",
+                  "display-p3:0.96471,0.30588,0.00000,1.00000"
+                ],
+                "orientation" : {
+                  "start" : {
+                    "x" : 0.2398687485186068,
+                    "y" : 0
+                  },
+                  "stop" : {
+                    "x" : 0.7167293789997636,
+                    "y" : 0.7856063300142246
+                  }
+                }
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "linear-gradient" : [
+                  "display-p3:0.95526,1.00000,0.00000,1.00000",
+                  "display-p3:0.96611,0.30744,0.00000,1.00000"
+                ],
+                "orientation" : {
+                  "start" : {
+                    "x" : 0.2398687485186068,
+                    "y" : 0
+                  },
+                  "stop" : {
+                    "x" : 0.7167293789997636,
+                    "y" : 0.7856063300142246
+                  }
+                }
+              }
+            },
+            {
+              "appearance" : "tinted",
+              "value" : {
+                "linear-gradient" : [
+                  "display-p3:1.00000,0.99843,0.00284,1.00000",
+                  "display-p3:0.96611,0.06321,0.00000,1.00000"
+                ],
+                "orientation" : {
+                  "start" : {
+                    "x" : 0.2398687485186068,
+                    "y" : 0
+                  },
+                  "stop" : {
+                    "x" : 0.7167293789997636,
+                    "y" : 0.7856063300142246
+                  }
+                }
+              }
+            }
+          ],
+          "image-name" : "assets 2.png",
+          "name" : "assets 2",
+          "opacity" : 1,
+          "position" : {
+            "scale" : 0.15,
+            "translation-in-points" : [
+              0.03999999999996362,
+              -19.537797721775178
+            ]
+          }
+        }
+      ],
+      "lighting" : "individual",
+      "name" : "Group",
+      "opacity" : 1,
       "shadow" : {
         "kind" : "layer-color",
         "opacity" : 0.43
@@ -207,338 +438,13 @@
       }
     },
     {
-      "blend-mode-specializations" : [
-        {
-          "value" : "screen"
-        },
-        {
-          "appearance" : "dark",
-          "value" : "plus-lighter"
-        },
-        {
-          "appearance" : "tinted",
-          "value" : "plus-darker"
-        }
-      ],
-      "blur-material" : 0.28,
+      "blend-mode" : "darken",
       "layers" : [
         {
-          "fill-specializations" : [
-            {
-              "value" : {
-                "automatic-gradient" : "srgb:0.12984,0.12985,0.12984,1.00000",
-                "orientation" : {
-                  "start" : {
-                    "x" : 0.2835548362528563,
-                    "y" : 0.08259540676416828
-                  },
-                  "stop" : {
-                    "x" : 0.7614442117288654,
-                    "y" : 0.8825554159049362
-                  }
-                }
-              }
-            },
-            {
-              "appearance" : "dark",
-              "value" : {
-                "linear-gradient" : [
-                  "display-p3:0.00000,0.80234,1.00000,1.00000",
-                  "display-p3:0.00000,0.28920,0.96611,1.00000"
-                ],
-                "orientation" : {
-                  "start" : {
-                    "x" : 0.2835548362528563,
-                    "y" : 0.08259540676416828
-                  },
-                  "stop" : {
-                    "x" : 0.7614442117288654,
-                    "y" : 0.8825554159049362
-                  }
-                }
-              }
-            },
-            {
-              "appearance" : "tinted",
-              "value" : {
-                "linear-gradient" : [
-                  "display-p3:0.27226,1.00000,0.83852,1.00000",
-                  "display-p3:0.13201,0.00000,0.96611,1.00000"
-                ],
-                "orientation" : {
-                  "start" : {
-                    "x" : 0.2835548362528563,
-                    "y" : 0.08259540676416828
-                  },
-                  "stop" : {
-                    "x" : 0.7614442117288654,
-                    "y" : 0.8825554159049362
-                  }
-                }
-              }
-            }
-          ],
-          "image-name" : "assets2 2.png",
-          "name" : "assets2 2",
-          "opacity" : 0.34,
-          "position" : {
-            "scale" : 0.05,
-            "translation-in-points" : [
-              -169.68000000000006,
-              178.6171875
-            ]
-          }
-        },
-        {
-          "fill-specializations" : [
-            {
-              "value" : {
-                "automatic-gradient" : "srgb:0.37056,0.37056,0.37056,1.00000",
-                "orientation" : {
-                  "start" : {
-                    "x" : 0.2398687485186068,
-                    "y" : 0
-                  },
-                  "stop" : {
-                    "x" : 0.7167293789997636,
-                    "y" : 0.7856063300142246
-                  }
-                }
-              }
-            },
-            {
-              "appearance" : "dark",
-              "value" : {
-                "linear-gradient" : [
-                  "display-p3:0.95526,1.00000,0.00000,1.00000",
-                  "display-p3:0.96611,0.30744,0.00000,1.00000"
-                ],
-                "orientation" : {
-                  "start" : {
-                    "x" : 0.2398687485186068,
-                    "y" : 0
-                  },
-                  "stop" : {
-                    "x" : 0.7167293789997636,
-                    "y" : 0.7856063300142246
-                  }
-                }
-              }
-            },
-            {
-              "appearance" : "tinted",
-              "value" : {
-                "linear-gradient" : [
-                  "display-p3:1.00000,0.99843,0.00284,1.00000",
-                  "display-p3:0.96611,0.06321,0.00000,1.00000"
-                ],
-                "orientation" : {
-                  "start" : {
-                    "x" : 0.2398687485186068,
-                    "y" : 0
-                  },
-                  "stop" : {
-                    "x" : 0.7167293789997636,
-                    "y" : 0.7856063300142246
-                  }
-                }
-              }
-            }
-          ],
-          "image-name" : "assets 2.png",
-          "name" : "assets 2",
-          "position" : {
-            "scale" : 0.05,
-            "translation-in-points" : [
-              99.96999999999991,
-              -289.203125
-            ]
-          }
-        }
-      ],
-      "lighting" : "individual",
-      "name" : "Group",
-      "opacity" : 1,
-      "shadow" : {
-        "kind" : "layer-color",
-        "opacity" : 0.58
-      },
-      "specular" : true,
-      "translucency" : {
-        "enabled" : true,
-        "value" : 0.25
-      }
-    },
-    {
-      "blend-mode-specializations" : [
-        {
-          "value" : "screen"
-        },
-        {
-          "appearance" : "dark",
-          "value" : "plus-lighter"
-        },
-        {
-          "appearance" : "tinted",
-          "value" : "plus-darker"
-        }
-      ],
-      "blur-material" : 0.28,
-      "layers" : [
-        {
-          "fill-specializations" : [
-            {
-              "value" : {
-                "automatic-gradient" : "srgb:0.26052,0.26052,0.26052,1.00000",
-                "orientation" : {
-                  "start" : {
-                    "x" : 0.2835548362528563,
-                    "y" : 0.08259540676416828
-                  },
-                  "stop" : {
-                    "x" : 0.7614442117288654,
-                    "y" : 0.8825554159049362
-                  }
-                }
-              }
-            },
-            {
-              "appearance" : "dark",
-              "value" : {
-                "linear-gradient" : [
-                  "display-p3:0.00000,0.80234,1.00000,1.00000",
-                  "display-p3:0.00000,0.28920,0.96611,1.00000"
-                ],
-                "orientation" : {
-                  "start" : {
-                    "x" : 0.2835548362528563,
-                    "y" : 0.08259540676416828
-                  },
-                  "stop" : {
-                    "x" : 0.7614442117288654,
-                    "y" : 0.8825554159049362
-                  }
-                }
-              }
-            },
-            {
-              "appearance" : "tinted",
-              "value" : {
-                "linear-gradient" : [
-                  "display-p3:0.27226,1.00000,0.83852,1.00000",
-                  "display-p3:0.13201,0.00000,0.96611,1.00000"
-                ],
-                "orientation" : {
-                  "start" : {
-                    "x" : 0.2835548362528563,
-                    "y" : 0.08259540676416828
-                  },
-                  "stop" : {
-                    "x" : 0.7614442117288654,
-                    "y" : 0.8825554159049362
-                  }
-                }
-              }
-            }
-          ],
-          "image-name" : "assets2 2.png",
-          "name" : "assets2 2",
-          "position" : {
-            "scale" : 0.05,
-            "translation-in-points" : [
-              -169.68000000000006,
-              178.6171875
-            ]
-          }
-        },
-        {
-          "fill-specializations" : [
-            {
-              "value" : {
-                "automatic-gradient" : "srgb:0.37056,0.37056,0.37056,1.00000",
-                "orientation" : {
-                  "start" : {
-                    "x" : 0.2398687485186068,
-                    "y" : 0
-                  },
-                  "stop" : {
-                    "x" : 0.7167293789997636,
-                    "y" : 0.7856063300142246
-                  }
-                }
-              }
-            },
-            {
-              "appearance" : "dark",
-              "value" : {
-                "linear-gradient" : [
-                  "display-p3:0.95526,1.00000,0.00000,1.00000",
-                  "display-p3:0.96611,0.30744,0.00000,1.00000"
-                ],
-                "orientation" : {
-                  "start" : {
-                    "x" : 0.2398687485186068,
-                    "y" : 0
-                  },
-                  "stop" : {
-                    "x" : 0.7167293789997636,
-                    "y" : 0.7856063300142246
-                  }
-                }
-              }
-            },
-            {
-              "appearance" : "tinted",
-              "value" : {
-                "linear-gradient" : [
-                  "display-p3:1.00000,0.99843,0.00284,1.00000",
-                  "display-p3:0.96611,0.06321,0.00000,1.00000"
-                ],
-                "orientation" : {
-                  "start" : {
-                    "x" : 0.2398687485186068,
-                    "y" : 0
-                  },
-                  "stop" : {
-                    "x" : 0.7167293789997636,
-                    "y" : 0.7856063300142246
-                  }
-                }
-              }
-            }
-          ],
-          "image-name" : "assets 2.png",
-          "name" : "assets 2",
-          "position" : {
-            "scale" : 0.05,
-            "translation-in-points" : [
-              99.96999999999991,
-              -289.203125
-            ]
-          }
-        }
-      ],
-      "lighting" : "individual",
-      "name" : "Group",
-      "opacity" : 1,
-      "shadow" : {
-        "kind" : "layer-color",
-        "opacity" : 0.58
-      },
-      "specular" : true,
-      "translucency" : {
-        "enabled" : true,
-        "value" : 0.25
-      }
-    },
-    {
-      "blend-mode" : "overlay",
-      "layers" : [
-        {
-          "blend-mode" : "normal",
+          "blend-mode" : "screen",
           "fill" : {
             "linear-gradient" : [
-              "srgb:1.00000,1.00000,1.00000,1.00000",
+              "srgb:0.83742,0.83744,0.83743,1.00000",
               "srgb:0.37056,0.37056,0.37056,1.00000"
             ],
             "orientation" : {
@@ -553,80 +459,11 @@
             }
           },
           "image-name" : "grid-png-43559.png",
-          "name" : "grid-png-43559"
-        },
-        {
-          "fill-specializations" : [
-            {
-              "value" : {
-                "linear-gradient" : [
-                  "extended-gray:0.51362,1.00000",
-                  "extended-gray:0.85871,1.00000"
-                ],
-                "orientation" : {
-                  "start" : {
-                    "x" : -0.2669019548717344,
-                    "y" : 1.2400037977430556
-                  },
-                  "stop" : {
-                    "x" : 1.1445055086490938,
-                    "y" : -0.10020616319444445
-                  }
-                }
-              }
-            },
-            {
-              "appearance" : "dark",
-              "value" : {
-                "linear-gradient" : [
-                  "display-p3:0.59340,0.59340,0.59340,1.00000",
-                  "display-p3:0.68936,0.68936,0.68936,1.00000"
-                ],
-                "orientation" : {
-                  "start" : {
-                    "x" : -0.2669019548717344,
-                    "y" : 1.2400037977430556
-                  },
-                  "stop" : {
-                    "x" : 1.1445055086490938,
-                    "y" : -0.10020616319444445
-                  }
-                }
-              }
-            },
-            {
-              "appearance" : "tinted",
-              "value" : {
-                "linear-gradient" : [
-                  "display-p3:0.00000,0.00000,0.00000,1.00000",
-                  "display-p3:0.51208,0.51208,0.51208,1.00000"
-                ],
-                "orientation" : {
-                  "start" : {
-                    "x" : -0.2669019548717344,
-                    "y" : 1.2400037977430556
-                  },
-                  "stop" : {
-                    "x" : 1.1445055086490938,
-                    "y" : -0.10020616319444445
-                  }
-                }
-              }
-            }
-          ],
-          "image-name" : "assets3 3.png",
-          "name" : "assets3 3",
-          "opacity" : 0.11,
-          "position" : {
-            "scale" : 0.21,
-            "translation-in-points" : [
-              -45.42943898715089,
-              -19.537797721775178
-            ]
-          }
+          "name" : "grid-png-43559",
+          "opacity" : 0.8
         }
       ],
-      "opacity" : 0.86,
+      "opacity" : 0.26,
       "shadow" : {
         "kind" : "neutral",
         "opacity" : 0.5
