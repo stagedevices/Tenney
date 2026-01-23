@@ -31,11 +31,21 @@ enum TenneyThemeRegistry {
         let mb = mixBasis ?? .complexityWeight
         let mm = mixMode  ?? .blend
         let sm = scopeMode ?? .constant
+        let a11yEnabled = UserDefaults.standard.bool(forKey: SettingsKeys.tenneyColorBlindModeEnabled)
+        let a11yPatterns = UserDefaults.standard.bool(forKey: SettingsKeys.tenneyColorBlindModePatternsEnabled)
+        let a11yEncoding = TenneyA11yEncoding.resolved(enabled: a11yEnabled, patternsEnabled: a11yPatterns, scheme: scheme)
         
         // Monochrome is user-tinted (AppStorage). Its resolved theme must reflect live changes,
             // so we bypass the cache to avoid stale palettes.
             if themeIDRaw == LatticeThemeID.monochrome.rawValue {
-                return resolvedBuiltin(idRaw: themeIDRaw, scheme: scheme, mixBasis: mb, mixMode: mm, scopeMode: sm)
+                return resolvedBuiltin(
+                    idRaw: themeIDRaw,
+                    scheme: scheme,
+                    mixBasis: mb,
+                    mixMode: mm,
+                    scopeMode: sm,
+                    accessibilityEncoding: a11yEncoding
+                )
             }
 
         let key = TenneyThemeCache.ResolvedKey(
@@ -43,7 +53,9 @@ enum TenneyThemeRegistry {
             schemeIsDark: (scheme == .dark),
             mixBasis: mb.rawValue,
             mixMode: mm.rawValue,
-            scopeMode: sm.rawValue
+            scopeMode: sm.rawValue,
+            a11yEnabled: a11yEnabled,
+            a11yPatternsEnabled: a11yPatterns
         )
 
         if let cached = TenneyThemeCache.shared.getResolved(key) {
@@ -53,9 +65,23 @@ enum TenneyThemeRegistry {
         let resolved: ResolvedTenneyTheme
 
         if themeIDRaw.hasPrefix("custom:") {
-            resolved = resolvedCustom(idRaw: themeIDRaw, scheme: scheme, mixBasis: mb, mixMode: mm, scopeMode: sm)
+            resolved = resolvedCustom(
+                idRaw: themeIDRaw,
+                scheme: scheme,
+                mixBasis: mb,
+                mixMode: mm,
+                scopeMode: sm,
+                accessibilityEncoding: a11yEncoding
+            )
         } else {
-            resolved = resolvedBuiltin(idRaw: themeIDRaw, scheme: scheme, mixBasis: mb, mixMode: mm, scopeMode: sm)
+            resolved = resolvedBuiltin(
+                idRaw: themeIDRaw,
+                scheme: scheme,
+                mixBasis: mb,
+                mixMode: mm,
+                scopeMode: sm,
+                accessibilityEncoding: a11yEncoding
+            )
         }
 
         TenneyThemeCache.shared.setResolved(resolved, for: key)
@@ -67,7 +93,8 @@ enum TenneyThemeRegistry {
         scheme: ColorScheme,
         mixBasis: TenneyMixBasis,
         mixMode: TenneyMixMode,
-        scopeMode: TenneyScopeColorMode
+        scopeMode: TenneyScopeColorMode,
+        accessibilityEncoding: TenneyA11yEncoding
     ) -> ResolvedTenneyTheme {
 
         let id = LatticeThemeID(rawValue: idRaw) ?? .classicBO
@@ -111,7 +138,8 @@ enum TenneyThemeRegistry {
             scopeTraceDefault: base.primeTint(11).opacity(dark ? 0.92 : 0.88),
             scopeModeDefault: scopeMode,
             mixBasisDefault: mixBasis,
-            mixModeDefault: mixMode
+            mixModeDefault: mixMode,
+            accessibilityEncoding: accessibilityEncoding
         )
 
         return resolved
@@ -122,7 +150,8 @@ enum TenneyThemeRegistry {
         scheme: ColorScheme,
         mixBasis: TenneyMixBasis,
         mixMode: TenneyMixMode,
-        scopeMode: TenneyScopeColorMode
+        scopeMode: TenneyScopeColorMode,
+        accessibilityEncoding: TenneyA11yEncoding
     ) -> ResolvedTenneyTheme {
 
         let all = TenneyThemePersistence.loadAll()
@@ -132,7 +161,14 @@ enum TenneyThemeRegistry {
 
         // Fallback: if missing, bounce to classicBO
         guard let t = theme else {
-            return resolvedBuiltin(idRaw: LatticeThemeID.classicBO.rawValue, scheme: scheme, mixBasis: mixBasis, mixMode: mixMode, scopeMode: scopeMode)
+            return resolvedBuiltin(
+                idRaw: LatticeThemeID.classicBO.rawValue,
+                scheme: scheme,
+                mixBasis: mixBasis,
+                mixMode: mixMode,
+                scopeMode: scopeMode,
+                accessibilityEncoding: accessibilityEncoding
+            )
         }
 
         let dark = (scheme == .dark)
@@ -171,7 +207,8 @@ enum TenneyThemeRegistry {
             scopeTraceDefault: Color(hex: t.scopeTraceHex),
             scopeModeDefault: TenneyScopeColorMode(rawValue: t.scopeMode) ?? scopeMode,
             mixBasisDefault: TenneyMixBasis(rawValue: t.mixBasis) ?? mixBasis,
-            mixModeDefault: TenneyMixMode(rawValue: t.mixMode) ?? mixMode
+            mixModeDefault: TenneyMixMode(rawValue: t.mixMode) ?? mixMode,
+            accessibilityEncoding: accessibilityEncoding
         )
     }
 }

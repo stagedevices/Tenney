@@ -42,6 +42,40 @@ public enum TenneyScopeColorMode: String, CaseIterable, Identifiable {
     public var id: String { rawValue }
 }
 
+public enum TenneyLimitSymbolStyle: String, CaseIterable, Identifiable, Sendable {
+    case shapeOnly
+    case shapeAndHatch
+    public var id: String { rawValue }
+}
+
+public struct TenneyA11yEncoding: Equatable, Sendable {
+    public let enabled: Bool
+    public let limitSymbolStyle: TenneyLimitSymbolStyle
+    public let strokeContrast: CGFloat
+
+    public static func resolved(
+        enabled: Bool,
+        patternsEnabled: Bool,
+        scheme: ColorScheme
+    ) -> TenneyA11yEncoding {
+        let reduceMotion = UIAccessibility.isReduceMotionEnabled
+        let reduceTransparency = UIAccessibility.isReduceTransparencyEnabled
+        let increaseContrast = UIAccessibility.isDarkerSystemColorsEnabled
+
+        let baseStroke: CGFloat = (scheme == .dark) ? 0.78 : 0.58
+        let stroke = min(1.0, baseStroke + (increaseContrast ? 0.10 : 0.0))
+
+        let allowPatterns = enabled && patternsEnabled && !reduceMotion && !reduceTransparency
+        let style: TenneyLimitSymbolStyle = allowPatterns ? .shapeAndHatch : .shapeOnly
+
+        return TenneyA11yEncoding(
+            enabled: enabled,
+            limitSymbolStyle: style,
+            strokeContrast: stroke
+        )
+    }
+}
+
 public enum TenneySceneBackgroundPreset: String, Codable, CaseIterable {
     case standardAtmospheric
     case nocturneReadable
@@ -115,8 +149,9 @@ public struct ResolvedTenneyTheme: Equatable {
          tunerInTuneStrength: Double,
          scopeTraceDefault: Color,
          scopeModeDefault: TenneyScopeColorMode,
-     mixBasisDefault: TenneyMixBasis,
-         mixModeDefault: TenneyMixMode
+         mixBasisDefault: TenneyMixBasis,
+         mixModeDefault: TenneyMixMode,
+         accessibilityEncoding: TenneyA11yEncoding
      ) {
          self.idRaw = idRaw
          self.name = name
@@ -134,6 +169,7 @@ public struct ResolvedTenneyTheme: Equatable {
          self.scopeModeDefault = scopeModeDefault
          self.mixBasisDefault = mixBasisDefault
          self.mixModeDefault = mixModeDefault
+         self.accessibilityEncoding = accessibilityEncoding
      }
 
 
@@ -164,6 +200,7 @@ public struct ResolvedTenneyTheme: Equatable {
     // Mixing defaults
     public let mixBasisDefault: TenneyMixBasis
     public let mixModeDefault: TenneyMixMode
+    public let accessibilityEncoding: TenneyA11yEncoding
 
     // --- Compatibility surface (minimize call-site churn) ---
     public func primeTint(_ p: Int) -> Color { palette[p] ?? ResolvedTenneyTheme.fallbackPrime }
@@ -307,7 +344,8 @@ private struct TenneyThemeKey: EnvironmentKey {
             scheme: .light,
             mixBasis: .complexityWeight,
             mixMode: .blend,
-            scopeMode: .constant
+            scopeMode: .constant,
+            accessibilityEncoding: TenneyA11yEncoding.resolved(enabled: false, patternsEnabled: false, scheme: .light)
         )
 }
 
