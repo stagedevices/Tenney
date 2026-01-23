@@ -790,12 +790,12 @@ extension Notification.Name {
             isLocked: isLocked,
             displayText: displayText,
             tint: tint,
-            matchedGeometry: lockFieldMatchedGeometry
+            matchedGeometry: lockFieldMatchedGeometry,
+            isExpanded: showLockSheet
         ) {
             showLockSheet = true
         }
         .opacity(lockFieldDim ? 0.6 : 1.0)
-        .layoutPriority(2)
         .accessibilityLabel(isLocked ? "Locked target" : "Edit lock target")
     }
      
