@@ -8,8 +8,6 @@
 import SwiftUI
 #if os(iOS)
 import UIKit
-#elseif os(macOS)
-import AppKit
 #endif
 
 struct LockTargetSheet: View {
@@ -21,19 +19,20 @@ struct LockTargetSheet: View {
     let currentNearest: RatioResult?
     let lowerText: String
     let higherText: String
-    let recents: [String]
+    let recents: [TunerLockRecent]
     let rootHz: Double
     let liveHz: Double
     let tint: Color
     let matchedGeometry: LockFieldMatchedGeometry?
     let onCancel: () -> Void
     let onUnlock: () -> Void
+    let onSet: (RatioResult) -> Void
     let onCommit: (RatioResult) -> Void
+    let onRemoveRecent: (RatioResult) -> Void
+    let onClearRecents: () -> Void
 
-    @Environment(\.tenneyTheme) private var theme
     @FocusState private var focusedField: Field?
     @State private var showKeypad: Bool = false
-    @State private var pasteMessage: String? = nil
 
     private enum Field {
         case numerator
@@ -96,9 +95,23 @@ struct LockTargetSheet: View {
                 tint: tint,
                 matchedGeometry: matchedGeometry
             )
-            Text("Lock Target")
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(.primary)
+            HStack(spacing: 12) {
+                Text("Lock Target")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(.primary)
+                Spacer()
+                if lockedTarget != nil {
+                    glassActionButton(
+                        title: "Unlock",
+                        systemImage: "lock.open",
+                        isDestructive: true,
+                        minHeight: 32,
+                        horizontalPadding: 12,
+                        fillsWidth: false,
+                        action: onUnlock
+                    )
+                }
+            }
         }
     }
 
@@ -140,7 +153,6 @@ struct LockTargetSheet: View {
                         keypad
                     }
                 }
-                pasteControls
             }
         }
     }
@@ -284,6 +296,36 @@ struct LockTargetSheet: View {
                         }
                     }
                 }
+
+                if !recents.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Recents")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 8)], spacing: 8) {
+                            ForEach(recents.prefix(12)) { recent in
+                                Button {
+                                    applyRatio(recent.ratio)
+                                } label: {
+                                    LockRecentChip(ratio: tunerDisplayRatioString(recent.ratio))
+                                }
+                                .buttonStyle(.plain)
+                                .contextMenu {
+                                    Button(role: .destructive) {
+                                        onRemoveRecent(recent.ratio)
+                                    } label: {
+                                        Label("Remove", systemImage: "trash")
+                                    }
+                                    Button(role: .destructive) {
+                                        onClearRecents()
+                                    } label: {
+                                        Label("Clear All", systemImage: "trash.slash")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -293,25 +335,24 @@ struct LockTargetSheet: View {
         return VStack(spacing: 0) {
             Divider()
             HStack(spacing: 12) {
-                Button("Cancel") { onCancel() }
-                    .buttonStyle(.bordered)
+                glassActionButton(title: "Cancel", systemImage: "xmark", action: onCancel)
 
-                if lockedTarget != nil {
-                    Button("Unlock") { onUnlock() }
-                        .buttonStyle(.bordered)
-                }
+                glassActionButton(title: "Set", systemImage: "checkmark.circle", action: {
+                    guard let preview = lockPreview else { return }
+                    onSet(preview)
+                })
+                .disabled(!isValid)
+                .opacity(isValid ? 1 : 0.6)
 
-                Spacer()
-
-                Button("Lock") {
+                glassActionButton(title: "Lock", systemImage: "lock.fill", action: {
                     guard let preview = lockPreview else { return }
                     onCommit(preview)
 #if os(iOS) && !targetEnvironment(macCatalyst)
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
 #endif
-                }
-                .buttonStyle(.borderedProminent)
+                })
                 .disabled(!isValid)
+                .opacity(isValid ? 1 : 0.6)
             }
             .padding()
             .background(.thinMaterial)
@@ -329,67 +370,6 @@ struct LockTargetSheet: View {
         denominatorText = "\(ratio.den)"
         octave = ratio.octave
         focusedField = nil
-    }
-
-    private func applyRatioText(_ text: String) {
-        guard let parsed = ratioResultFromText(text) else { return }
-        applyRatio(parsed)
-    }
-
-    private var pasteControls: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if #available(iOS 16.0, macOS 13.0, *) {
-                PasteButton(payloadType: String.self) { strings in
-                    handlePasteStrings(strings)
-                }
-                .buttonStyle(.bordered)
-                .labelStyle(.titleAndIcon)
-            } else {
-                Button("Paste ratio") {
-                    handleLegacyPaste()
-                }
-                .buttonStyle(.bordered)
-            }
-
-            if let pasteMessage {
-                Text(pasteMessage)
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    private func handlePasteStrings(_ strings: [String]) {
-        guard let text = strings.first else {
-            pasteMessage = "Paste permission denied."
-            return
-        }
-        applyPasteText(text)
-    }
-
-    private func handleLegacyPaste() {
-#if os(iOS)
-        let text = UIPasteboard.general.string
-#elseif os(macOS)
-        let text = NSPasteboard.general.string(forType: .string)
-#else
-        let text: String? = nil
-#endif
-        guard let text else {
-            pasteMessage = "Paste permission denied."
-            return
-        }
-        applyPasteText(text)
-    }
-
-    private func applyPasteText(_ text: String) {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let parsed = ratioResultFromText(trimmed) else {
-            pasteMessage = "Paste contains no ratio."
-            return
-        }
-        pasteMessage = nil
-        applyRatio(parsed)
     }
 
     private var pickItems: [LockPickItem] {
@@ -410,13 +390,6 @@ struct LockTargetSheet: View {
         if let higher = ratioResultFromText(higherText), !seen.contains(lockRecentString(higher)) {
             items.append(LockPickItem(title: "Higher", ratio: higher))
             seen.insert(lockRecentString(higher))
-        }
-
-        for recent in recents.compactMap(ratioResultFromLockRecent) {
-            let key = lockRecentString(recent)
-            guard !seen.contains(key) else { continue }
-            items.append(LockPickItem(title: "Recent", ratio: recent))
-            seen.insert(key)
         }
 
         return items
@@ -498,6 +471,62 @@ private struct LockPickChip: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
         )
+    }
+}
+
+private struct LockRecentChip: View {
+    let ratio: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(ratio)
+                .font(.callout.weight(.semibold).monospacedDigit())
+                .foregroundStyle(.primary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(.ultraThinMaterial)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+        )
+    }
+}
+
+private extension LockTargetSheet {
+    func glassActionButton(
+        title: String,
+        systemImage: String,
+        tint: Color? = nil,
+        isDestructive: Bool = false,
+        minHeight: CGFloat = 44,
+        horizontalPadding: CGFloat = 14,
+        fillsWidth: Bool = true,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            let label = HStack(spacing: 6) {
+                Image(systemName: systemImage)
+                Text(title)
+                    .font(.callout.weight(.semibold))
+            }
+            .frame(maxWidth: fillsWidth ? .infinity : nil, minHeight: minHeight)
+            .padding(.horizontal, horizontalPadding)
+            .foregroundStyle(isDestructive ? .white : (tint ?? .primary))
+
+            Group {
+                if isDestructive {
+                    label.modifier(GlassRedRoundedRect(corner: 12))
+                } else {
+                    label.modifier(GlassRoundedRect(corner: 12))
+                }
+            }
+        }
+        .buttonStyle(GlassPressFeedback())
     }
 }
 

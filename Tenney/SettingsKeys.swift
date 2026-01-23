@@ -60,6 +60,7 @@ enum SettingsKeys {
     // Confidence / needle behavior
     static let tunerNeedleHoldMode = "Tenney.Tuner.NeedleHoldMode"
     static let tunerLockRecents    = "tenney.tuner.lockRecents" // [String]
+    static let tunerLockRecentsJSON = "tenney.tuner.lockRecentsJSON" // JSON [TunerLockRecent]
 
     // NEW: Themes
     static let tenneyThemeID          = "tenney.theme.id"                 // String (builtin rawValue or "custom:<uuid>")

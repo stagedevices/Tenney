@@ -8,6 +8,40 @@ import Foundation
 import SwiftUI
 import Combine
 
+struct TunerLockRecent: Codable, Hashable, Identifiable {
+    let p: Int
+    let q: Int
+    let octave: Int
+    let timestamp: TimeInterval
+
+    init(p: Int, q: Int, octave: Int, timestamp: TimeInterval = Date().timeIntervalSince1970) {
+        self.p = p
+        self.q = q
+        self.octave = octave
+        self.timestamp = timestamp
+    }
+
+    init(_ ratio: RatioResult, timestamp: TimeInterval = Date().timeIntervalSince1970) {
+        self.init(p: ratio.num, q: ratio.den, octave: ratio.octave, timestamp: timestamp)
+    }
+
+    var id: String { "\(p)/\(q)|\(octave)" }
+    var ratio: RatioResult { RatioResult(num: p, den: q, octave: octave) }
+
+    static func decode(from json: String) -> [TunerLockRecent] {
+        guard let data = json.data(using: .utf8) else { return [] }
+        return (try? JSONDecoder().decode([TunerLockRecent].self, from: data)) ?? []
+    }
+
+    static func encode(_ recents: [TunerLockRecent]) -> String {
+        guard let data = try? JSONEncoder().encode(recents),
+              let text = String(data: data, encoding: .utf8) else {
+            return "[]"
+        }
+        return text
+    }
+}
+
 // MARK: - Mode (UI) — distinct from detector.strictness
 enum TunerUIMode: String, CaseIterable, Identifiable {
     case auto, strict, live
@@ -130,15 +164,30 @@ final class TunerStore: ObservableObject {
     @Published var lockedTarget: RatioResult? = nil {  // exact JI target when locked
         didSet {
             guard let target = lockedTarget else { return }
-            recordLockRecent(target)
+            addRecent(target)
         }
     }
 
-    @Published var lockRecents: [String] = {
-        UserDefaults.standard.array(forKey: SettingsKeys.tunerLockRecents) as? [String] ?? []
+    @Published var selectedTarget: RatioResult? = nil
+
+    @AppStorage(SettingsKeys.tunerLockRecentsJSON)
+    private var lockRecentsJSON: String = "[]"
+
+    @Published var lockRecents: [TunerLockRecent] = {
+        let defaults = UserDefaults.standard
+        let json = defaults.string(forKey: SettingsKeys.tunerLockRecentsJSON) ?? "[]"
+        var decoded = TunerLockRecent.decode(from: json)
+        if defaults.object(forKey: SettingsKeys.tunerLockRecentsJSON) == nil {
+            let legacy = defaults.array(forKey: SettingsKeys.tunerLockRecents) as? [String] ?? []
+            decoded = legacy.compactMap { ratioResultFromLockRecent($0) }.map { TunerLockRecent($0) }
+            if !decoded.isEmpty {
+                defaults.set(TunerLockRecent.encode(decoded), forKey: SettingsKeys.tunerLockRecentsJSON)
+            }
+        }
+        return decoded
     }() {
         didSet {
-            UserDefaults.standard.set(lockRecents, forKey: SettingsKeys.tunerLockRecents)
+            lockRecentsJSON = TunerLockRecent.encode(lockRecents)
         }
     }
 
@@ -177,19 +226,28 @@ final class TunerStore: ObservableObject {
         if lockedTarget != nil {
             lockedTarget = nil
         } else {
-            lockedTarget = currentNearest
+            lockedTarget = selectedTarget ?? currentNearest
         }
         LearnEventBus.shared.send(.tunerLockToggled(lockedTarget != nil))
     }
 
-    private func recordLockRecent(_ target: RatioResult) {
-        let entry = lockRecentString(target)
-        var updated = lockRecents.filter { $0 != entry }
+    func addRecent(_ target: RatioResult) {
+        let entry = TunerLockRecent(target)
+        var updated = lockRecents.filter { $0.id != entry.id }
         updated.insert(entry, at: 0)
-        if updated.count > 5 {
-            updated = Array(updated.prefix(5))
+        if updated.count > 12 {
+            updated = Array(updated.prefix(12))
         }
         lockRecents = updated
+    }
+
+    func removeRecent(_ target: RatioResult) {
+        let entry = TunerLockRecent(target)
+        lockRecents = lockRecents.filter { $0.id != entry.id }
+    }
+
+    func clearRecents() {
+        lockRecents = []
     }
 
 }
