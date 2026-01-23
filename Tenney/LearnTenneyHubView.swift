@@ -119,6 +119,41 @@ struct LearnTenneyHubView: View {
             } footer: {
                 Text("Each module includes a short tour through an interactive practice sandbox and a searchable control glossary.")
             }
+
+            Section {
+                ForEach(LearnReferenceTopic.allCases) { topic in
+                    NavigationLink {
+                        LearnTenneyReferenceTopicView(topic: topic)
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: topic.systemImage)
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundStyle(.tint)
+                                .frame(width: 30, height: 30)
+                                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(topic.title)
+                                    .font(.headline)
+                                Text(topic.subtitle)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(2)
+                            }
+
+                            Spacer()
+                        }
+                        .padding(.vertical, 2)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(Text(topic.title))
+                        .accessibilityValue(Text(topic.subtitle))
+                    }
+                }
+            } header: {
+                Text("Reference")
+            } footer: {
+                Text("Instrument-grade explanations for how Tenney names, anchors, and interprets pitch.")
+            }
         }
         .navigationTitle("Learn Tenney")
         .navigationBarTitleDisplayMode(.inline)

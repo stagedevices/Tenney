@@ -2447,6 +2447,9 @@ private struct RootCardCompact: View {
                     }
                     .buttonStyle(.plain)
                 }
+                Text("Tonic is the name of 1/1 (used for spelling intervals).")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
         }
         .onAppear { input = String(format: "%.1f", model.rootHz) }
@@ -2555,8 +2558,10 @@ private struct RootStudioSheet: View {
     @AppStorage(SettingsKeys.a4Choice)   private var a4Choice = "440"
     @AppStorage(SettingsKeys.a4CustomHz) private var a4Custom: Double = 440
     @AppStorage(SettingsKeys.staffA4Hz)  private var concertA4Hz: Double = 440
+    @AppStorage(SettingsKeys.tonicNameMode) private var tonicNameModeRaw: String = TonicNameMode.auto.rawValue
     @AppStorage(SettingsKeys.accidentalPreference) private var accidentalPreferenceRaw: String = AccidentalPreference.auto.rawValue
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @Binding var tab: RootStudioTab
     let ns: Namespace.ID
@@ -2564,6 +2569,8 @@ private struct RootStudioSheet: View {
     @State private var history: [Double] = RootHistory.load()
     @State private var favorites: [Double] = RootFavorites.load()
     @State private var highlight: RootStudioTab? = nil
+    @State private var showReference = false
+    @State private var referenceEmphasis = false
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -2595,6 +2602,8 @@ private struct RootStudioSheet: View {
                             a4Card
                                 .id("a4")
                                 .overlay(cardHighlight(for: .a4))
+
+                            referenceHelpRow
                         }
                         .padding(16)
                     }
@@ -2618,6 +2627,14 @@ private struct RootStudioSheet: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .openRootStudioTab)) { note in
             if let raw = note.object as? String, let t = RootStudioTab(rawValue: raw) { tab = t }
+        }
+        .onChange(of: tonicNameModeRaw) { _ in
+            pulseReferenceHelp()
+        }
+        .sheet(isPresented: $showReference) {
+            NavigationStack {
+                LearnTenneyReferenceTopicView(topic: .rootTonicConcert)
+            }
         }
     }
 
@@ -2726,6 +2743,7 @@ private struct RootStudioSheet: View {
         let chosen: Double = (a4Choice == "442" ? 442 : (a4Choice == "custom" ? max(200, min(1000, a4Custom)) : 440))
         concertA4Hz = chosen
         postSetting(SettingsKeys.staffA4Hz, chosen)
+        pulseReferenceHelp()
     }
 
     // MARK: Reusable list
@@ -2781,6 +2799,55 @@ private struct RootStudioSheet: View {
                             .font(.footnote).foregroundStyle(.secondary)
                     }
                 }
+            }
+        }
+
+        private var referenceHelpRow: some View {
+            let emphasisOpacity = referenceEmphasis ? 0.9 : 0.0
+            return glassCard("Reference") {
+                Button {
+                    showReference = true
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "questionmark.circle")
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Root, Tonic, Concert Pitch")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.primary)
+                            Text("Why these are separate (and how to debug weird labels)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(10)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(Color.accentColor.opacity(emphasisOpacity), lineWidth: 1.5)
+                    )
+                    .shadow(color: Color.accentColor.opacity(referenceEmphasis ? 0.15 : 0.0), radius: 6, x: 0, y: 0)
+                    .animation(reduceMotion ? .easeOut(duration: 0.01) : .easeOut(duration: 0.25), value: referenceEmphasis)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Open reference: Root, Tonic, Concert Pitch")
+            }
+        }
+
+        private func pulseReferenceHelp() {
+            guard !reduceMotion else {
+                referenceEmphasis = false
+                return
+            }
+            referenceEmphasis = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
+                referenceEmphasis = false
             }
         }
 }
