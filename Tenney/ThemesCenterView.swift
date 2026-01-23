@@ -23,6 +23,8 @@ struct ThemesCenterView: View {
     @AppStorage(SettingsKeys.tenneyThemeMixBasis) private var mixBasisRaw: String = TenneyMixBasis.complexityWeight.rawValue
     @AppStorage(SettingsKeys.tenneyThemeMixMode) private var mixModeRaw: String = TenneyMixMode.blend.rawValue
     @AppStorage(SettingsKeys.tenneyThemeScopeMode) private var scopeModeRaw: String = TenneyScopeColorMode.constant.rawValue
+    @AppStorage(SettingsKeys.tenneyColorBlindModeEnabled) private var colorBlindAssistEnabled: Bool = false
+    @AppStorage(SettingsKeys.tenneyColorBlindModePatternsEnabled) private var colorBlindPatternsEnabled: Bool = false
 
     private var mixBasis: TenneyMixBasis { TenneyMixBasis(rawValue: mixBasisRaw) ?? .complexityWeight }
     private var mixMode: TenneyMixMode { TenneyMixMode(rawValue: mixModeRaw) ?? .blend }
@@ -332,6 +334,20 @@ struct ThemesCenterView: View {
                         }
 
                         Text("Scope decides what the oscilloscope accent color should follow.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    // Accessibility
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Accessibility").font(.subheadline.weight(.semibold))
+
+                        Toggle("Color-blind Assist (Shapes)", isOn: $colorBlindAssistEnabled)
+                        Toggle("Patterns", isOn: $colorBlindPatternsEnabled)
+                            .disabled(!colorBlindAssistEnabled)
+                            .opacity(colorBlindAssistEnabled ? 1 : 0.55)
+
+                        Text("Adds shape-based cues for prime limits without relying on color.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }

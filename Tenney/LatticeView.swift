@@ -420,6 +420,7 @@ struct LatticeView: View {
         center: CGPoint,
         nodeR: CGFloat,
         tint: Color,
+        a11y: TenneyA11yEncoding,
         focused: Bool,
         phase: (targetOn: Bool, t: CGFloat, duration: Double, seed: UInt64)?,
         now: Double,
@@ -510,6 +511,14 @@ struct LatticeView: View {
             ctx.stroke(Circle().path(in: rect.insetBy(dx: m.innerInset + 3.2, dy: m.innerInset + 3.2)),
                        with: .color(tint.opacity(0.25 * bA)),
                        lineWidth: 1.0)
+        }
+
+        if a11y.enabled {
+            let markerR = max(2.2, min(6.0, nodeR * 0.20))
+            let markerRect = CGRect(x: center.x - markerR, y: center.y - markerR, width: markerR * 2, height: markerR * 2)
+            let marker = Circle().path(in: markerRect)
+            ctx.fill(marker, with: .color(Color.primary.opacity(a11y.strokeContrast * 0.90)))
+            ctx.stroke(marker, with: .color(Color.primary.opacity(a11y.strokeContrast * 0.60)), lineWidth: 0.6)
         }
 
         // focused prime ticks (subtle, capped)
@@ -3882,6 +3891,7 @@ struct LatticeView: View {
                             center: sp,
                             nodeR: nodeR,
                             tint: tint,
+                            a11y: activeTheme.accessibilityEncoding,
                             focused: isFocused,
                             phase: phase,
                             now: now,
@@ -4269,29 +4279,31 @@ struct LatticeView: View {
         
         let fill: Color = activeTheme.nodeColor(e3: node.coord.e3, e5: node.coord.e5)
         let alpha = min(1.0, 0.35 + 2.0 / sqrt(Double(node.tenneyHeight)))
-        
-        let circle = Path(ellipseIn: rect)
+        let a11y = activeTheme.accessibilityEncoding
+        let bucket = TenneyLimitBucket.limit5
+        let nodePath = a11y.enabled ? limitShapePath(bucket: bucket, in: rect) : Path(ellipseIn: rect)
+        let fillAlpha = a11y.enabled ? (alpha * 0.88) : alpha
 
         // base tint
-        ctx.fill(circle, with: .color(fill.opacity(alpha)))
+        ctx.fill(nodePath, with: .color(fill.opacity(fillAlpha)))
 
         // glass depth + sheen (clipped)
         var g = ctx
-        g.clip(to: circle)
+        g.clip(to: nodePath)
 
         // depth: brighter TL → darker BR
         let depth = USE_STOP_GRADIENTS
         ? Gradient(stops: [
-            .init(color: Color.white.opacity(0.10 * alpha), location: 0.00),
-            .init(color: Color.white.opacity(0.05 * alpha), location: 0.38),
-            .init(color: Color.black.opacity(0.08 * alpha), location: 1.00)
+            .init(color: Color.white.opacity(0.10 * fillAlpha), location: 0.00),
+            .init(color: Color.white.opacity(0.05 * fillAlpha), location: 0.38),
+            .init(color: Color.black.opacity(0.08 * fillAlpha), location: 1.00)
         ])
         : Gradient(colors: [
-            Color.white.opacity(0.10 * alpha),
-            Color.white.opacity(0.05 * alpha),
-            Color.black.opacity(0.08 * alpha)
+            Color.white.opacity(0.10 * fillAlpha),
+            Color.white.opacity(0.05 * fillAlpha),
+            Color.black.opacity(0.08 * fillAlpha)
         ])
-        g.fill(circle, with: .radialGradient(
+        g.fill(nodePath, with: .radialGradient(
             depth,
             center: CGPoint(x: rect.minX + rect.width * 0.30, y: rect.minY + rect.height * 0.26),
             startRadius: 0,
@@ -4299,8 +4311,25 @@ struct LatticeView: View {
         ))
 
         // rim / bevel (crisper “glass” edge)
-        ctx.stroke(circle, with: .color(Color.white.opacity(0.18 * alpha)), lineWidth: 1.0)
-        ctx.stroke(circle, with: .color(Color.black.opacity(0.08 * alpha)), lineWidth: 0.7)
+        ctx.stroke(nodePath, with: .color(Color.white.opacity(0.18 * fillAlpha)), lineWidth: 1.0)
+        ctx.stroke(nodePath, with: .color(Color.black.opacity(0.08 * fillAlpha)), lineWidth: 0.7)
+
+        if a11y.enabled {
+            drawLimitPattern(
+                ctx: &ctx,
+                shape: nodePath,
+                rect: rect,
+                bucket: bucket,
+                fill: fill,
+                alpha: fillAlpha,
+                stroke: Color.primary.opacity(a11y.strokeContrast)
+            )
+            ctx.stroke(
+                nodePath,
+                with: .color(Color.primary.opacity(a11y.strokeContrast * 0.85)),
+                lineWidth: max(1.0, sz * 0.06)
+            )
+        }
 
         // --- label (ratio / HEJI) ---
         if shouldDrawPlaneLabel(coord: node.coord),
@@ -4420,27 +4449,30 @@ struct LatticeView: View {
             let alpha: CGFloat = isAnimating ? (baseAlpha * local) : baseAlpha
 
             // ✅ crisp ONLY (no bloom / blur / screen passes)
-            let circle = Path(ellipseIn: rect)
+            let a11y = activeTheme.accessibilityEncoding
+            let bucket = bucket(forPrime: p)
+            let nodePath = a11y.enabled ? limitShapePath(bucket: bucket, in: rect) : Path(ellipseIn: rect)
+            let fillAlpha = a11y.enabled ? (alpha * 0.88) : alpha
 
             // base tint
-            ctx.fill(circle, with: .color(col.opacity(alpha)))
+            ctx.fill(nodePath, with: .color(col.opacity(fillAlpha)))
 
             // glass depth + sheen (clipped)
             var g = ctx
-            g.clip(to: circle)
+            g.clip(to: nodePath)
 
             let depth = USE_STOP_GRADIENTS
             ? Gradient(stops: [
-                .init(color: Color.white.opacity(0.14 * alpha), location: 0.00),
-                .init(color: Color.white.opacity(0.04 * alpha), location: 0.40),
-                .init(color: Color.black.opacity(0.12 * alpha), location: 1.00)
+                .init(color: Color.white.opacity(0.14 * fillAlpha), location: 0.00),
+                .init(color: Color.white.opacity(0.04 * fillAlpha), location: 0.40),
+                .init(color: Color.black.opacity(0.12 * fillAlpha), location: 1.00)
             ])
             : Gradient(colors: [
-                Color.white.opacity(0.14 * alpha),
-                Color.white.opacity(0.04 * alpha),
-                Color.black.opacity(0.12 * alpha)
+                Color.white.opacity(0.14 * fillAlpha),
+                Color.white.opacity(0.04 * fillAlpha),
+                Color.black.opacity(0.12 * fillAlpha)
             ])
-            g.fill(circle, with: .radialGradient(
+            g.fill(nodePath, with: .radialGradient(
                 depth,
                 center: CGPoint(x: rect.minX + rect.width * 0.30, y: rect.minY + rect.height * 0.26),
                 startRadius: 0,
@@ -4449,8 +4481,25 @@ struct LatticeView: View {
 
 
             // rim / bevel (keep prime tint identity)
-            ctx.stroke(circle, with: .color(col.opacity(0.40 * alpha)), lineWidth: 1.0)
-            ctx.stroke(circle, with: .color(Color.white.opacity(0.14 * alpha)), lineWidth: 0.8)
+            ctx.stroke(nodePath, with: .color(col.opacity(0.40 * fillAlpha)), lineWidth: 1.0)
+            ctx.stroke(nodePath, with: .color(Color.white.opacity(0.14 * fillAlpha)), lineWidth: 0.8)
+
+            if a11y.enabled {
+                drawLimitPattern(
+                    ctx: &ctx,
+                    shape: nodePath,
+                    rect: rect,
+                    bucket: bucket,
+                    fill: col,
+                    alpha: fillAlpha,
+                    stroke: Color.primary.opacity(a11y.strokeContrast)
+                )
+                ctx.stroke(
+                    nodePath,
+                    with: .color(Color.primary.opacity(a11y.strokeContrast * 0.85)),
+                    lineWidth: max(1.0, sz * 0.06)
+                )
+            }
 
 
             // ✅ labels for 7+ overlays (ratio / HEJI), analogous to plane nodes
@@ -4475,6 +4524,40 @@ struct LatticeView: View {
             }
         }
     }
+
+    private func drawLimitPattern(
+        ctx: inout GraphicsContext,
+        shape: Path,
+        rect: CGRect,
+        bucket: TenneyLimitBucket,
+        fill: Color,
+        alpha: CGFloat,
+        stroke: Color
+    ) {
+        guard activeTheme.accessibilityEncoding.limitSymbolStyle == .shapeAndHatch else { return }
+
+        var g = ctx
+        g.clip(to: shape)
+
+        if bucket.rawValue >= TenneyLimitBucket.limit17.rawValue {
+            let inset = rect.width * 0.22
+            let innerRect = rect.insetBy(dx: inset, dy: inset)
+            let innerShape = limitShapePath(bucket: bucket, in: innerRect)
+            g.fill(innerShape, with: .color(fill.opacity(alpha * 0.35)))
+            g.stroke(shape, with: .color(stroke.opacity(0.75)), lineWidth: max(1.2, rect.width * 0.08))
+            return
+        }
+
+        guard let pattern = TenneyLimitPattern.path(bucket: bucket, in: rect),
+              let kind = TenneyLimitPattern.kind(for: bucket) else { return }
+
+        switch kind {
+        case .stroke:
+            g.stroke(pattern, with: .color(stroke.opacity(0.55)), lineWidth: max(0.8, rect.width * 0.05))
+        case .dots:
+            g.fill(pattern, with: .color(stroke.opacity(0.55)))
+        }
+    }
     
     // MARK: - Overlays (UI)
     private var overlayChips: some View {
@@ -4485,19 +4568,39 @@ struct LatticeView: View {
                 ForEach(primes, id: \.self) { p in
                     let on = store.visiblePrimes.contains(p)
 
-                    GlassChip(
-                        title: on ? "● \(p)" : "○ \(p)",
-                        active: on,
-                        color: activeTheme.primeTint(p)
-                    ) {
-                        // If a long-press just fired, swallow the “button tap” that can follow on release.
-                        if overlayPrimeHoldConsumedTap {
-                            overlayPrimeHoldConsumedTap = false
-                            return
+                    Group {
+                        if activeTheme.accessibilityEncoding.enabled {
+                            TenneyPrimeLimitChip(
+                                prime: p,
+                                isOn: on,
+                                tint: activeTheme.primeTint(p),
+                                encoding: activeTheme.accessibilityEncoding
+                            ) {
+                                // If a long-press just fired, swallow the “button tap” that can follow on release.
+                                if overlayPrimeHoldConsumedTap {
+                                    overlayPrimeHoldConsumedTap = false
+                                    return
+                                }
+                                let nextOn = !on
+                                store.setPrimeVisible(p, nextOn, animated: true)
+                                LearnEventBus.shared.send(.latticePrimeChipToggled(p, nextOn))
+                            }
+                        } else {
+                            GlassChip(
+                                title: on ? "● \(p)" : "○ \(p)",
+                                active: on,
+                                color: activeTheme.primeTint(p)
+                            ) {
+                                // If a long-press just fired, swallow the “button tap” that can follow on release.
+                                if overlayPrimeHoldConsumedTap {
+                                    overlayPrimeHoldConsumedTap = false
+                                    return
+                                }
+                                let nextOn = !on
+                                store.setPrimeVisible(p, nextOn, animated: true)
+                                LearnEventBus.shared.send(.latticePrimeChipToggled(p, nextOn))
+                            }
                         }
-                        let nextOn = !on
-                        store.setPrimeVisible(p, nextOn, animated: true)
-                        LearnEventBus.shared.send(.latticePrimeChipToggled(p, nextOn))
                     }
                     .highPriorityGesture(
                         LongPressGesture(minimumDuration: 0.35)
