@@ -3318,7 +3318,8 @@ struct StudioConsoleView: View {
         switch cat {
         case .lattice:
             let labelsPct = Int((StudioConsoleView.nearestDetent(labelDensity, in: StudioConsoleView.labelDensityDetents) * 100).rounded())
-            return "Theme: \(tenneyThemeIDRaw) · Grid: \(gridName(gridModeRaw)) · Nodes: \(nodeCode(nodeSize)) · Labels: \(labelsPct)%"
+            let themeName = TenneyThemeRegistry.displayName(themeIDRaw: tenneyThemeIDRaw)
+            return "Theme: \(themeName) · Grid: \(gridName(gridModeRaw)) · Nodes: \(nodeCode(nodeSize)) · Labels: \(labelsPct)%"
 
         case .theme:
             let style = ThemeStyleChoice(rawValue: themeStyleRaw) ?? .system
@@ -3329,7 +3330,8 @@ struct StudioConsoleView: View {
                 case .dark:   return "Dark"
                 }
             }()
-            return "Theme: \(tenneyThemeIDRaw) · Appearance: \(styleText)"
+            let themeName = TenneyThemeRegistry.displayName(themeIDRaw: tenneyThemeIDRaw)
+            return "Theme: \(themeName) · Appearance: \(styleText)"
 
         case .oscilloscope:
             let w = String(format: "%.1f", lissaRibbonWidth)

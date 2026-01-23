@@ -159,7 +159,7 @@ struct AboutView: View {
                         }
         
                         LabeledContent("Theme") {
-                            Text(tenneyThemeIDRaw)
+                            Text(TenneyThemeRegistry.displayName(themeIDRaw: tenneyThemeIDRaw))
                                 .lineLimit(1)
                         }
         

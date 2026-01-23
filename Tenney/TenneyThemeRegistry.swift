@@ -20,6 +20,19 @@ enum TenneyThemeRegistry {
         LatticeThemeID.allCases.map { $0.rawValue }
     }
 
+    static func displayName(themeIDRaw: String) -> String {
+        if themeIDRaw.hasPrefix("custom:") {
+            let all = TenneyThemePersistence.loadAll()
+            let uuidString = themeIDRaw.replacingOccurrences(of: "custom:", with: "")
+            let id = UUID(uuidString: uuidString)
+            let theme = all.first(where: { $0.id == id })
+            return theme?.name ?? "Custom Theme"
+        }
+
+        let id = LatticeThemeID(rawValue: themeIDRaw)
+        return id?.displayName ?? themeIDRaw
+    }
+
     static func resolvedCurrent(
         themeIDRaw: String,
         scheme: ColorScheme,
