@@ -12,6 +12,7 @@ struct LearnTenneyPracticeView: View {
     @State private var auditionToggledOnce = false
     @State private var primeLimitTapCount = 0
     @State private var focusTarget: String? = nil
+    @State private var practiceRestartID = UUID()
 
     init(module: LearnTenneyModule, focus: Binding<LearnPracticeFocus?>) {
         self.module = module
@@ -37,6 +38,24 @@ struct LearnTenneyPracticeView: View {
     private func finishPractice() {
         focus = nil
         dismiss()
+    }
+
+    private func resetPractice() {
+        coordinator.reset()
+        LearnTenneyPersistence.shared.resetState(module)
+        auditionToggledOnce = false
+        primeLimitTapCount = 0
+        focusTarget = learnTargetID(for: focus)
+        practiceRestartID = UUID()
+    }
+
+    private func continueToNextModule() {
+        guard let next = module.nextModule else {
+            finishPractice()
+            return
+        }
+        LearnTenneyStateStore.shared.pendingModuleToOpen = next
+        finishPractice()
     }
 
     private func learnTargetID(for focus: LearnPracticeFocus?) -> String? {
@@ -80,6 +99,7 @@ struct LearnTenneyPracticeView: View {
 
         ZStack(alignment: .top) {
             PracticeContent(module: module, stepIndex: idx)
+                .id(practiceRestartID)
                 .environment(\.learnGate, coordinator.gate)
                 .overlayPreferenceValue(LearnTargetAnchorKey.self) { targets in
                     GeometryReader { proxy in
@@ -97,7 +117,8 @@ struct LearnTenneyPracticeView: View {
                 }
 
             // Top-right + pushed DOWN so top-left prime chips stay visible/tappable
-            LearnOverlay(
+            let overlay = LearnOverlay(
+                module: module,
                 stepIndex: idx,
                 totalSteps: steps.count,
                 step: overlayStep(for: idx),
@@ -105,14 +126,20 @@ struct LearnTenneyPracticeView: View {
                 nextEnabled: nextEnabledForStep,
                 onBack: coordinator.back,
                 onNext: coordinator.next,
-                onReset: coordinator.reset,
-                onDone: finishPractice
+                onReset: resetPractice,
+                onDone: finishPractice,
+                onContinue: continueToNextModule
             )
 
-            .frame(maxWidth: 420)
-            .frame(maxWidth: .infinity, alignment: .topTrailing)
-            .padding(.top, 72)
-            .padding(.horizontal, 12)
+            if coordinator.completed {
+                overlay
+            } else {
+                overlay
+                    .frame(maxWidth: 420)
+                    .frame(maxWidth: .infinity, alignment: .topTrailing)
+                    .padding(.top, 72)
+                    .padding(.horizontal, 12)
+            }
         }
         .onReceive(LearnEventBus.shared.publisher) { (e: LearnEvent) in
             handleLearnEvent(e)

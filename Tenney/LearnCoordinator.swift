@@ -58,12 +58,14 @@ final class LearnCoordinator: ObservableObject {
         resetBuilderStep4State()
         currentStepIndex -= 1
         enterStep(currentStepIndex)
+        persistState(stepIndex: currentStepIndex, completed: false)
     }
 
     func reset() {
         completed = false
         currentStepIndex = 0
         enterStep(0)
+        persistState(stepIndex: 0, completed: false)
     }
 
 
@@ -98,10 +100,16 @@ final class LearnCoordinator: ObservableObject {
         if next < steps.count {
             currentStepIndex = next
             gate = steps[next].gate
+            persistState(stepIndex: next, completed: false)
         } else {
             completed = true
             gate = LearnGate() // unlock everything
+            persistState(stepIndex: steps.count, completed: true)
         }
+    }
+
+    private func persistState(stepIndex: Int, completed: Bool) {
+        LearnTenneyPersistence.shared.saveState(module, stepIndex: stepIndex, completed: completed)
     }
 
     private func handleBuilderStep4Event(_ event: LearnEvent) {
