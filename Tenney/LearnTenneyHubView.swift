@@ -14,7 +14,7 @@ enum LearnTenneyEntryPoint: Sendable {
 }
 
 enum LearnTenneyModule: String, CaseIterable, Identifiable, Sendable {
-    case lattice, tuner, builder
+    case lattice, tuner, builder, rootPitchTuningConfig
     var id: String { rawValue }
 
     var title: String {
@@ -22,6 +22,7 @@ enum LearnTenneyModule: String, CaseIterable, Identifiable, Sendable {
         case .lattice: return "Lattice"
         case .tuner:   return "Tuner"
         case .builder: return "Builder"
+        case .rootPitchTuningConfig: return "Root Pitch & Tuning Configuration"
         }
     }
 
@@ -30,6 +31,7 @@ enum LearnTenneyModule: String, CaseIterable, Identifiable, Sendable {
         case .lattice: return "Selection, limits, axis shift, and auditioning"
         case .tuner:   return "Views, locks, confidence, limits, and stage mode"
         case .builder: return "Pads, root, and the oscilloscope"
+        case .rootPitchTuningConfig: return "Root Hz, tonic naming, concert pitch, and troubleshooting"
         }
     }
 
@@ -38,6 +40,29 @@ enum LearnTenneyModule: String, CaseIterable, Identifiable, Sendable {
         case .lattice: return "dot.circle.and.hand.point.up.left.fill"
         case .tuner:   return "dial.high.fill"
         case .builder: return "pianokeys.inverse"
+        case .rootPitchTuningConfig: return "tuningfork"
+        }
+    }
+
+    var supportsPractice: Bool {
+        switch self {
+        case .rootPitchTuningConfig:
+            return false
+        default:
+            return true
+        }
+    }
+
+    var supportsReference: Bool {
+        true
+    }
+
+    var referenceTopics: [LearnReferenceTopic] {
+        switch self {
+        case .rootPitchTuningConfig:
+            return LearnReferenceTopic.allCases
+        default:
+            return []
         }
     }
 
@@ -64,7 +89,7 @@ struct LearnTenneyHubView: View {
             Section {
                 ForEach(LearnTenneyModule.allCases) { m in
                     let state = stateForModule(m)
-                    let totalSteps = LearnStepFactory.steps(for: m).count
+                    let totalSteps = totalSteps(for: m)
                     let stepsDone = min(max(0, state.stepIndex), totalSteps)
                     let progress = totalSteps > 0 ? Double(stepsDone) / Double(totalSteps) : 0
                     let tint = moduleTint
@@ -117,42 +142,7 @@ struct LearnTenneyHubView: View {
             } header: {
                 Text("Modules")
             } footer: {
-                Text("Each module includes a short tour through an interactive practice sandbox and a searchable control glossary.")
-            }
-
-            Section {
-                ForEach(LearnReferenceTopic.allCases) { topic in
-                    NavigationLink {
-                        LearnTenneyReferenceTopicView(topic: topic)
-                    } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: topic.systemImage)
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundStyle(.tint)
-                                .frame(width: 30, height: 30)
-                                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(topic.title)
-                                    .font(.headline)
-                                Text(topic.subtitle)
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(2)
-                            }
-
-                            Spacer()
-                        }
-                        .padding(.vertical, 2)
-                        .accessibilityElement(children: .ignore)
-                        .accessibilityLabel(Text(topic.title))
-                        .accessibilityValue(Text(topic.subtitle))
-                    }
-                }
-            } header: {
-                Text("Reference")
-            } footer: {
-                Text("Instrument-grade explanations for how Tenney names, anchors, and interprets pitch.")
+                Text("Each module includes practice, reference, or both — all organized by area.")
             }
         }
         .navigationTitle("Learn Tenney")
@@ -179,6 +169,16 @@ struct LearnTenneyHubView: View {
 
     private func stateForModule(_ m: LearnTenneyModule) -> TenneyPracticeSnapshot.ModuleState {
         store.states[m] ?? .init(stepIndex: 0, completed: false)
+    }
+
+    private func totalSteps(for module: LearnTenneyModule) -> Int {
+        if module.supportsPractice {
+            return LearnStepFactory.steps(for: module).count
+        }
+        if module.supportsReference {
+            return module.referenceTopics.count
+        }
+        return 0
     }
 
     private func accessibilityValue(for module: LearnTenneyModule, state: TenneyPracticeSnapshot.ModuleState, totalSteps: Int) -> String {
