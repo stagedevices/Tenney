@@ -74,9 +74,15 @@ extension Date {
 extension TenneyPracticeSnapshot {
     static let shared = TenneyPracticeSnapshot()
 
+    struct ModuleState: Equatable {
+        let stepIndex: Int
+        let completed: Bool
+    }
+
     func markCompleted(_ module: LearnTenneyModule) {
-        let key = "learn.\(module.rawValue).completed"
-        UserDefaults.standard.set(true, forKey: key)
+        let state = ModuleState(stepIndex: loadCurrentStep(module), completed: true)
+        UserDefaults.standard.set(true, forKey: "learn.\(module.rawValue).completed")
+        LearnTenneyStateStore.shared.updateState(module, state: state)
     }
 
     func isCompleted(_ module: LearnTenneyModule) -> Bool {
@@ -86,9 +92,45 @@ extension TenneyPracticeSnapshot {
 
     func saveCurrentStep(_ module: LearnTenneyModule, index: Int) {
         UserDefaults.standard.set(index, forKey: "learn.\(module.rawValue).step")
+        let state = ModuleState(stepIndex: index, completed: isCompleted(module))
+        LearnTenneyStateStore.shared.updateState(module, state: state)
     }
 
     func loadCurrentStep(_ module: LearnTenneyModule) -> Int {
         UserDefaults.standard.integer(forKey: "learn.\(module.rawValue).step")
+    }
+
+    func loadState(_ module: LearnTenneyModule) -> ModuleState {
+        ModuleState(stepIndex: loadCurrentStep(module), completed: isCompleted(module))
+    }
+
+    func saveState(_ module: LearnTenneyModule, stepIndex: Int, completed: Bool) {
+        UserDefaults.standard.set(stepIndex, forKey: "learn.\(module.rawValue).step")
+        UserDefaults.standard.set(completed, forKey: "learn.\(module.rawValue).completed")
+        let state = ModuleState(stepIndex: stepIndex, completed: completed)
+        LearnTenneyStateStore.shared.updateState(module, state: state)
+    }
+
+    func resetState(_ module: LearnTenneyModule) {
+        saveState(module, stepIndex: 0, completed: false)
+    }
+}
+
+final class LearnTenneyStateStore: ObservableObject {
+    static let shared = LearnTenneyStateStore()
+
+    @Published private(set) var states: [LearnTenneyModule: TenneyPracticeSnapshot.ModuleState]
+    @Published var pendingModuleToOpen: LearnTenneyModule? = nil
+
+    private init() {
+        var initial: [LearnTenneyModule: TenneyPracticeSnapshot.ModuleState] = [:]
+        for module in LearnTenneyModule.allCases {
+            initial[module] = TenneyPracticeSnapshot.shared.loadState(module)
+        }
+        self.states = initial
+    }
+
+    func updateState(_ module: LearnTenneyModule, state: TenneyPracticeSnapshot.ModuleState) {
+        states[module] = state
     }
 }
