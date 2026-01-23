@@ -29,6 +29,7 @@ struct ContentView: View {
     @AppStorage(SettingsKeys.setupWizardDone) private var setupWizardDone: Bool = false
 private let libraryStore = ScaleLibraryStore.shared
     @Environment(\.colorScheme) private var systemScheme
+    @Environment(\.openURL) private var openURL
     @AppStorage(SettingsKeys.latticeThemeStyle) private var themeStyleRaw: String = "system"
     private var resolvedTheme: ResolvedTenneyTheme {
         let _ = monochromeTintHex
@@ -294,6 +295,12 @@ private let libraryStore = ScaleLibraryStore.shared
                 withAnimation(.easeOut(duration: 0.25)) { venueToast = nil }
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .tenneyLearnDeepLink)) { note in
+            guard let destination = LearnTenneyDeepLinkDestination.from(note) else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                handleLearnDeepLink(destination)
+            }
+        }
         .safeAreaInset(edge: .top) {
             if let t = venueToast {
                 VenueBanner(text: "\(t.name) • A4 \(String(format: "%.1f", t.a4)) Hz")
@@ -515,6 +522,27 @@ private let libraryStore = ScaleLibraryStore.shared
 
     private func librarySheetDismiss() {
         app.setMicActive(mode == .tuner)
+    }
+
+    private func handleLearnDeepLink(_ destination: LearnTenneyDeepLinkDestination) {
+        DiagnosticsCenter.shared.event(category: "learn", level: .info, message: "LearnDeepLink handled: \(destination.rawValue)")
+        SentryService.shared.breadcrumb(category: "learn", message: "LearnDeepLink handled: \(destination.rawValue)")
+        switch destination {
+        case .libraryHome:
+            app.scaleLibraryLaunchMode = .recents
+            app.showScaleLibraryDetent = true
+        case .communityPacks:
+            app.scaleLibraryLaunchMode = .communityPacks
+            app.showScaleLibraryDetent = true
+        case .builderHome:
+            app.builderPayload = ScaleBuilderPayload(
+                rootHz: app.effectiveRootHz,
+                primeLimit: app.tunerPrimeLimit,
+                items: []
+            )
+        case .communityPackSubmission:
+            openURL(CommunityPacksEndpoints.issuesURL)
+        }
     }
 
     @ViewBuilder
