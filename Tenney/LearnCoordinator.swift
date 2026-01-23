@@ -29,6 +29,8 @@ final class LearnCoordinator: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private let module: LearnTenneyModule
     private let steps: [LearnStep]
+    private var builderStep4Pads: Set<Int> = []
+    private var builderStep4TimerTask: Task<Void, Never>? = nil
 
     init(module: LearnTenneyModule, steps: [LearnStep]) {
         self.module = module
@@ -36,6 +38,10 @@ final class LearnCoordinator: ObservableObject {
         self.gate = steps.first?.gate ?? LearnGate()
         subscribe()
         enterStep(0)
+    }
+
+    deinit {
+        resetBuilderStep4State()
     }
 
     private func subscribe() {
@@ -49,6 +55,7 @@ final class LearnCoordinator: ObservableObject {
 
     func back() {
         guard currentStepIndex > 0 else { return }
+        resetBuilderStep4State()
         currentStepIndex -= 1
         enterStep(currentStepIndex)
     }
@@ -62,6 +69,7 @@ final class LearnCoordinator: ObservableObject {
 
     private func handle(_ event: LearnEvent) {
         guard currentStepIndex < steps.count else { return }
+        handleBuilderStep4Event(event)
         let step = steps[currentStepIndex]
         let validated = step.validate(event)
 #if DEBUG
@@ -80,11 +88,13 @@ final class LearnCoordinator: ObservableObject {
 
     private func enterStep(_ i: Int) {
         guard i < steps.count else { completed = true; return }
+        resetBuilderStep4State()
         gate = steps[i].gate
     }
 
     private func advance() {
         let next = currentStepIndex + 1
+        resetBuilderStep4State()
         if next < steps.count {
             currentStepIndex = next
             gate = steps[next].gate
@@ -94,6 +104,56 @@ final class LearnCoordinator: ObservableObject {
         }
     }
 
+    private func handleBuilderStep4Event(_ event: LearnEvent) {
+        guard isBuilderStep4Active else { return }
+        guard case let .builderPadTriggered(index) = event else { return }
+        builderStep4Pads.insert(index)
+#if DEBUG
+        print("[LearnCoordinator] builder step 4 pad count=\(builderStep4Pads.count)")
+#endif
+        startBuilderStep4TimerIfNeeded()
+    }
+
+    private var isBuilderStep4Active: Bool {
+        module == .builder && currentStepIndex == 3 && !completed
+    }
+
+    private func resetBuilderStep4State() {
+        builderStep4Pads.removeAll()
+        builderStep4TimerTask?.cancel()
+        builderStep4TimerTask = nil
+#if DEBUG
+        if module == .builder {
+            print("[LearnCoordinator] builder step 4 reset/cancel")
+        }
+#endif
+    }
+
+    private func startBuilderStep4TimerIfNeeded() {
+        guard isBuilderStep4Active else { return }
+        guard builderStep4Pads.count >= 2 else { return }
+        guard builderStep4TimerTask == nil else { return }
+#if DEBUG
+        print("[LearnCoordinator] builder step 4 timer started")
+#endif
+        builderStep4TimerTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            guard let self else { return }
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                guard self.isBuilderStep4Active, self.builderStep4Pads.count >= 2 else { return }
+#if DEBUG
+                print("[LearnCoordinator] builder step 4 timer satisfied")
+#endif
+                self.handle(.builderScopeTimedSatisfied)
+            }
+            await MainActor.run {
+                if self.builderStep4TimerTask?.isCancelled == false {
+                    self.builderStep4TimerTask = nil
+                }
+            }
+        }
+    }
 }
 
 struct LearnStep: Sendable {

@@ -155,10 +155,10 @@ enum LearnStepFactory {
                 ),
                 LearnStep(
                     title: "Oscilloscope",
-                    instruction: "Use the scope as immediate visual feedback: stability, motion, blend.",
-                    tryIt: "Show the scope once (visual feedback).",
-                    gate: .init(allowedTargets: ["builder_scope"], isActive: true),
-                    validate: { $0 == .builderOscilloscopeObserved }
+                    instruction: "Use pads and observe the scope.",
+                    tryIt: "Trigger at least two different pads, then keep playing/observing for 5 seconds.",
+                    gate: .init(allowedTargets: ["builder_pad", "builder_scope"], isActive: true),
+                    validate: { $0 == .builderScopeTimedSatisfied }
                 )
             ]
         }
