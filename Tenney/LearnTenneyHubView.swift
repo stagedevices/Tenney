@@ -39,7 +39,7 @@ enum LearnTenneyModule: String, CaseIterable, Identifiable, Sendable {
 
     var systemImage: String {
         switch self {
-        case .lattice: return "dot.circle.and.hand.point.up.left.fill"
+        case .lattice: return "point.3.connected.trianglepath.dotted"
         case .tuner:   return "dial.high.fill"
         case .builder: return "pianokeys.inverse"
         case .libraryPacks: return "tray.fill"

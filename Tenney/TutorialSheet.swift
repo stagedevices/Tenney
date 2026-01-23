@@ -34,7 +34,7 @@ enum TutorialTab: String, CaseIterable, Identifiable {
 
     var symbol: String {
         switch self {
-        case .lattice: return "hexagon"
+        case .lattice: return "point.3.connected.trianglepath.dotted"
         case .tuner:   return "tuningfork"
         case .builder: return "hammer"
         case .studio:  return "slider.horizontal.3"

@@ -18,7 +18,7 @@ import UIKit
 
     var systemImage: String {
         switch self {
-        case .lattice: return "hexagon"
+        case .lattice: return "point.3.connected.trianglepath.dotted"
         case .tuner: return "gauge"
         case .library: return "tray.fill"
         case .learn: return "graduationcap"
@@ -137,7 +137,7 @@ struct CatalystAppShellView: View {
 
         ToolbarItemGroup(placement: .navigationBarLeading) {
             Picker("Mode", selection: $selection) {
-                Label("Lattice", systemImage: "hexagon").tag(CatalystDestination.lattice)
+                Label("Lattice", systemImage: "point.3.connected.trianglepath.dotted").tag(CatalystDestination.lattice)
                 Label("Tuner", systemImage: "gauge").tag(CatalystDestination.tuner)
             }
             .pickerStyle(.segmented)
@@ -152,7 +152,7 @@ struct CatalystAppShellView: View {
                     let size = latticeViewSize == .zero ? CGSize(width: 1200, height: 760) : latticeViewSize
                     withAnimation(.snappy) { latticeStore.resetView(in: size) }
                 } label: {
-                    Label("Center", systemImage: "dot.circle.and.hand.point.up.left.fill")
+                    Label("Center", systemImage: "point.3.connected.trianglepath.dotted")
                 }
             }
         }

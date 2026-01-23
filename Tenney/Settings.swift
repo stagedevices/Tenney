@@ -536,7 +536,7 @@ struct StudioConsoleView: View {
         }
         var icon: String {
             switch self {
-            case .lattice:      return "hexagon"
+            case .lattice:      return "point.3.connected.trianglepath.dotted"
             case .theme:        return "paintpalette"
             case .tuner:        return "gauge"   // (or "tuningfork" if you prefer)
             case .oscilloscope: return "waveform.path.ecg"
@@ -4185,7 +4185,7 @@ private struct GlassNavTile<Destination: View>: View {
             HStack(spacing: 10) {
                 GlassChoiceChip(
                     title: "Lattice",
-                    systemImage: "hexagon",
+                    systemImage: "point.3.connected.trianglepath.dotted",
                     selected: defaultView == "lattice"
                 ) {
                     withAnimation(.snappy) { defaultView = "lattice" }

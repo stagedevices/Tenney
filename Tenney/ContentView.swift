@@ -2026,7 +2026,7 @@ private struct UtilityBar: View {
     }
 
     private var modeTabs: [ModeTab] {
-        let lattice = ModeTab(mode: .lattice, title: "Lattice", icon: "dot.circle.and.hand.point.up.left.fill")
+        let lattice = ModeTab(mode: .lattice, title: "Lattice", icon: "point.3.connected.trianglepath.dotted")
         let tuner  = ModeTab(mode: .tuner,  title: "Tuner",  icon: "waveform")
         return (defaultView == "lattice") ? [lattice, tuner] : [tuner, lattice]
     }
