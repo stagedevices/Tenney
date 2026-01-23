@@ -48,6 +48,61 @@ enum LearnReferenceTopic: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+enum LearnLibraryPacksLesson: String, CaseIterable, Identifiable, Sendable {
+    case libraryBasics
+    case packs
+    case importExport
+    case communityPacks
+    case submitCommunityPack
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .libraryBasics:
+            return "What the Library is"
+        case .packs:
+            return "Packs"
+        case .importExport:
+            return "Import / Export"
+        case .communityPacks:
+            return "Community Packs (Curated)"
+        case .submitCommunityPack:
+            return "Submit a Community Pack"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .libraryBasics:
+            return "Your collection, organized for recall"
+        case .packs:
+            return "Folders and collections that travel together"
+        case .importExport:
+            return "Share scales without losing originals"
+        case .communityPacks:
+            return "Verified packs from the community"
+        case .submitCommunityPack:
+            return "How to contribute and get curated"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .libraryBasics:
+            return "tray.full"
+        case .packs:
+            return "folder.fill"
+        case .importExport:
+            return "arrow.up.arrow.down"
+        case .communityPacks:
+            return "shippingbox.fill"
+        case .submitCommunityPack:
+            return "paperplane.fill"
+        }
+    }
+}
+
 struct LearnTenneyReferenceTopicView: View {
     let topic: LearnReferenceTopic
     var module: LearnTenneyModule? = nil
@@ -85,99 +140,150 @@ struct LearnTenneyReferenceTopicView: View {
 }
 
 struct LearnTenneyLibraryPacksReferenceView: View {
+    var body: some View {
+        List {
+            ForEach(LearnLibraryPacksLesson.allCases) { lesson in
+                NavigationLink {
+                    LearnTenneyLibraryPacksLessonView(lesson: lesson)
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: lesson.systemImage)
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(.tint)
+                            .frame(width: 30, height: 30)
+                            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(lesson.title)
+                                .font(.headline)
+                            Text(lesson.subtitle)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
+
+                        Spacer()
+                    }
+                    .padding(.vertical, 2)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(Text(lesson.title))
+                    .accessibilityValue(Text(lesson.subtitle))
+                }
+            }
+        }
+    }
+}
+
+struct LearnTenneyLibraryPacksLessonView: View {
+    let lesson: LearnLibraryPacksLesson
+
     @EnvironmentObject private var app: AppModel
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
+    @State private var pendingDeepLink: PendingDeepLink? = nil
+
+    private enum PendingDeepLink {
+        case openLibrary
+        case openPacks
+        case openCommunityPacks
+        case openSubmission
+    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                LearnReferenceCard(
-                    title: "What the Library is",
-                    bullets: [
-                        "Library = your scales collection.",
-                        "Packs are folders/collections that organize scales.",
-                        "Tags + Favorites help you retrieve fast."
-                    ],
-                    actions: [
-                        .init(title: "Open Library", isProminent: true, action: openLibrary)
-                    ]
-                )
-
-                LearnReferenceCard(
-                    title: "Packs (Folders)",
-                    bullets: [
-                        "Packs group scales by idea, tuning, or project.",
-                        "Installing a pack adds its scales to the Library.",
-                        "Access packs from the Library or the Community Packs page.",
-                        "Keep personal packs separate from curated Community Packs."
-                    ],
-                    actions: [
-                        .init(title: "Open Packs", isProminent: false, action: openLibrary)
-                    ]
-                )
-
-                LearnReferenceCard(
-                    title: "Tags & Favorites",
-                    bullets: [
-                        "Favorites = quick shortlist.",
-                        "Tags = cross-cutting organization (genre, limit, source).",
-                        "Combine tags + search to find scales fast."
-                    ],
-                    actions: []
-                )
-
-                LearnReferenceCard(
-                    title: "Import / Export",
-                    bullets: [
-                        "Import brings scale files or packs into your Library.",
-                        "Export shares scales/packs as .scl / .kbm (and more).",
-                        "Exports don’t delete your originals."
-                    ],
-                    actions: []
-                )
-
-                LearnReferenceCard(
-                    title: "Community Packs (Curated)",
-                    bullets: [
-                        "Curated/verified packs from Tenney devs + community contributors.",
-                        "Fetched from the internet (connection required).",
-                        "Installing adds a pack to your Library like any other pack."
-                    ],
-                    actions: [
-                        .init(title: "Browse Community Packs", isProminent: true, action: openCommunityPacks)
-                    ]
-                )
-
-                LearnReferenceCard(
-                    title: "Submit a Community Pack",
-                    bullets: [
-                        "Want to contribute? Follow the submission process.",
-                        "Every pack is curated/verified before listing."
-                    ],
-                    actions: [
-                        .init(title: "How to Submit", isProminent: false, action: openSubmission)
-                    ]
-                )
+                lessonCard
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
         }
-        .navigationTitle("Library & Packs")
+        .navigationTitle(lesson.title)
         .navigationBarTitleDisplayMode(.inline)
+        .onDisappear {
+            guard let pending = pendingDeepLink else { return }
+            pendingDeepLink = nil
+            handlePendingDeepLink(pending)
+        }
     }
 
-    private func openLibrary() {
-        app.scaleLibraryLaunchMode = .recents
-        app.showScaleLibraryDetent = true
+    @ViewBuilder
+    private var lessonCard: some View {
+        switch lesson {
+        case .libraryBasics:
+            LearnReferenceCard(
+                title: "What the Library is",
+                bullets: [
+                    "Library = your collection of scales.",
+                    "Packs organize scales into folders/collections.",
+                    "Tags + Favorites make retrieval fast."
+                ],
+                actions: [
+                    .init(title: "Open Library", isProminent: true, action: { schedule(.openLibrary) })
+                ]
+            )
+        case .packs:
+            LearnReferenceCard(
+                title: "Packs",
+                bullets: [
+                    "Packs are folders/collections for scales.",
+                    "Installing a pack adds its scales to your Library.",
+                    "Keep personal packs separate from curated Community Packs."
+                ],
+                actions: [
+                    .init(title: "Open Packs", isProminent: false, action: { schedule(.openPacks) })
+                ]
+            )
+        case .importExport:
+            LearnReferenceCard(
+                title: "Import / Export",
+                bullets: [
+                    "Export supports .scl / .kbm (and more).",
+                    "Sharing doesn’t delete your originals."
+                ],
+                actions: []
+            )
+        case .communityPacks:
+            LearnReferenceCard(
+                title: "Community Packs (Curated)",
+                bullets: [
+                    "Curated/verified packs from Tenney and community contributors.",
+                    "Fetched from the internet (connection required).",
+                    "Installing adds the pack to your Library."
+                ],
+                actions: [
+                    .init(title: "Browse Community Packs", isProminent: true, action: { schedule(.openCommunityPacks) })
+                ]
+            )
+        case .submitCommunityPack:
+            LearnReferenceCard(
+                title: "Submit a Community Pack",
+                bullets: [
+                    "Follow the lightweight submission process.",
+                    "Every pack is curated/verified before listing."
+                ],
+                actions: [
+                    .init(title: "How to Submit", isProminent: false, action: { schedule(.openSubmission) })
+                ]
+            )
+        }
     }
 
-    private func openCommunityPacks() {
-        app.scaleLibraryLaunchMode = .communityPacks
-        app.showScaleLibraryDetent = true
+    private func schedule(_ pending: PendingDeepLink) {
+        pendingDeepLink = pending
+        dismiss()
     }
 
-    private func openSubmission() {
-        openURL(CommunityPacksEndpoints.issuesURL)
+    private func handlePendingDeepLink(_ pending: PendingDeepLink) {
+        switch pending {
+        case .openLibrary, .openPacks:
+            app.scaleLibraryLaunchMode = .recents
+            app.showScaleLibraryDetent = true
+        case .openCommunityPacks:
+            app.scaleLibraryLaunchMode = .communityPacks
+            app.showScaleLibraryDetent = true
+        case .openSubmission:
+            openURL(CommunityPacksEndpoints.issuesURL)
+        }
     }
 }
 
@@ -436,9 +542,13 @@ private struct LearnReferenceCard: View {
                                 action.action()
                             } label: {
                                 Text(action.title)
-                                    .frame(maxWidth: .infinity, minHeight: 36)
+                                    .font(.callout.weight(.semibold))
+                                    .frame(maxWidth: .infinity, minHeight: 44)
+                                    .padding(.horizontal, 14)
+                                    .foregroundStyle(.primary)
+                                    .modifier(GlassRoundedRect(corner: 12))
                             }
-                            .buttonStyle(action.isProminent ? .borderedProminent : .bordered)
+                            .buttonStyle(GlassPressFeedback())
                         }
                     }
                 }
