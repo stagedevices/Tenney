@@ -2729,16 +2729,13 @@ struct StudioConsoleView: View {
                 }
                 .overlay(alignment: .topLeading) {
                     if activeCategory != nil {
-                        Button {
-                            withAnimation(catAnim) { activeCategory = nil }
-                        } label: {
-                            Image(systemName: "chevron.backward")
-                                .font(.headline.weight(.semibold))
-                                .frame(width: 40, height: 40)
-                                .glassWhiteCircle()      // ⬅️ MOVE HERE
-                                .contentShape(Circle())
-                        }
-                        .buttonStyle(.plain)
+                        GlassWhiteCircleIconButton(
+                            systemName: "chevron.backward",
+                            accessibilityLabel: "Back",
+                            action: { withAnimation(catAnim) { activeCategory = nil } },
+                            size: 40,
+                            font: .headline.weight(.semibold)
+                        )
                         .padding(.top, 20)
                         .padding(.leading, 20)
                         .transition(.opacity)
