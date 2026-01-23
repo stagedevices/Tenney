@@ -82,7 +82,6 @@ struct LearnTenneyHubView: View {
     @State private var activeModule: LearnTenneyModule? = nil
     @Environment(\.tenneyTheme) private var theme
     @Environment(\.horizontalSizeClass) private var sizeClass
-    @EnvironmentObject private var app: AppModel
 
     var body: some View {
         List {
@@ -157,9 +156,6 @@ struct LearnTenneyHubView: View {
             guard let pending else { return }
             activeModule = pending
             store.pendingModuleToOpen = nil
-        }
-        .onDisappear {
-            app.setPipelineActive(false, reason: "learn_practice_dismiss")
         }
     }
 

@@ -21,6 +21,42 @@ enum AppModelLocator {
     // Register a handle for helpers that need read-only access to rootHz.
     static var shared: AppModel? }
 
+// Central mic/tuner lease manager: engine is allowed when user wants it OR any lease is active.
+final class MicTunerLeaseManager: ObservableObject {
+    final class LeaseToken {
+        private weak var manager: MicTunerLeaseManager?
+        private let reason: String
+        private var released = false
+
+        fileprivate init(manager: MicTunerLeaseManager, reason: String) {
+            self.manager = manager
+            self.reason = reason
+        }
+
+        func release() {
+            guard !released else { return }
+            released = true
+            manager?.release(reason: reason)
+            manager = nil
+        }
+
+        deinit {
+            release()
+        }
+    }
+
+    @Published private(set) var activeLeaseCount: Int = 0
+
+    func acquire(reason: String) -> LeaseToken {
+        activeLeaseCount += 1
+        return LeaseToken(manager: self, reason: reason)
+    }
+
+    private func release(reason: String) {
+        activeLeaseCount = max(0, activeLeaseCount - 1)
+    }
+}
+
 @MainActor
 final class AppModel: ObservableObject {
     struct BuilderSessionState: Equatable {
@@ -77,6 +113,11 @@ final class AppModel: ObservableObject {
         DiagnosticsCenter.shared.event(category: "app", level: .info, message: "AppModel init")
         SentryService.shared.breadcrumb(category: "app", message: "AppModel init")
         registerAudioSessionObservers()
+        leaseCancellable = tunerLeaseManager.$activeLeaseCount
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.updatePipelineWanted(reason: "leaseChange")
+            }
     }
     
     deinit {
@@ -89,6 +130,7 @@ final class AppModel: ObservableObject {
     @Published var micPermission: MicPermissionState = .unknown
     @Published var micDenied: Bool = false
     @Published var display: TunerDisplay = .empty
+    @Published private(set) var userWantsTunerOn: Bool = true
     @Published var rootHz: Double = {
         // Load persisted root Hz (independent from A4 ET reference)
         let v = UserDefaults.standard.double(forKey: SettingsKeys.rootHz)
@@ -143,6 +185,8 @@ final class AppModel: ObservableObject {
     // Settings deep-link (Mac Catalyst)
     @Published var openSettingsToTunerRail: Bool = false
     private let audio = AudioEngineService()
+    private let tunerLeaseManager = MicTunerLeaseManager()
+    private var leaseCancellable: AnyCancellable?
     // Scene activity + desired mic state
     @Published private(set) var sceneIsActive: Bool = true
     @Published private(set) var pipelineWanted: Bool = true
@@ -644,12 +688,8 @@ final class AppModel: ObservableObject {
     // MARK: Mic on/off (used by views)
     /// Request mic activity. Will only actually start if the scene is active and permission is granted.
     func setMicActive(_ active: Bool) {
-        desiredMicActive = active
-        pipelineWanted = active
-        if !active {
-            pipelineInterrupted = false
-        }
-        reconcilePipeline(reason: "setMicActive")
+        userWantsTunerOn = active
+        updatePipelineWanted(reason: "setMicActive")
     }
 
     func setPipelineActive(_ active: Bool, reason: String? = nil) {
@@ -662,6 +702,20 @@ final class AppModel: ObservableObject {
                 meta: ["reason": reason]
             )
         }
+    }
+
+    func acquireTunerLease(reason: String) -> MicTunerLeaseManager.LeaseToken {
+        tunerLeaseManager.acquire(reason: reason)
+    }
+
+    private func updatePipelineWanted(reason: String) {
+        let effectiveWanted = userWantsTunerOn || tunerLeaseManager.activeLeaseCount > 0
+        pipelineWanted = effectiveWanted
+        desiredMicActive = effectiveWanted
+        if !effectiveWanted {
+            pipelineInterrupted = false
+        }
+        reconcilePipeline(reason: reason)
     }
     
     // MARK: - Scale Library actions
