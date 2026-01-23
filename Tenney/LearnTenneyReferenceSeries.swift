@@ -410,7 +410,8 @@ private struct LearnSummaryCard: View {
     }
 }
 
-private struct LearnReferenceAction {
+private struct LearnReferenceAction: Identifiable {
+    let id = UUID()
     let title: String
     let isProminent: Bool
     let action: () -> Void
