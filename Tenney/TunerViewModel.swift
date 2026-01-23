@@ -30,7 +30,12 @@ final class TunerViewModel: ObservableObject {
     // Controls
     @Published var primeLimit: PrimeLimit = .eleven { didSet { resolver.limit = primeLimit } }
     @Published var strictness: Strictness = .performance { didSet { tracker.updateStrictness(strictness) } }
-    @Published var rootHz: Double = 220.0 { didSet { resolver.rootHz = rootHz } }
+    @Published var rootHz: Double = 220.0 {
+        didSet {
+            resolver.rootHz = rootHz
+            LearnEventBus.shared.send(.tunerRootChanged(rootHz))
+        }
+    }
 
     // Diagnostics
     @Published var inputRMS: Float = 0
@@ -38,7 +43,10 @@ final class TunerViewModel: ObservableObject {
 
     // Test tone toggle (visible in UI)
     @Published var useTestTone: Bool = false {
-        didSet { tracker.setTestTone(enabled: useTestTone, hz: 220.0) }
+        didSet {
+            tracker.setTestTone(enabled: useTestTone, hz: 220.0)
+            LearnEventBus.shared.send(.tunerOutputEnabledChanged(useTestTone))
+        }
     }
     
     @Published var lastHzValue: Double = 0

@@ -130,6 +130,7 @@ struct LatticeScreen: View {
 
             Button {
                 store.auditionEnabled.toggle()
+                LearnEventBus.shared.send(.latticeAuditionEnabledChanged(store.auditionEnabled))
             } label: {
                 Image(systemName: store.auditionEnabled ? "speaker.wave.2.circle.fill" : "speaker.wave.2.circle")
                     .symbolRenderingMode(.hierarchical)

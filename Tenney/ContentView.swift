@@ -475,6 +475,7 @@ private let libraryStore = ScaleLibraryStore.shared
                 globalPrimeLimit: app.tunerPrimeLimit,
                 globalAxisShift: latticeAxisShift,
                 onLockTarget: { ref in
+                    LearnEventBus.shared.send(.tunerTargetPicked("\(ref.p)/\(ref.q)"))
                     tunerStore.lockedTarget = RatioResult(num: ref.p, den: ref.q, octave: ref.octave)
                 },
                 onExportScale: { payload in
@@ -651,6 +652,7 @@ private let libraryStore = ScaleLibraryStore.shared
     private func switchAltShortcut(delta: Int) {
         let targetText = delta < 0 ? app.display.lowerText : app.display.higherText
         guard !targetText.isEmpty, let ref = parseRatio(targetText) else { return }
+        LearnEventBus.shared.send(.tunerTargetPicked(targetText))
         tunerStore.lockedTarget = ref
     }
 #endif
@@ -1008,12 +1010,22 @@ extension Notification.Name {
                     if store.lockedTarget == nil {
                         HStack {
                             NextChip(title: "Lower",  text: model.display.lowerText)
-                                .onTapGesture { if let r = parseRatio(model.display.lowerText) { store.lockedTarget = r } }
+                                .onTapGesture {
+                                    if let r = parseRatio(model.display.lowerText) {
+                                        LearnEventBus.shared.send(.tunerTargetPicked(model.display.lowerText))
+                                        store.lockedTarget = r
+                                    }
+                                }
                             Spacer(minLength: 12)
                             BadgeCapsule(text: "Current \(ratioDisplayText)", style: AnyShapeStyle(Color.secondary.opacity(0.15)))
                             Spacer(minLength: 12)
                             NextChip(title: "Higher", text: model.display.higherText)
-                                .onTapGesture { if let r = parseRatio(model.display.higherText) { store.lockedTarget = r } }
+                                .onTapGesture {
+                                    if let r = parseRatio(model.display.higherText) {
+                                        LearnEventBus.shared.send(.tunerTargetPicked(model.display.higherText))
+                                        store.lockedTarget = r
+                                    }
+                                }
                         }
                         .transition(.opacity)
                     } else {
@@ -1246,6 +1258,7 @@ extension Notification.Name {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .onTapGesture {
                                 if let r = parseRatio(model.display.lowerText) {
+                                    LearnEventBus.shared.send(.tunerTargetPicked(model.display.lowerText))
                                     withAnimation(.snappy) { store.lockedTarget = r }
                                 }
                             }
@@ -1254,6 +1267,7 @@ extension Notification.Name {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .onTapGesture {
                                 if let r = parseRatio(model.display.higherText) {
+                                    LearnEventBus.shared.send(.tunerTargetPicked(model.display.higherText))
                                     withAnimation(.snappy) { store.lockedTarget = r }
                                 }
                             }
@@ -1602,6 +1616,7 @@ private struct UtilityBar: View {
             if mode == .lattice {
                 Button {
                     app.latticeAuditionOn.toggle()
+                    LearnEventBus.shared.send(.latticeAuditionEnabledChanged(app.latticeAuditionOn))
                 } label: {
                     let on = app.latticeAuditionOn
 
@@ -1811,7 +1826,11 @@ private struct RootCardCompact: View {
         }
     }
 
-    private func open(_ tab: RootStudioTab) { showSheet = true
+    private func open(_ tab: RootStudioTab) {
+        showSheet = true
+        if tab == .history {
+            LearnEventBus.shared.send(.tunerPitchHistoryOpened)
+        }
         NotificationCenter.default.post(name: .openRootStudioTab, object: tab.rawValue)
     }
 

@@ -40,8 +40,16 @@ struct LearnTenneyPracticeView: View {
 
     private func handleLearnEvent(_ e: LearnEvent) {
         switch e {
+        case .latticeAuditionEnabledChanged:
+            if coordinator.currentStepIndex == 1 { auditionToggledOnce = true }
+
         case .latticeAuditionToggled:
             if coordinator.currentStepIndex == 1 { auditionToggledOnce = true }
+
+        case .latticePrimeChipToggled:
+            if coordinator.currentStepIndex == 2 || coordinator.currentStepIndex == 3 {
+                primeLimitTapCount += 1
+            }
 
         case .latticePrimeChipTapped:
             if coordinator.currentStepIndex == 2 || coordinator.currentStepIndex == 3 {

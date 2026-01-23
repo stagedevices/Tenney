@@ -145,6 +145,7 @@ final class TunerStore: ObservableObject {
         } else {
             lockedTarget = currentNearest
         }
+        LearnEventBus.shared.send(.tunerLockToggled(lockedTarget != nil))
     }
 
 }

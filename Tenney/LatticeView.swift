@@ -4494,7 +4494,9 @@ struct LatticeView: View {
                             overlayPrimeHoldConsumedTap = false
                             return
                         }
-                        store.setPrimeVisible(p, !on, animated: true)
+                        let nextOn = !on
+                        store.setPrimeVisible(p, nextOn, animated: true)
+                        LearnEventBus.shared.send(.latticePrimeChipToggled(p, nextOn))
                     }
                     .highPriorityGesture(
                         LongPressGesture(minimumDuration: 0.35)
