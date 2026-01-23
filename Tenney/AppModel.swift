@@ -515,6 +515,18 @@ final class AppModel: ObservableObject {
             audio.stop(deactivateSession: false)
         }
     }
+
+    func setPipelineActive(_ active: Bool, reason: String? = nil) {
+        setMicActive(active)
+        if let reason {
+            DiagnosticsCenter.shared.event(
+                category: "tuner",
+                level: .info,
+                message: "practice mic \(active ? "on" : "off")",
+                meta: ["reason": reason]
+            )
+        }
+    }
     
     // MARK: - Scale Library actions
     

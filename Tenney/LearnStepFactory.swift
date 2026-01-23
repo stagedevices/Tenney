@@ -94,9 +94,18 @@ enum LearnStepFactory {
                         "Lock fixes your target so the UI stops “chasing” nearby ratios.",
                         "Use lock when practicing intonation against one goal."
                     ],
-                    tryIt: "Long-press the target control to lock, then unlock.",
+                    tryIt: "Long-press the target control to lock.",
                     gate: .init(allowedTargets: ["tuner_lock"], isActive: true),
-                    validate: { if case .tunerLockToggled = $0 { return true } else { return false } }
+                    validate: { if case .tunerLockToggled(true) = $0 { return true } else { return false } }
+                ),
+                LearnStep(
+                    title: "Unlock target (long-press)",
+                    bullets: [
+                        "Long-press the tuner dial again to unlock the target."
+                    ],
+                    tryIt: "Long-press the tuner dial to unlock.",
+                    gate: .init(allowedTargets: ["tuner_lock"], isActive: true),
+                    validate: { if case .tunerLockToggled(false) = $0 { return true } else { return false } }
                 ),
                 LearnStep(
                             title: "Prime limit chips",

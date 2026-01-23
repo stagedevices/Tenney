@@ -212,6 +212,8 @@ final class PitchTracker {
         removeInputTapIfAny()
         if engine.isRunning { engine.stop() }
         try? AVAudioSession.sharedInstance().setActive(false)
+        graphStarted = false
+        sessionConfigured = false
     }
 
     // MARK: - Session + graph
