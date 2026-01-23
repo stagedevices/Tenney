@@ -57,18 +57,6 @@ private enum RailCodec {
     }
 }
 
-/// Minimal ratio string → (p,q). Accepts "p/q" and trims whitespace.
-/// (We only need this for lock/capture/export; RatioSolver-candidates already provide RatioRef.)
-private func parsePQ(_ s: String) -> (p: Int, q: Int)? {
-    let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
-    let parts = t.split(separator: "/")
-    guard parts.count == 2,
-          let p = Int(parts[0].trimmingCharacters(in: .whitespaces)),
-          let q = Int(parts[1].trimmingCharacters(in: .whitespaces)),
-          p > 0, q > 0 else { return nil }
-    return (p, q)
-}
-
 private func primesUpTo(_ max: Int) -> [Int] {
     guard max >= 2 else { return [] }
     var isPrime = [Bool](repeating: true, count: max + 1)
@@ -109,7 +97,7 @@ private func monzoFromPQ(p: Int, q: Int, primeLimit: Int = 13) -> [Int:Int]? {
 /// Build a RatioRef from "p/q" (unit-octave) + computed monzo for primes up to 11.
 /// If you already have a project helper, you can swap this impl to that.
 private func ratioRefFrom(_ ratioText: String) -> RatioRef? {
-    guard let pq = parsePQ(ratioText) else { return nil }
+    guard let pq = parseRatioTextPQ(ratioText) else { return nil }
     let monzo = monzoFromPQ(p: pq.p, q: pq.q) ?? [:]
     return RatioRef(p: pq.p, q: pq.q, octave: 0, monzo: monzo)
 }

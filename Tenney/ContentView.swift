@@ -646,7 +646,7 @@ private let libraryStore = ScaleLibraryStore.shared
     }
 
     private func lockTargetShortcut() {
-        let nearest = parseRatio(app.display.ratioText)
+        let nearest = ratioResultFromText(app.display.ratioText)
         tunerStore.toggleLock(currentNearest: nearest)
     }
 
@@ -656,7 +656,7 @@ private let libraryStore = ScaleLibraryStore.shared
 
     private func switchAltShortcut(delta: Int) {
         let targetText = delta < 0 ? app.display.lowerText : app.display.higherText
-        guard !targetText.isEmpty, let ref = parseRatio(targetText) else { return }
+        guard !targetText.isEmpty, let ref = ratioResultFromText(targetText) else { return }
         LearnEventBus.shared.send(.tunerTargetPicked(targetText))
         tunerStore.lockedTarget = ref
     }
@@ -731,34 +731,62 @@ extension Notification.Name {
     private var liveHz: Double { model.display.hz }
     private var liveCents: Double { model.display.cents }
     private var liveConf: Double { model.display.confidence }
-    private var liveNearest: RatioResult? { parseRatio(model.display.ratioText) }
+    private var liveNearest: RatioResult? { ratioResultFromText(model.display.ratioText) }
     private var ratioDisplayText: String {
         store.lockedTarget.map { "\($0.num)/\($0.den)" } ?? model.display.ratioText
     }
 
     @StateObject private var hold = NeedleHoldState()
     @State private var currentNearest: RatioResult? = nil
+    @State private var showLockSheet: Bool = false
+    @State private var lockRatioText: String = ""
+    @State private var lockOctave: Int = 0
+    @State private var lockPulse: Bool = false
     @Binding var stageActive: Bool
 
     @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
     @Environment(\.verticalSizeClass) private var vSize
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.learnGate) private var learnGate
      
     private var accentStyle: AnyShapeStyle {
         ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency)
     }
+
+    private var lockPreview: RatioResult? {
+        ratioResultFromText(lockRatioText, octave: lockOctave)
+    }
+
+    private var lockLabelText: String {
+        guard let locked = store.lockedTarget else { return "" }
+        return "Locked to \(locked.num)/\(locked.den)"
+    }
+
+    private var lockChip: some View {
+        let isLocked = store.lockedTarget != nil
+        let title = isLocked ? "Locked" : "Lock…"
+        let system = isLocked ? "lock.fill" : "lock"
+        let tint = theme.inTuneHighlightColor(activeLimit: store.primeLimit)
+        return Button {
+            showLockSheet = true
+        } label: {
+            GlassChip(text: title, system: system, isOn: isLocked, tint: tint)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(isLocked ? "Locked target" : "Lock target")
+    }
      
      @ViewBuilder
-     private func tunerDial(
-         centsShown: Double,
-         liveConf: Double,
-         stageAccent: Color,
-         showFar: Bool,
-         held: Bool,
-         currentNearest: RatioResult?,
-         liveNearest: RatioResult?
-     ) -> some View {
+    private func tunerDial(
+        centsShown: Double,
+        liveConf: Double,
+        stageAccent: Color,
+        showFar: Bool,
+        held: Bool,
+        currentNearest: RatioResult?,
+        liveNearest: RatioResult?
+    ) -> some View {
          let ratioText = ratioDisplayText
          switch store.viewStyle {
          case .Gauge:
@@ -798,6 +826,147 @@ extension Notification.Name {
      //        PhaseScopeTunerView(vm: model, store: store)
          }
      }
+
+    @ViewBuilder
+    private func tunerDialWithLockDecorations(
+        centsShown: Double,
+        liveConf: Double,
+        stageAccent: Color,
+        showFar: Bool,
+        held: Bool,
+        currentNearest: RatioResult?,
+        liveNearest: RatioResult?
+    ) -> some View {
+        let isLocked = store.lockedTarget != nil
+        ZStack {
+            if isLocked && !reduceTransparency {
+                lockHalo(accent: stageAccent)
+            }
+            tunerDial(
+                centsShown: centsShown,
+                liveConf: liveConf,
+                stageAccent: stageAccent,
+                showFar: showFar,
+                held: held,
+                currentNearest: currentNearest,
+                liveNearest: liveNearest
+            )
+            .overlay {
+                if isLocked {
+                    lockRing(accent: stageAccent)
+                }
+            }
+            .overlay(alignment: .topTrailing) {
+                if isLocked {
+                    lockBadge(accent: stageAccent)
+                }
+            }
+        }
+    }
+
+    private func lockHalo(accent: Color) -> some View {
+        GeometryReader { geo in
+            let size = min(geo.size.width, geo.size.height)
+            Circle()
+                .fill(accent.opacity(theme.isDark ? 0.16 : 0.12))
+                .frame(width: size + 30, height: size + 30)
+                .position(x: geo.size.width / 2, y: geo.size.height / 2)
+                .blur(radius: 18)
+        }
+        .allowsHitTesting(false)
+    }
+
+    private func lockRing(accent: Color) -> some View {
+        GeometryReader { geo in
+            let size = min(geo.size.width, geo.size.height)
+            Circle()
+                .stroke(accent.opacity(0.9), lineWidth: 3)
+                .frame(width: size + 10, height: size + 10)
+                .position(x: geo.size.width / 2, y: geo.size.height / 2)
+                .scaleEffect(lockPulse ? 1.02 : 1.0)
+        }
+        .allowsHitTesting(false)
+    }
+
+    private func lockBadge(accent: Color) -> some View {
+        ZStack {
+            if #available(iOS 26.0, *) {
+                Color.clear
+                    .glassEffect(.regular, in: .circle)
+            } else {
+                Circle().fill(.ultraThinMaterial)
+            }
+            Image(systemName: "lock.fill")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.primary)
+        }
+        .frame(width: 30, height: 30)
+        .overlay(
+            Circle()
+                .strokeBorder(accent.opacity(0.6), lineWidth: 1)
+        )
+        .padding(8)
+        .accessibilityLabel("Locked target")
+    }
+
+    private func toggleDialLock(currentNearest: RatioResult?) {
+        let wasLocked = store.lockedTarget != nil
+        store.toggleLock(currentNearest: currentNearest)
+
+        if !wasLocked, store.lockedTarget != nil {
+            #if os(iOS) && !targetEnvironment(macCatalyst)
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            #endif
+        }
+
+        #if DEBUG
+        let hunting = currentNearest.map { tunerDisplayRatioString($0) } ?? "—"
+        let locked = store.lockedTarget.map { tunerDisplayRatioString($0) } ?? "—"
+        let effective = (store.lockedTarget ?? currentNearest).map { tunerDisplayRatioString($0) } ?? "—"
+        print("[Tuner] dial lock toggle: locked=\(locked) hunting=\(hunting) effective=\(effective)")
+        #endif
+    }
+
+    private func prepareLockSheetDefaults() {
+        if let locked = store.lockedTarget {
+            lockRatioText = "\(locked.num)/\(locked.den)"
+            lockOctave = locked.octave
+        } else if let nearest = (currentNearest ?? liveNearest) {
+            lockRatioText = "\(nearest.num)/\(nearest.den)"
+            lockOctave = nearest.octave
+        } else {
+            lockRatioText = ""
+            lockOctave = 0
+        }
+    }
+
+    private func commitLockFromSheet() {
+        guard let target = lockPreview else { return }
+        store.lockedTarget = target
+        #if DEBUG
+        let hunting = (currentNearest ?? liveNearest).map { tunerDisplayRatioString($0) } ?? "—"
+        let effective = tunerDisplayRatioString(target)
+        print("[Tuner] sheet lock: locked=\(effective) hunting=\(hunting) effective=\(effective)")
+        #endif
+        showLockSheet = false
+    }
+
+    private func unlockFromSheet() {
+        store.lockedTarget = nil
+        #if DEBUG
+        let hunting = (currentNearest ?? liveNearest).map { tunerDisplayRatioString($0) } ?? "—"
+        print("[Tuner] sheet unlock: locked=— hunting=\(hunting) effective=\(hunting)")
+        #endif
+        showLockSheet = false
+    }
+
+    private func pulseLockRingIfNeeded() {
+        guard !reduceMotion else { return }
+        withAnimation(.easeOut(duration: 0.12)) { lockPulse = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+            withAnimation(.easeInOut(duration: 0.12)) { lockPulse = false }
+        }
+    }
 
 
     private func centsVsLocked(_ locked: RatioResult?, hz: Double, root: Double) -> Double {
@@ -870,16 +1039,82 @@ extension Notification.Name {
      #endif
          }
      
-         var body: some View {
-             GlassCard(corner: 20) {
-                 if isPhoneLandscapeCompact {
-                     landscapeBody
-                         .frame(maxWidth: .infinity, maxHeight: .infinity)   // ← add
-                 } else {
-                     portraitBody
-                 }
-             }
-         }
+        var body: some View {
+            GlassCard(corner: 20) {
+                if isPhoneLandscapeCompact {
+                    landscapeBody
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)   // ← add
+                } else {
+                    portraitBody
+                }
+            }
+            .onChange(of: store.lockedTarget) { newValue in
+                if newValue != nil {
+                    pulseLockRingIfNeeded()
+                }
+            }
+            .onChange(of: showLockSheet) { isPresented in
+                if isPresented {
+                    prepareLockSheetDefaults()
+                }
+            }
+            .sheet(isPresented: $showLockSheet) {
+                let isLocked = store.lockedTarget != nil
+                let isValid = lockPreview != nil
+                NavigationStack {
+                    VStack(alignment: .leading, spacing: 16) {
+                        TextField("Ratio", text: $lockRatioText)
+                            .font(.system(.body, design: .monospaced))
+                            .textInputAutocapitalization(.never)
+                            .disableAutocorrection(true)
+                            .keyboardType(.numbersAndPunctuation)
+                            .submitLabel(.done)
+                            .onSubmit { commitLockFromSheet() }
+
+                        if !lockRatioText.isEmpty && !isValid {
+                            Text("Enter ratio like 5/4")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(.red)
+                        } else if let preview = lockPreview {
+                            Text("Will lock to \(tunerDisplayRatioString(preview))")
+                                .font(.footnote.weight(.semibold).monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Stepper(value: $lockOctave, in: -2...2) {
+                            HStack {
+                                Text("Octave")
+                                Spacer()
+                                Text(lockOctave >= 0 ? "+\(lockOctave)" : "\(lockOctave)")
+                                    .font(.body.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+
+                        HStack(spacing: 12) {
+                            Button("Cancel") { showLockSheet = false }
+                                .buttonStyle(.bordered)
+
+                            if isLocked {
+                                Button("Unlock") { unlockFromSheet() }
+                                    .buttonStyle(.bordered)
+                            }
+
+                            Spacer()
+
+                            Button("Lock") { commitLockFromSheet() }
+                                .buttonStyle(.borderedProminent)
+                                .disabled(!isValid)
+                        }
+                    }
+                    .padding()
+                    .navigationTitle("Lock Target")
+                    .navigationBarTitleDisplayMode(.inline)
+                }
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+            }
+        }
      
          private var portraitBody: some View {
              VStack(spacing: 14) {
@@ -949,7 +1184,7 @@ extension Notification.Name {
 
                 let stageAccent: Color = theme.inTuneHighlightColor(activeLimit: store.primeLimit)
 
-                tunerDial(
+                tunerDialWithLockDecorations(
                     centsShown: centsShown,
                     liveConf: liveConf,
                     stageAccent: stageAccent,
@@ -969,21 +1204,10 @@ extension Notification.Name {
                               //  )
                 .contentShape(Rectangle())
                 .onLongPressGesture(minimumDuration: 0.35) {
-                    UIImpactFeedbackGenerator(style: .soft).impactOccurred()
-                    store.toggleLock(currentNearest: (currentNearest ?? liveNearest))
+                    toggleDialLock(currentNearest: (currentNearest ?? liveNearest))
                 }
                 .learnTarget(id: "tuner_lock")
                 .gated("tuner_lock", gate: learnGate)
-
-                
-                .overlay(alignment: .topTrailing) {
-                    // Lock indicator chip (top-right of the dial area)
-                    if let t = store.lockedTarget {
-                        BadgeCapsule(text: "Current \(ratioDisplayText)", style: AnyShapeStyle(Color.secondary.opacity(0.15)))
-                            .padding(6)
-                            .transition(.opacity.combined(with: .move(edge: .top)))
-                    }
-                }
 
                 // Complications (12/3/6/9 o’clock grammar)
                 VStack(spacing: 8) {
@@ -1010,6 +1234,14 @@ extension Notification.Name {
                             }
                         }
                         Spacer()
+                        lockChip
+                    }
+                    if store.lockedTarget != nil {
+                        Text(lockLabelText)
+                            .font(.footnote.weight(.semibold).monospacedDigit())
+                            .foregroundStyle(theme.isDark ? Color.white.opacity(0.85) : Color.primary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .transition(.opacity)
                     }
 
                     // 3 & 6 o’clock: ET cents and JI delta (mode-aware)
@@ -1050,7 +1282,7 @@ extension Notification.Name {
                         HStack {
                             NextChip(title: "Lower",  text: model.display.lowerText)
                                 .onTapGesture {
-                                    if let r = parseRatio(model.display.lowerText) {
+                                    if let r = ratioResultFromText(model.display.lowerText) {
                                         LearnEventBus.shared.send(.tunerTargetPicked(model.display.lowerText))
                                         store.lockedTarget = r
                                     }
@@ -1061,7 +1293,7 @@ extension Notification.Name {
                             Spacer(minLength: 12)
                             NextChip(title: "Higher", text: model.display.higherText)
                                 .onTapGesture {
-                                    if let r = parseRatio(model.display.higherText) {
+                                    if let r = ratioResultFromText(model.display.higherText) {
                                         LearnEventBus.shared.send(.tunerTargetPicked(model.display.higherText))
                                         store.lockedTarget = r
                                     }
@@ -1069,15 +1301,10 @@ extension Notification.Name {
                                 .gated("tuner_target", gate: learnGate)
                         }
                         .transition(.opacity)
-                    } else {
-                        // Tap to clear lock
-                        Button("Clear Target") { withAnimation(.snappy) { store.lockedTarget = nil } }
-                            .buttonStyle(.borderedProminent)
-                            .gated("tuner_target", gate: learnGate)
                     }
                 }
                 .onChange(of: model.display.ratioText) { txt in
-                    currentNearest = parseRatio(txt) // for long-press locking
+                    currentNearest = ratioResultFromText(txt) // for long-press locking
                 }
 
                 // Tuner-local prime limit chips (walled off)
@@ -1188,7 +1415,7 @@ extension Notification.Name {
             HStack(alignment: .top, spacing: spacing) {
                 VStack(alignment: .leading, spacing: 10) {
                                     ZStack(alignment: .bottomLeading) {
-                                        tunerDial(
+                                        tunerDialWithLockDecorations(
                                             centsShown: centsShown,
                                             liveConf: liveConf,
                                             stageAccent: stageAccent,
@@ -1200,8 +1427,7 @@ extension Notification.Name {
                                         .frame(width: dialSize, height: dialSize)
                                         .contentShape(Rectangle())
                     .onLongPressGesture(minimumDuration: 0.35) {
-                        UIImpactFeedbackGenerator(style: .soft).impactOccurred()
-                        store.toggleLock(currentNearest: (currentNearest ?? liveNearest))
+                        toggleDialLock(currentNearest: (currentNearest ?? liveNearest))
                     }
                     .learnTarget(id: "tuner_lock")
                     .gated("tuner_lock", gate: learnGate)
@@ -1215,18 +1441,17 @@ extension Notification.Name {
                                 stepTargetOnSwipeUp()
                             }
                     )
-                    .overlay(alignment: .topTrailing) {
-                        if store.lockedTarget != nil {
-                            BadgeCapsule(
-                                text: "Current \(ratioDisplayText)",
-                                style: AnyShapeStyle(Color.secondary.opacity(0.15))
-                            )
-                            .padding(6)
-                            .transition(.opacity.combined(with: .move(edge: .top)))
-                        }
-                    }
                     .onChange(of: model.display.ratioText) { txt in
-                        currentNearest = parseRatio(txt)
+                        currentNearest = ratioResultFromText(txt)
+                    }
+
+                    if store.lockedTarget != nil {
+                        Text(lockLabelText)
+                            .font(.footnote.weight(.semibold).monospacedDigit())
+                            .foregroundStyle(theme.isDark ? Color.white.opacity(0.85) : Color.primary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.leading, 8)
+                            .transition(.opacity)
                     }
 
 // Prime limit chips (still “under” the dial visually),
@@ -1308,11 +1533,20 @@ extension Notification.Name {
                         let spelling = ratioRef.map { HejiNotation.spelling(forRatio: $0, context: context) }
                             ?? HejiNotation.spelling(forFrequency: liveHz, context: context)
                         let hejiLabel = String(HejiNotation.textLabel(spelling, showCents: true).characters)
-                        Text(hejiLabel)
-                            .font(.system(size: 58, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.55)
+                        HStack(alignment: .firstTextBaseline, spacing: 12) {
+                            Text(hejiLabel)
+                                .font(.system(size: 58, weight: .semibold, design: .monospaced))
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.55)
+                            Spacer(minLength: 0)
+                            lockChip
+                        }
+                    } else {
+                        HStack {
+                            Spacer()
+                            lockChip
+                        }
                     }
 
                     HStack(spacing: 10) {
@@ -1339,7 +1573,7 @@ extension Notification.Name {
                         NextChip(title: "Lower",  text: model.display.lowerText)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .onTapGesture {
-                                if let r = parseRatio(model.display.lowerText) {
+                                if let r = ratioResultFromText(model.display.lowerText) {
                                     LearnEventBus.shared.send(.tunerTargetPicked(model.display.lowerText))
                                     withAnimation(.snappy) { store.lockedTarget = r }
                                 }
@@ -1349,7 +1583,7 @@ extension Notification.Name {
                         NextChip(title: "Higher", text: model.display.higherText)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .onTapGesture {
-                                if let r = parseRatio(model.display.higherText) {
+                                if let r = ratioResultFromText(model.display.higherText) {
                                     LearnEventBus.shared.send(.tunerTargetPicked(model.display.higherText))
                                     withAnimation(.snappy) { store.lockedTarget = r }
                                 }
@@ -1371,8 +1605,8 @@ extension Notification.Name {
     }
 
     private func stepTargetOnSwipeUp() {
-        let lower = parseRatio(model.display.lowerText)
-        let higher = parseRatio(model.display.higherText)
+        let lower = ratioResultFromText(model.display.lowerText)
+        let higher = ratioResultFromText(model.display.higherText)
 
         withAnimation(.snappy) {
             if let locked = store.lockedTarget, let h = higher, locked == h, let l = lower {
@@ -1389,10 +1623,6 @@ extension Notification.Name {
 }
 
 // Tiny helpers (local to ContentView)
-private func parseRatio(_ s: String) -> RatioResult? {
-    let parts = s.split(separator: "/"); guard parts.count == 2, let n = Int(parts[0]), let d = Int(parts[1]) else { return nil }
-    return RatioResult(num: n, den: d, octave: 0)
-}
 private func factors(_ n: Int) -> [Int] {
     var x = n, p = 2, out: [Int] = []
     while p*p <= x { while x % p == 0 { out.append(p); x /= p } ; p += 1 }

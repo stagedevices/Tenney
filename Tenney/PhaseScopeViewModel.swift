@@ -143,12 +143,6 @@ final class PhaseScopeViewModel: ObservableObject {
     }
 
     // MARK: - Core tick
-    private func parseRatio(_ s: String) -> RatioResult? {
-        let parts = s.split(separator: "/")
-        guard parts.count == 2, let n = Int(parts[0]), let d = Int(parts[1]) else { return nil }
-        return RatioResult(num: n, den: d, octave: 0)
-    }
-
     private func tick() {
         guard let app else { return }
 
