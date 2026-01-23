@@ -3383,7 +3383,7 @@ struct StudioConsoleView: View {
                 quickSetupCard
                 // labelingSection
                 defaultViewSection
-                selectionTrayClearBehaviorSection
+               // selectionTrayClearBehaviorSection /// HACK / Uncomment when you're ready to fix the selection tray Xmark
                 whatsNewSection
                 diagnosticsSection
                 aboutSection
