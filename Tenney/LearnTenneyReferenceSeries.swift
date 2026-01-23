@@ -64,7 +64,7 @@ enum LearnLibraryPacksLesson: String, CaseIterable, Identifiable, Sendable {
         case .packs:
             return "Packs"
         case .importExport:
-            return "Import / Export"
+            return "Make, Save, Store, Export"
         case .communityPacks:
             return "Community Packs (Curated)"
         case .submitCommunityPack:
@@ -79,7 +79,7 @@ enum LearnLibraryPacksLesson: String, CaseIterable, Identifiable, Sendable {
         case .packs:
             return "Folders and collections that travel together"
         case .importExport:
-            return "Share scales without losing originals"
+            return "From Builder to Library to sharing"
         case .communityPacks:
             return "Verified packs from the community"
         case .submitCommunityPack:
@@ -177,17 +177,7 @@ struct LearnTenneyLibraryPacksReferenceView: View {
 struct LearnTenneyLibraryPacksLessonView: View {
     let lesson: LearnLibraryPacksLesson
 
-    @EnvironmentObject private var app: AppModel
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.openURL) private var openURL
-    @State private var pendingDeepLink: PendingDeepLink? = nil
-
-    private enum PendingDeepLink {
-        case openLibrary
-        case openPacks
-        case openCommunityPacks
-        case openSubmission
-    }
 
     var body: some View {
         ScrollView {
@@ -199,11 +189,6 @@ struct LearnTenneyLibraryPacksLessonView: View {
         }
         .navigationTitle(lesson.title)
         .navigationBarTitleDisplayMode(.inline)
-        .onDisappear {
-            guard let pending = pendingDeepLink else { return }
-            pendingDeepLink = nil
-            handlePendingDeepLink(pending)
-        }
     }
 
     @ViewBuilder
@@ -218,7 +203,7 @@ struct LearnTenneyLibraryPacksLessonView: View {
                     "Tags + Favorites make retrieval fast."
                 ],
                 actions: [
-                    .init(title: "Open Library", isProminent: true, action: { schedule(.openLibrary) })
+                    .init(title: "Open Library", isProminent: true, action: { requestDeepLink(.libraryHome) })
                 ]
             )
         case .packs:
@@ -230,18 +215,48 @@ struct LearnTenneyLibraryPacksLessonView: View {
                     "Keep personal packs separate from curated Community Packs."
                 ],
                 actions: [
-                    .init(title: "Open Packs", isProminent: false, action: { schedule(.openPacks) })
+                    .init(title: "Open Packs", isProminent: false, action: { requestDeepLink(.libraryHome) })
                 ]
             )
         case .importExport:
-            LearnReferenceCard(
-                title: "Import / Export",
-                bullets: [
-                    "Export supports .scl / .kbm (and more).",
-                    "Sharing doesn’t delete your originals."
-                ],
-                actions: []
-            )
+            LearnGlassCard {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Make, Save, Store, Export")
+                        .font(.headline)
+                    Text("Tenney’s workflow is a straight pipeline: build your scale, save it, organize it, then share it.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+
+                    ReferenceSection(title: "Workflow") {
+                        NumberedList(items: [
+                            "Make scales in Builder (design, edit, test).",
+                            "Save them in Builder so they persist.",
+                            "Store and organize them in the Library (packs/folders).",
+                            "Export to share with others or move between devices."
+                        ])
+                    }
+
+                    ReferenceSection(title: "Where things live") {
+                        BulletList(items: [
+                            "Builder is where you design and edit scales.",
+                            "Library is where you organize scales into packs/folders.",
+                            "Community Packs are curated packs you can install into your Library."
+                        ])
+                    }
+
+                    ReferenceSection(title: "Export") {
+                        BulletList(items: [
+                            "Export supports .scl, .kbm, and other common tuning formats.",
+                            "Export is for sharing — it doesn’t delete your Library items."
+                        ])
+                    }
+
+                    LearnReferenceActionsRow(actions: [
+                        .init(title: "Open Builder", isProminent: true, action: { requestDeepLink(.builderHome) }),
+                        .init(title: "Open Library", isProminent: false, action: { requestDeepLink(.libraryHome) })
+                    ])
+                }
+            }
         case .communityPacks:
             LearnReferenceCard(
                 title: "Community Packs (Curated)",
@@ -251,7 +266,7 @@ struct LearnTenneyLibraryPacksLessonView: View {
                     "Installing adds the pack to your Library."
                 ],
                 actions: [
-                    .init(title: "Browse Community Packs", isProminent: true, action: { schedule(.openCommunityPacks) })
+                    .init(title: "Browse Community Packs", isProminent: true, action: { requestDeepLink(.communityPacks) })
                 ]
             )
         case .submitCommunityPack:
@@ -262,28 +277,21 @@ struct LearnTenneyLibraryPacksLessonView: View {
                     "Every pack is curated/verified before listing."
                 ],
                 actions: [
-                    .init(title: "How to Submit", isProminent: false, action: { schedule(.openSubmission) })
+                    .init(title: "How to Submit", isProminent: false, action: { requestDeepLink(.communityPackSubmission) })
                 ]
             )
         }
     }
 
-    private func schedule(_ pending: PendingDeepLink) {
-        pendingDeepLink = pending
+    private func requestDeepLink(_ destination: LearnTenneyDeepLinkDestination) {
+        DiagnosticsCenter.shared.event(category: "learn", level: .info, message: "LearnDeepLink requested: \(destination.rawValue)")
+        SentryService.shared.breadcrumb(category: "learn", message: "LearnDeepLink requested: \(destination.rawValue)")
+        NotificationCenter.default.post(
+            name: .tenneyLearnDeepLink,
+            object: nil,
+            userInfo: [LearnTenneyDeepLinkPayload.destinationKey: destination.rawValue]
+        )
         dismiss()
-    }
-
-    private func handlePendingDeepLink(_ pending: PendingDeepLink) {
-        switch pending {
-        case .openLibrary, .openPacks:
-            app.scaleLibraryLaunchMode = .recents
-            app.showScaleLibraryDetent = true
-        case .openCommunityPacks:
-            app.scaleLibraryLaunchMode = .communityPacks
-            app.showScaleLibraryDetent = true
-        case .openSubmission:
-            openURL(CommunityPacksEndpoints.issuesURL)
-        }
     }
 }
 
@@ -535,22 +543,30 @@ private struct LearnReferenceCard: View {
                     .font(.headline)
                 BulletList(items: bullets)
 
-                if !actions.isEmpty {
-                    HStack(spacing: 10) {
-                        ForEach(actions) { action in
-                            Button {
-                                action.action()
-                            } label: {
-                                Text(action.title)
-                                    .font(.callout.weight(.semibold))
-                                    .frame(maxWidth: .infinity, minHeight: 44)
-                                    .padding(.horizontal, 14)
-                                    .foregroundStyle(.primary)
-                                    .modifier(GlassRoundedRect(corner: 12))
-                            }
-                            .buttonStyle(GlassPressFeedback())
-                        }
+                LearnReferenceActionsRow(actions: actions)
+            }
+        }
+    }
+}
+
+private struct LearnReferenceActionsRow: View {
+    let actions: [LearnReferenceAction]
+
+    var body: some View {
+        if !actions.isEmpty {
+            HStack(spacing: 10) {
+                ForEach(actions) { action in
+                    Button {
+                        action.action()
+                    } label: {
+                        Text(action.title)
+                            .font(.callout.weight(.semibold))
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .padding(.horizontal, 14)
+                            .foregroundStyle(.primary)
+                            .modifier(GlassRoundedRect(corner: 12))
                     }
+                    .buttonStyle(GlassPressFeedback())
                 }
             }
         }
