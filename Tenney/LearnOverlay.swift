@@ -324,9 +324,18 @@ private struct LearnCompletionView: View {
     private var heroPuck: some View {
         let tintOpacity = colorScheme == .dark ? 0.30 : 0.22
 
+        // Choose a single concrete ShapeStyle type for the fill.
+        let backgroundStyle: AnyShapeStyle = {
+            if reduceTransparency {
+                return AnyShapeStyle(tint.opacity(tintOpacity))
+            } else {
+                return AnyShapeStyle(.ultraThinMaterial)
+            }
+        }()
+
         return ZStack {
             Circle()
-                .fill(reduceTransparency ? tint.opacity(tintOpacity) : .ultraThinMaterial)
+                .fill(backgroundStyle)
                 .overlay(
                     Circle()
                         .fill(tint.opacity(tintOpacity))
@@ -344,6 +353,7 @@ private struct LearnCompletionView: View {
                 .strokeBorder(Color.white.opacity(0.10), lineWidth: 1)
         )
     }
+
 
     private var puckSweep: some View {
         Group {
@@ -438,7 +448,13 @@ private struct LearnCompletionView: View {
     }
 
     private var cardBackground: AnyShapeStyle {
-        AnyShapeStyle(reduceTransparency ? Color(uiColor: .systemBackground).opacity(0.92) : .ultraThinMaterial)
+        if reduceTransparency {
+            return AnyShapeStyle(
+                Color(uiColor: .systemBackground).opacity(0.92)
+            )
+        } else {
+            return AnyShapeStyle(.ultraThinMaterial)
+        }
     }
 
     private var vignetteOverlay: some View {

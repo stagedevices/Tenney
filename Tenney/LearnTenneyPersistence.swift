@@ -7,6 +7,7 @@
 
 
 import Foundation
+import Combine
 
 /// Snapshot + restore UserDefaults keys (scoped by prefix) so Practice never persists.
 struct TenneyPracticeSnapshot {
