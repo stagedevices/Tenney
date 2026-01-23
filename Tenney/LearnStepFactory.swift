@@ -132,44 +132,30 @@ enum LearnStepFactory {
         case .builder:
             return [
                 LearnStep(
-                    title: "Builder = performance surface",
+                    title: "Play pads",
                     instruction: "Pads are playable triggers for your scale-in-progress.",
-                    tryIt: "Trigger a pad.",
+                    tryIt: "Tap any pad to trigger a tone.",
                     gate: .init(allowedTargets: ["builder_pad"], isActive: true),
                     validate: { if case .builderPadTriggered = $0 { return true } else { return false } }
                 ),
                 LearnStep(
-                    title: "Octave stepping",
-                    instruction: "Octave stepping shifts pads up/down without rewriting the underlying ratios.",
-                    tryIt: "Change octave for one pad.",
-                    gate: .init(allowedTargets: ["builder_octave"], isActive: true),
-                    validate: { if case .builderPadOctaveChanged = $0 { return true } else { return false } }
+                    title: "Add root",
+                    instruction: "Builder needs a 1/1 root to anchor your scale.",
+                    tryIt: "Add the root (1/1) to your Builder content.",
+                    gate: .init(allowedTargets: ["builder_add_root"], isActive: true),
+                    validate: { $0 == .builderRootAdded }
                 ),
                 LearnStep(
-                    title: "Selecting",
-                    instruction: "Selection lets you focus edits and exports on specific content.",
-                    tryIt: "Select something in the builder.",
-                    gate: .init(allowedTargets: ["builder_select"], isActive: true),
-                    validate: { if case .builderSelectionChanged = $0 { return true } else { return false } }
-                ),
-                LearnStep(
-                    title: "Clear selection",
-                    instruction: "Clear selection to return to the whole-surface view.",
-                    tryIt: "Clear selection.",
-                    gate: .init(allowedTargets: ["builder_clear_selection"], isActive: true),
-                    validate: { $0 == .builderSelectionCleared }
-                ),
-                LearnStep(
-                    title: "Exporting",
+                    title: "Export",
                     instruction: "Export produces shareable artifacts that reflect the scale you built.",
-                    tryIt: "Open export.",
+                    tryIt: "Open Export.",
                     gate: .init(allowedTargets: ["builder_export"], isActive: true),
                     validate: { $0 == .builderExportOpened }
                 ),
                 LearnStep(
                     title: "Oscilloscope",
                     instruction: "Use the scope as immediate visual feedback: stability, motion, blend.",
-                    tryIt: "Observe the oscilloscope once.",
+                    tryIt: "Show the scope once (visual feedback).",
                     gate: .init(allowedTargets: ["builder_scope"], isActive: true),
                     validate: { $0 == .builderOscilloscopeObserved }
                 )
@@ -177,4 +163,3 @@ enum LearnStepFactory {
         }
     }
 }
-

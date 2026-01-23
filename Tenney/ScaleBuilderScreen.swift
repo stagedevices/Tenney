@@ -702,6 +702,10 @@ struct ScaleBuilderScreen: View {
                     }
                     .frame(maxWidth: .infinity, minHeight: 180)
                     .accessibilityIdentifier("LissajousCard")
+                    .learnTarget(id: "builder_scope")
+                    .onAppear {
+                        LearnEventBus.shared.send(.builderOscilloscopeObserved)
+                    }
 
 
                     LazyVGrid(
@@ -726,7 +730,9 @@ struct ScaleBuilderScreen: View {
                 if !store.degrees.contains(where: { $0.p == 1 && $0.q == 1 && $0.octave == 0 }) {
                     Button("Add Root") {
                         store.add(RatioRef(p: 1, q: 1, octave: 0, monzo: [:]))
+                        LearnEventBus.shared.send(.builderRootAdded)
                     }
+                    .learnTarget(id: "builder_add_root")
                 }
                 
                 Spacer()
@@ -780,6 +786,7 @@ struct ScaleBuilderScreen: View {
             Button {
                 toggleLatch(idx: idx, ratio: r)
                 selectedPad = idx
+                LearnEventBus.shared.send(.builderPadTriggered(idx))
             } label: {
                 HStack(spacing: 6) {
                     Text("\(cn)/\(cd)")
@@ -817,6 +824,7 @@ struct ScaleBuilderScreen: View {
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
             .buttonStyle(.plain)
+            .learnTarget(id: "builder_pad")
             .contextMenu {
                 Button("Remove") { store.remove(at: IndexSet(integer: idx)) }
                 Button("Inspect") { selectedPad = idx }
@@ -844,6 +852,7 @@ struct ScaleBuilderScreen: View {
         .contentShape(Circle())
         .accessibilityLabel(isExportMode ? "Back to pads" : "Export options")
         .accessibilityAddTraits(.isButton)
+        .learnTarget(id: "builder_export")
     }
 
         

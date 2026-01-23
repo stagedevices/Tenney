@@ -41,6 +41,7 @@ enum LearnEvent: Equatable, Sendable {
     case builderPadOctaveChanged(Int, Int)
     case builderSelectionChanged(Int)
     case builderSelectionCleared
+    case builderRootAdded
     case builderExportOpened
     case builderOscilloscopeObserved
 
@@ -58,4 +59,3 @@ final class LearnEventBus {
 
     func send(_ event: LearnEvent) { subject.send(event) }
 }
-

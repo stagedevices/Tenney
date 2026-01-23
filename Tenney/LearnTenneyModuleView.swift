@@ -26,7 +26,7 @@ enum LearnPracticeFocus: Hashable, Sendable {
     case tunerStageMode
     case tunerETvsJI
     case builderPads
-    case builderOctaveStepping
+    case builderAddRoot
     case builderExport
     case builderOscilloscope
 }
@@ -58,7 +58,10 @@ struct LearnTenneyModuleView: View {
                 case .practice:
                     LearnTenneyPracticeView(module: module, focus: $practiceFocus)
                 case .reference:
-                    LearnTenneyReferenceListView(module: module) { _ in }
+                    LearnTenneyReferenceListView(module: module) { focus in
+                        practiceFocus = focus
+                        tab = .practice
+                    }
                 }
             }
         }
@@ -81,4 +84,3 @@ struct LearnTenneyModuleView: View {
     }
 
 }
-
