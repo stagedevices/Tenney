@@ -11,6 +11,7 @@ struct LearnTenneyPracticeView: View {
     @EnvironmentObject private var app: AppModel
     @State private var auditionToggledOnce = false
     @State private var primeLimitTapCount = 0
+    @State private var focusTarget: String? = nil
 
     init(module: LearnTenneyModule, focus: Binding<LearnPracticeFocus?>) {
         self.module = module
@@ -36,6 +37,21 @@ struct LearnTenneyPracticeView: View {
     private func finishPractice() {
         focus = nil
         dismiss()
+    }
+
+    private func learnTargetID(for focus: LearnPracticeFocus?) -> String? {
+        switch focus {
+        case .builderPads:
+            return "builder_pad"
+        case .builderAddRoot:
+            return "builder_add_root"
+        case .builderExport:
+            return "builder_export"
+        case .builderOscilloscope:
+            return "builder_scope"
+        default:
+            return nil
+        }
     }
 
     private func handleLearnEvent(_ e: LearnEvent) {
@@ -67,6 +83,20 @@ struct LearnTenneyPracticeView: View {
         ZStack(alignment: .top) {
             PracticeContent(module: module, stepIndex: idx)
                 .environment(\.learnGate, coordinator.gate)
+                .overlayPreferenceValue(LearnTargetAnchorKey.self) { targets in
+                    GeometryReader { proxy in
+                        if let target = focusTarget, let anchor = targets[target] {
+                            let rect = proxy[anchor]
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .stroke(Color.accentColor.opacity(0.9), lineWidth: 2)
+                                .frame(width: rect.width + 10, height: rect.height + 10)
+                                .position(x: rect.midX, y: rect.midY)
+                                .shadow(color: Color.accentColor.opacity(0.3), radius: 6)
+                                .allowsHitTesting(false)
+                                .animation(.snappy(duration: 0.25), value: rect)
+                        }
+                    }
+                }
 
             // Top-right + pushed DOWN so top-left prime chips stay visible/tappable
             LearnOverlay(
@@ -88,6 +118,12 @@ struct LearnTenneyPracticeView: View {
         }
         .onReceive(LearnEventBus.shared.publisher) { (e: LearnEvent) in
             handleLearnEvent(e)
+        }
+        .onAppear {
+            focusTarget = learnTargetID(for: focus)
+        }
+        .onChange(of: focus) { newValue in
+            focusTarget = learnTargetID(for: newValue)
         }
 
         .navigationTitle("Practice")
@@ -162,8 +198,45 @@ private struct BuilderPracticeHost: View {
     @StateObject private var store = ScaleBuilderStore(
         payload: ScaleBuilderPayload(rootHz: 440.0, primeLimit: 5, items: [])
     )
+    @EnvironmentObject private var app: AppModel
+    @State private var practiceSnapshot: TenneyPracticeSnapshot? = nil
+    @State private var didSeed = false
+    @State private var baselineBuilderSession: AppModel.BuilderSessionState? = nil
+    @State private var baselineBuilderPayload: ScaleBuilderPayload? = nil
+
+    private func seedBuilderPractice() {
+        let seed: [RatioRef] = [
+            RatioRef(p: 9, q: 8, octave: 0, monzo: [:]),
+            RatioRef(p: 5, q: 4, octave: 0, monzo: [:]),
+            RatioRef(p: 4, q: 3, octave: 0, monzo: [:]),
+            RatioRef(p: 3, q: 2, octave: 0, monzo: [:]),
+            RatioRef(p: 5, q: 3, octave: 0, monzo: [:]),
+            RatioRef(p: 15, q: 8, octave: 0, monzo: [:])
+        ]
+        store.payload.items = []
+        seed.forEach { store.add($0) }
+    }
+
     var body: some View {
         ScaleBuilderScreen(store: store)
+            .onAppear {
+                guard !didSeed else { return }
+                didSeed = true
+                baselineBuilderSession = app.builderSession
+                baselineBuilderPayload = app.builderSessionPayload
+                app.builderSession = .init()
+                app.builderSessionPayload = nil
+                let baseline = TenneyPracticeSnapshot()
+                seedBuilderPractice()
+                practiceSnapshot = baseline.trackingNewKeys(since: baseline)
+            }
+            .onDisappear {
+                practiceSnapshot?.restore()
+                if let baselineBuilderSession {
+                    app.builderSession = baselineBuilderSession
+                }
+                app.builderSessionPayload = baselineBuilderPayload
+            }
     }
 }
   

@@ -234,20 +234,12 @@ struct LearnTenneyTourView: View {
                     tryIt: "Tap a few pads to hear how the surface behaves as an instrument."
                 ),
                 .init(
-                    title: "Octave stepping",
+                    title: "Add root",
                     bullets: [
-                        "Octave stepping shifts pads up/down without rewriting the underlying ratios.",
-                        "Use it to place material in a comfortable register."
+                        "Root (1/1) anchors the ratios you’ve collected.",
+                        "Adding it makes the Builder content a complete scale."
                     ],
-                    tryIt: "Change octave for a pad, then return it to neutral."
-                ),
-                .init(
-                    title: "Selecting and shaping",
-                    bullets: [
-                        "Selection lets you focus edits and exports on specific content.",
-                        "Think: ‘this subset is the scale I want to keep.’"
-                    ],
-                    tryIt: "Select a subset of pads/entries, then clear selection."
+                    tryIt: "Add the root so 1/1 is part of the set."
                 ),
                 .init(
                     title: "Exporting",
@@ -283,4 +275,3 @@ struct LearnGlassCard<Content: View>: View {
             )
     }
 }
-
