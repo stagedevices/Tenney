@@ -103,11 +103,25 @@ final class TunerStore: ObservableObject {
     @Published var primeLimit: Int = {
         let v = UserDefaults.standard.integer(forKey: SettingsKeys.tunerPrimeLimit)
         return (v == 0 ? 11 : v)
-    }() { didSet { UserDefaults.standard.set(primeLimit, forKey: SettingsKeys.tunerPrimeLimit) } }
+    }() {
+        didSet {
+            if oldValue != primeLimit {
+                LearnEventBus.shared.send(.tunerPrimeLimitChanged(limitRaw: "\(primeLimit)"))
+            }
+            UserDefaults.standard.set(primeLimit, forKey: SettingsKeys.tunerPrimeLimit)
+        }
+    }
 
     @Published var stageMode: Bool = {
         UserDefaults.standard.object(forKey: SettingsKeys.tunerStageMode) as? Bool ?? false
-    }() { didSet { UserDefaults.standard.set(stageMode, forKey: SettingsKeys.tunerStageMode) } }
+    }() {
+        didSet {
+            if oldValue != stageMode {
+                LearnEventBus.shared.send(.tunerStageModeChanged(stageMode))
+            }
+            UserDefaults.standard.set(stageMode, forKey: SettingsKeys.tunerStageMode)
+        }
+    }
 
     @Published var modeRaw: String = {
         (UserDefaults.standard.string(forKey: SettingsKeys.tunerMode) ?? TunerUIMode.auto.rawValue)
@@ -118,7 +132,14 @@ final class TunerStore: ObservableObject {
     @Published var viewStyleRaw: String = {
         UserDefaults.standard.string(forKey: SettingsKeys.tunerViewStyle)
         ?? TunerViewStyle.Gauge.rawValue
-    }() { didSet { UserDefaults.standard.set(viewStyleRaw, forKey: SettingsKeys.tunerViewStyle) } }
+    }() {
+        didSet {
+            if oldValue != viewStyleRaw {
+                LearnEventBus.shared.send(.tunerViewStyleChanged(styleRaw: viewStyleRaw))
+            }
+            UserDefaults.standard.set(viewStyleRaw, forKey: SettingsKeys.tunerViewStyle)
+        }
+    }
 
     var viewStyle: TunerViewStyle {
         get { TunerViewStyle(rawValue: viewStyleRaw) ?? .Gauge }

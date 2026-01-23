@@ -79,53 +79,64 @@ enum LearnStepFactory {
         case .tuner:
             return [
                 LearnStep(
-                    title: "Pick a target",
-                    instruction: "Choose what you’re trying to match so the UI stops feeling ambiguous.",
-                    tryIt: "Pick any target ratio.",
-                    gate: .init(allowedTargets: ["tuner_target"], isActive: true),
-                    validate: { if case .tunerTargetPicked = $0 { return true } else { return false } }
+                    title: "Three tuner types",
+                    bullets: [
+                        "Gauge is minimal and calm; Chrono is more technical / explicit; Scope is more professional",
+                        "Both read the same pitch engine—only presentation changes."
+                    ],
+                    tryIt: "Switch between Gauge, Chrono, and Scope and notice what information is emphasized.",
+                    gate: .init(allowedTargets: ["tuner_view_switch"], isActive: true),
+                    validate: { if case .tunerViewStyleChanged = $0 { return true } else { return false } }
                 ),
                 LearnStep(
-                    title: "Lock target",
-                    instruction: "Lock fixes your target so the UI stops ‘chasing’ nearby ratios.",
-                    tryIt: "Toggle lock on/off.",
+                    title: "Confidence",
+                    bullets: [
+                        "Confidence is: how sure Tenney is that the detected pitch is stable + real.",
+                        "Low confidence usually means noise, breath, room tone, or unstable partials."
+                    ],
+                    tryIt: "Hum a steady tone, then stop—watch confidence rise/fall with stability.",
+                    gate: .init(allowedTargets: ["tuner_confidence"], isActive: true),
+                    validate: { $0 == .tunerConfidenceInteracted }
+                ),
+                LearnStep(
+                    title: "Lock target (long-press)",
+                    bullets: [
+                        "Lock fixes your target so the UI stops “chasing” nearby ratios.",
+                        "Use lock when practicing intonation against one goal."
+                    ],
+                    tryIt: "Long-press the target control to lock, then unlock.",
                     gate: .init(allowedTargets: ["tuner_lock"], isActive: true),
                     validate: { if case .tunerLockToggled = $0 { return true } else { return false } }
                 ),
                 LearnStep(
-                    title: "Root pitch",
-                    instruction: "Root is your reference. Changing it re-centers the whole JI world.",
-                    tryIt: "Change root once.",
-                    gate: .init(allowedTargets: ["tuner_root"], isActive: true),
-                    validate: { if case .tunerRootChanged = $0 { return true } else { return false } }
+                    title: "Prime limit chips",
+                    bullets: [
+                        "Prime limit changes which ratios are eligible matches.",
+                        "Lower limit = simpler vocabulary; higher limit = more nuance (and more ambiguity)."
+                    ],
+                    tryIt: "Change prime limit and watch the suggested ratio set tighten/expand.",
+                    gate: .init(allowedTargets: ["tuner_prime_limit"], isActive: true),
+                    validate: { if case .tunerPrimeLimitChanged = $0 { return true } else { return false } }
                 ),
                 LearnStep(
-                    title: "Pitch history",
-                    instruction: "History helps you see stability over time, not just instantaneous wiggle.",
-                    tryIt: "Open pitch history.",
-                    gate: .init(allowedTargets: ["tuner_history"], isActive: true),
-                    validate: { $0 == .tunerPitchHistoryOpened }
+                    title: "ET vs JI readouts",
+                    bullets: [
+                        "ET shows tempered note context; JI shows ratio context.",
+                        "They are complementary: ET for quick naming, JI for exactness."
+                    ],
+                    tryIt: "Play a stable pitch and compare the ET label vs the JI ratio.",
+                    gate: .init(allowedTargets: ["tuner_et_ji"], isActive: true),
+                    validate: { $0 == .tunerETJIDidInteract }
                 ),
                 LearnStep(
-                    title: "Confidence",
-                    instruction: "Confidence is how sure Tenney is that the pitch is stable + real.",
-                    tryIt: "Adjust the confidence gate once.",
-                    gate: .init(allowedTargets: ["tuner_confidence"], isActive: true),
-                    validate: { if case .tunerConfidenceGateChanged = $0 { return true } else { return false } }
-                ),
-                LearnStep(
-                    title: "Output",
-                    instruction: "Output lets you practice against a generated reference tone.",
-                    tryIt: "Toggle output on/off.",
-                    gate: .init(allowedTargets: ["tuner_output"], isActive: true),
-                    validate: { if case .tunerOutputEnabledChanged = $0 { return true } else { return false } }
-                ),
-                LearnStep(
-                    title: "Wave",
-                    instruction: "Wave changes the character of the reference tone.",
-                    tryIt: "Pick a different wave.",
-                    gate: .init(allowedTargets: ["tuner_wave"], isActive: true),
-                    validate: { if case .tunerOutputWaveChanged = $0 { return true } else { return false } }
+                    title: "Stage mode",
+                    bullets: [
+                        "Stage mode prioritizes readability and performance behavior.",
+                        "Expect fewer distractions and stronger visibility choices."
+                    ],
+                    tryIt: "Toggle stage mode and observe what UI elements simplify.",
+                    gate: .init(allowedTargets: ["tuner_stage_mode"], isActive: true),
+                    validate: { if case .tunerStageModeChanged = $0 { return true } else { return false } }
                 )
             ]
 

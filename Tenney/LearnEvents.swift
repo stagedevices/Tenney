@@ -35,6 +35,11 @@ enum LearnEvent: Equatable, Sendable {
     case tunerConfidenceGateChanged(Double)
     case tunerOutputEnabledChanged(Bool)
     case tunerOutputWaveChanged(String)
+    case tunerViewStyleChanged(styleRaw: String)
+    case tunerPrimeLimitChanged(limitRaw: String)
+    case tunerStageModeChanged(Bool)
+    case tunerConfidenceInteracted
+    case tunerETJIDidInteract
 
     // Builder
     case builderPadTriggered(Int)
