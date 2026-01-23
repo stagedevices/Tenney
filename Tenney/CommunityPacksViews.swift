@@ -1175,16 +1175,11 @@ private struct CommunityPackDetailView: View {
 
             Spacer()
 
-            Button(action: handleCloseTap) {
-                Image(systemName: isSelecting ? "chevron.backward" : "checkmark")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .frame(width: 44, height: 44)
-                    .modifier(GlassWhiteCircle())
-                    .contentShape(Circle())
-                    .accessibilityLabel(isSelecting ? "Back" : "Close")
-            }
-            .buttonStyle(.plain)
+            GlassWhiteCircleIconButton(
+                systemName: isSelecting ? "chevron.backward" : "checkmark",
+                accessibilityLabel: isSelecting ? "Back" : "Close",
+                action: handleCloseTap
+            )
         }
         .padding(.horizontal, 16)
         .padding(.top, 10)
