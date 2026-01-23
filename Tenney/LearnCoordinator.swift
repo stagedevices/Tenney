@@ -68,10 +68,14 @@ final class LearnCoordinator: ObservableObject {
 #endif
         if step.validate(event) {
             advance()
-        } else if gate.isActive, event != .attemptedDisallowedAction {
-            LearnEventBus.shared.send(.attemptedDisallowedAction("\(event)"))
+        } else if gate.isActive, !isAttemptedDisallowedAction(event) {            LearnEventBus.shared.send(.attemptedDisallowedAction("\(event)"))
         }
     }
+    
+    private func isAttemptedDisallowedAction(_ event: LearnEvent) -> Bool {
+            if case .attemptedDisallowedAction = event { return true }
+            return false
+        }
 
     private func enterStep(_ i: Int) {
         guard i < steps.count else { completed = true; return }
