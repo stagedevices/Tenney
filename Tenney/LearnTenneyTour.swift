@@ -195,7 +195,14 @@ struct LearnTenneyTourView: View {
                         "Lock fixes your target so the UI stops “chasing” nearby ratios.",
                         "Use lock when practicing intonation against one goal."
                     ],
-                    tryIt: "Long-press the target control to lock, then unlock."
+                    tryIt: "Long-press the target control to lock."
+                ),
+                .init(
+                    title: "Unlock target (long-press)",
+                    bullets: [
+                        "Long-press the tuner dial again to unlock the target."
+                    ],
+                    tryIt: "Long-press the tuner dial to unlock."
                 ),
                 .init(
                     title: "Prime limit chips",

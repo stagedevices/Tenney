@@ -73,6 +73,9 @@ final class TunerViewModel: ObservableObject {
     private let tracker: PitchTracker
     private let resolver = RatioResolver()
     private var lastSnapshot = Date.distantPast
+    private var pipelineWanted = false
+    private var pipelineActive = false
+    private var permissionRequestInFlight = false
     
     private func confidenceFromRMS(_ rms: Float) -> Double {
         // RMS is linear 0..1-ish; tune these bounds for your input chain.
@@ -100,21 +103,58 @@ final class TunerViewModel: ObservableObject {
                         self.confidenceValue = self.confidenceFromRMS(rms)
                     }
                 )
+        micGranted = (MicrophonePermission.status() == .granted)
+    }
 
-        // 1) Always start the analysis loop (even with no mic)
-        tracker.startDetection()
-        DiagnosticsCenter.shared.event(category: "tuner", level: .info, message: "start detection")
-        SentryService.shared.breadcrumb(category: "tuner", message: "start detection")
+    deinit { setPipelineActive(false, reason: "deinit") }
 
-        // 2) Ask for mic; if granted, enable capture (analysis is already running)
-        MicrophonePermission.ensure { [weak self] (granted: Bool) in
-            guard let self else { return }
-            self.micGranted = granted
-            self.tracker.enableMicrophoneCapture(granted)
+    func setPipelineActive(_ active: Bool, reason: String? = nil) {
+        pipelineWanted = active
+
+        if active {
+            guard !pipelineActive else { return }
+            let status = MicrophonePermission.status()
+            switch status {
+            case .granted:
+                micGranted = true
+                activatePipeline(reason: reason)
+            case .denied:
+                micGranted = false
+            case .undetermined:
+                guard !permissionRequestInFlight else { return }
+                permissionRequestInFlight = true
+                MicrophonePermission.ensure { [weak self] granted in
+                    guard let self else { return }
+                    self.permissionRequestInFlight = false
+                    self.micGranted = granted
+                    guard granted, self.pipelineWanted else { return }
+                    self.activatePipeline(reason: reason)
+                }
+            }
+        } else {
+            guard pipelineActive else { return }
+            pipelineActive = false
+            tracker.enableMicrophoneCapture(false)
+            tracker.shutdown()
+            if let reason {
+                DiagnosticsCenter.shared.event(category: "tuner", level: .info, message: "stop detection", meta: ["reason": reason])
+            }
+            SentryService.shared.breadcrumb(category: "tuner", message: "stop detection")
         }
     }
 
-    deinit { tracker.shutdown() }
+    private func activatePipeline(reason: String?) {
+        guard !pipelineActive else { return }
+        pipelineActive = true
+        tracker.startDetection()
+        tracker.enableMicrophoneCapture(true)
+        if let reason {
+            DiagnosticsCenter.shared.event(category: "tuner", level: .info, message: "start detection", meta: ["reason": reason])
+        } else {
+            DiagnosticsCenter.shared.event(category: "tuner", level: .info, message: "start detection")
+        }
+        SentryService.shared.breadcrumb(category: "tuner", message: "start detection")
+    }
 
     private func handle(hz: Double, monotonic: Double) {
         lastHzValue = hz
