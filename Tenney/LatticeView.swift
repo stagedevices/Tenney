@@ -144,6 +144,7 @@ struct LatticeView: View {
 
     @Environment(\.latticePreviewMode) private var latticePreviewMode
     @Environment(\.latticePreviewHideChips) private var latticePreviewHideChips
+    @Environment(\.tenneyPracticeChrome) private var practiceChrome
     
     @EnvironmentObject private var app: AppModel
     @EnvironmentObject private var store: LatticeStore   // shared from LatticeScreen
@@ -4140,7 +4141,12 @@ struct LatticeView: View {
                     .sensoryFeedback(.selection, trigger: selectionHapticTick)
                     .sensoryFeedback(.selection, trigger: focusHapticTick)
                     .navigationTitle("Lattice")
-                    .toolbar { clearToolbar }
+                    .toolbar {
+                                            if !practiceChrome {
+                                                clearToolbar
+                                            }
+                                        }
+                
                     .onPreferenceChange(SelectionTrayHeightKey.self) { trayHeight = $0 }
                     .onPreferenceChange(BottomHUDHeightKey.self) { bottomHUDHeight = $0 }
             }
