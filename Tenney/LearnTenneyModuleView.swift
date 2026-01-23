@@ -35,6 +35,7 @@ struct LearnTenneyModuleView: View {
 
     @State private var tab: LearnTenneyTab = .practice
     @State private var practiceFocus: LearnPracticeFocus? = nil
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     var body: some View {
         VStack(spacing: 0) {
@@ -66,7 +67,8 @@ struct LearnTenneyModuleView: View {
         }
         .navigationTitle(module.title)
         .navigationBarTitleDisplayMode(.inline)
-        
+        .learnTenneySheetPresentation()
+        .learnTenneySheetSizing(enabled: shouldApplyLearnTenneySheetSizing(sizeClass: sizeClass))
     }
     private struct LearnTenneyTourView: View {
         let module: LearnTenneyModule

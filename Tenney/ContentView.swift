@@ -739,6 +739,7 @@ extension Notification.Name {
     @Environment(\.verticalSizeClass) private var vSize
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.learnGate) private var learnGate
+    @Environment(\.isTunerPrimeLimitStepActive) private var isTunerPrimeLimitStepActive
      
     private var accentStyle: AnyShapeStyle {
         ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency)
@@ -967,8 +968,8 @@ extension Notification.Name {
                     UIImpactFeedbackGenerator(style: .soft).impactOccurred()
                     store.toggleLock(currentNearest: (currentNearest ?? liveNearest))
                 }
-                .learnTarget(id: "tuner_lock")
-                .gated("tuner_lock", gate: learnGate)
+                .learnTarget(id: "tuner_dial")
+                .gated("tuner_dial", gate: learnGate)
 
                 
                 .overlay(alignment: .topTrailing) {
@@ -1000,36 +1001,38 @@ extension Notification.Name {
                     }
 
                     // 3 & 6 o’clock: ET cents and JI delta (mode-aware)
-                    HStack(spacing: 12) {
+                    if !isTunerPrimeLimitStepActive {
                         HStack(spacing: 12) {
-                            StatTile(label: "ET", value: model.display.cents.isFinite ? String(format: "%+.1f¢", model.display.cents) : "—")
-                            if store.mode == .live, store.lockedTarget == nil {
-                                StatTile(label: "vs JI", value: String(format: "%+.1f¢", model.display.cents))
-                            } else if let lock = store.lockedTarget {
-                                let vsValue: String = {
-                                    guard rawCents.isFinite else { return "—" }
-                                    if rawCents < -200 { return "LOW" }
-                                    if rawCents >  200 { return "HIGH" }
-                                    return String(format: "%+.1f¢", centsShown)
-                                }()
-                                StatTile(label: "vs \(lock.num)/\(lock.den)", value: vsValue)
-                            }
-                        } // .strict hides the extra JI label by design
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            LearnEventBus.shared.send(.tunerETJIDidInteract)
-                        }
-                        .learnTarget(id: "tuner_et_ji")
-                        .gated("tuner_et_ji", gate: learnGate)
-                        Spacer()
-                        StatTile(label: "Hz", value: String(format: "%.1f", model.display.hz))
-                        StatTile(label: "Conf", value: String(format: "%.0f%%", model.display.confidence*100))
+                            HStack(spacing: 12) {
+                                StatTile(label: "ET", value: model.display.cents.isFinite ? String(format: "%+.1f¢", model.display.cents) : "—")
+                                if store.mode == .live, store.lockedTarget == nil {
+                                    StatTile(label: "vs JI", value: String(format: "%+.1f¢", model.display.cents))
+                                } else if let lock = store.lockedTarget {
+                                    let vsValue: String = {
+                                        guard rawCents.isFinite else { return "—" }
+                                        if rawCents < -200 { return "LOW" }
+                                        if rawCents >  200 { return "HIGH" }
+                                        return String(format: "%+.1f¢", centsShown)
+                                    }()
+                                    StatTile(label: "vs \(lock.num)/\(lock.den)", value: vsValue)
+                                }
+                            } // .strict hides the extra JI label by design
                             .contentShape(Rectangle())
                             .onTapGesture {
-                                LearnEventBus.shared.send(.tunerConfidenceInteracted)
+                                LearnEventBus.shared.send(.tunerETJIDidInteract)
                             }
-                            .learnTarget(id: "tuner_confidence")
-                            .gated("tuner_confidence", gate: learnGate)
+                            .learnTarget(id: "tuner_et_ji")
+                            .gated("tuner_et_ji", gate: learnGate)
+                            Spacer()
+                            StatTile(label: "Hz", value: String(format: "%.1f", model.display.hz))
+                            StatTile(label: "Conf", value: String(format: "%.0f%%", model.display.confidence*100))
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    LearnEventBus.shared.send(.tunerConfidenceInteracted)
+                                }
+                                .learnTarget(id: "tuner_confidence")
+                                .gated("tuner_confidence", gate: learnGate)
+                        }
                     }
 
                     // 9 o’clock: suggestions (tap to lock)
@@ -1179,8 +1182,8 @@ extension Notification.Name {
                         UIImpactFeedbackGenerator(style: .soft).impactOccurred()
                         store.toggleLock(currentNearest: (currentNearest ?? liveNearest))
                     }
-                    .learnTarget(id: "tuner_lock")
-                    .gated("tuner_lock", gate: learnGate)
+                    .learnTarget(id: "tuner_dial")
+                    .gated("tuner_dial", gate: learnGate)
                     .simultaneousGesture(
                         DragGesture(minimumDistance: 18, coordinateSpace: .local)
                             .onEnded { v in
@@ -1280,25 +1283,27 @@ extension Notification.Name {
                             .minimumScaleFactor(0.55)
                     }
 
-                    HStack(spacing: 10) {
-                        StatTile(label: centsLabel,
-                                 value: (store.lockedTarget != nil ? vsValue : String(format: "%+.1f", centsShown)))
+                    if !isTunerPrimeLimitStepActive {
+                        HStack(spacing: 10) {
+                            StatTile(label: centsLabel,
+                                     value: (store.lockedTarget != nil ? vsValue : String(format: "%+.1f", centsShown)))
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    LearnEventBus.shared.send(.tunerETJIDidInteract)
+                                }
+                                .learnTarget(id: "tuner_et_ji")
+                                .gated("tuner_et_ji", gate: learnGate)
+                            StatTile(label: "Hz", value: String(format: "%.1f", liveHz))
+                        }
+
+                        StatTile(label: "Conf", value: String(format: "%.0f%%", liveConf*100))
                             .contentShape(Rectangle())
                             .onTapGesture {
-                                LearnEventBus.shared.send(.tunerETJIDidInteract)
+                                LearnEventBus.shared.send(.tunerConfidenceInteracted)
                             }
-                            .learnTarget(id: "tuner_et_ji")
-                            .gated("tuner_et_ji", gate: learnGate)
-                        StatTile(label: "Hz", value: String(format: "%.1f", liveHz))
+                            .learnTarget(id: "tuner_confidence")
+                            .gated("tuner_confidence", gate: learnGate)
                     }
-
-                    StatTile(label: "Conf", value: String(format: "%.0f%%", liveConf*100))
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            LearnEventBus.shared.send(.tunerConfidenceInteracted)
-                        }
-                        .learnTarget(id: "tuner_confidence")
-                        .gated("tuner_confidence", gate: learnGate)
 
                     HStack(spacing: 10) {
                         NextChip(title: "Lower",  text: model.display.lowerText)

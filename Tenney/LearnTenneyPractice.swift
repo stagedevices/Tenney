@@ -151,6 +151,7 @@ struct LearnTenneyPracticeView: View {
             focusTarget = learnTargetID(for: newValue)
         }
         .environment(\.learnPracticeCompleted, coordinator.completed)
+        .environment(\.isTunerPrimeLimitStepActive, coordinator.isTunerPrimeLimitStepActive)
 
         .navigationTitle("Practice")
         .navigationBarTitleDisplayMode(.inline)

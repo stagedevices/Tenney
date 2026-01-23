@@ -16,6 +16,10 @@ private struct LearnPracticeCompletedKey: EnvironmentKey {
     static let defaultValue: Bool = false
 }
 
+private struct TunerPrimeLimitStepActiveKey: EnvironmentKey {
+    static let defaultValue: Bool = false
+}
+
 extension EnvironmentValues {
     var tenneyPracticeActive: Bool {
         get { self[TenneyPracticeActiveKey.self] }
@@ -25,5 +29,10 @@ extension EnvironmentValues {
     var learnPracticeCompleted: Bool {
         get { self[LearnPracticeCompletedKey.self] }
         set { self[LearnPracticeCompletedKey.self] = newValue }
+    }
+
+    var isTunerPrimeLimitStepActive: Bool {
+        get { self[TunerPrimeLimitStepActiveKey.self] }
+        set { self[TunerPrimeLimitStepActiveKey.self] = newValue }
     }
 }

@@ -21,6 +21,13 @@ final class LearnCoordinator: ObservableObject {
         return steps[i]
     }
 
+    var isTunerPrimeLimitStepActive: Bool {
+        guard module == .tuner else { return false }
+        guard !completed else { return false }
+        guard let step = currentStep else { return false }
+        return step.gate.isActive && step.gate.allowedTargets.contains("tuner_prime_limit")
+    }
+
     @Published var currentStepIndex: Int = 0
     @Published var gate: LearnGate = .init()
     @Published var completed = false

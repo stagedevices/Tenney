@@ -94,9 +94,9 @@ enum LearnStepFactory {
                         "Lock fixes your target so the UI stops “chasing” nearby ratios.",
                         "Use lock when practicing intonation against one goal."
                     ],
-                    tryIt: "Long-press the target control to lock, then unlock.",
-                    gate: .init(allowedTargets: ["tuner_lock"], isActive: true),
-                    validate: { if case .tunerLockToggled = $0 { return true } else { return false } }
+                    tryIt: "Long-press the dial to lock the target.",
+                    gate: .init(allowedTargets: ["tuner_dial"], isActive: true),
+                    validate: { if case .tunerLockToggled(true) = $0 { return true } else { return false } }
                 ),
                 LearnStep(
                             title: "Prime limit chips",
@@ -107,6 +107,16 @@ enum LearnStepFactory {
                               gate: .init(allowedTargets: ["tuner_prime_limit"], isActive: true),
                               validate: { if case .tunerPrimeLimitChanged = $0 { return true } else { return false } }
                            ),
+                LearnStep(
+                    title: "Unlock target (long-press)",
+                    bullets: [
+                        "Unlock returns the dial to live matching.",
+                        "Use it after checking a specific ratio."
+                    ],
+                    tryIt: "Long-press the dial to unlock the target.",
+                    gate: .init(allowedTargets: ["tuner_dial"], isActive: true),
+                    validate: { if case .tunerLockToggled(false) = $0 { return true } else { return false } }
+                ),
                 //        LearnStep(
                 //              title: "ET vs JI readouts",
                 //              bullets: [

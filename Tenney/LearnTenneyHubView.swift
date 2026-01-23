@@ -132,6 +132,8 @@ struct LearnTenneyHubView: View {
             activeModule = pending
             store.pendingModuleToOpen = nil
         }
+        .learnTenneySheetPresentation()
+        .learnTenneySheetSizing(enabled: shouldApplyLearnTenneySheetSizing(sizeClass: sizeClass))
     }
 
     private var moduleTint: Color {
