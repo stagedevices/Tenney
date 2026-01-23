@@ -190,6 +190,8 @@ private struct LatticePracticeHost: View {
             let baseline = TenneyPracticeSnapshot()
             practiceSnapshot = baseline.trackingNewKeys(since: baseline)
             UserDefaults.standard.set(false, forKey: SettingsKeys.latticeRememberLastView)
+            UserDefaults.standard.set(false, forKey: SettingsKeys.overlay7)
+            UserDefaults.standard.set(false, forKey: SettingsKeys.overlay11)
             applyOverlayPrimeState(Set<Int>())
         }
         .onDisappear {
