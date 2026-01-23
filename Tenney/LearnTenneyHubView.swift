@@ -14,7 +14,7 @@ enum LearnTenneyEntryPoint: Sendable {
 }
 
 enum LearnTenneyModule: String, CaseIterable, Identifiable, Sendable {
-    case lattice, tuner, builder, rootPitchTuningConfig
+    case lattice, tuner, builder, learningSettings, rootPitchTuningConfig
     var id: String { rawValue }
 
     var title: String {
@@ -22,6 +22,7 @@ enum LearnTenneyModule: String, CaseIterable, Identifiable, Sendable {
         case .lattice: return "Lattice"
         case .tuner:   return "Tuner"
         case .builder: return "Builder"
+        case .learningSettings: return "Learning Settings"
         case .rootPitchTuningConfig: return "Root Pitch & Tuning Configuration"
         }
     }
@@ -31,6 +32,7 @@ enum LearnTenneyModule: String, CaseIterable, Identifiable, Sendable {
         case .lattice: return "Selection, limits, axis shift, and auditioning"
         case .tuner:   return "Views, locks, confidence, limits, and stage mode"
         case .builder: return "Pads, root, and the oscilloscope"
+        case .learningSettings: return "Settings map + deep links"
         case .rootPitchTuningConfig: return "Root Hz, tonic naming, concert pitch, and troubleshooting"
         }
     }
@@ -40,6 +42,7 @@ enum LearnTenneyModule: String, CaseIterable, Identifiable, Sendable {
         case .lattice: return "dot.circle.and.hand.point.up.left.fill"
         case .tuner:   return "dial.high.fill"
         case .builder: return "pianokeys.inverse"
+        case .learningSettings: return "map.fill"
         case .rootPitchTuningConfig: return "tuningfork"
         }
     }
@@ -47,6 +50,8 @@ enum LearnTenneyModule: String, CaseIterable, Identifiable, Sendable {
     var supportsPractice: Bool {
         switch self {
         case .rootPitchTuningConfig:
+            return false
+        case .learningSettings:
             return false
         default:
             return true
@@ -61,6 +66,8 @@ enum LearnTenneyModule: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .rootPitchTuningConfig:
             return LearnReferenceTopic.allCases
+        case .learningSettings:
+            return []
         default:
             return []
         }

@@ -348,6 +348,15 @@ struct StudioConsoleView: View {
         }
         app.openSettingsToTunerRail = false
     }
+
+    private func applyDeepLinkIfNeeded(_ link: SettingsDeepLink?) {
+        guard let link else { return }
+        withAnimation(catAnim) { activeCategory = link.category }
+        latticeInitialDeepLink = link.latticePage
+        oscilloscopeInitialDeepLink = link.oscilloscopePage
+        audioInitialDeepLink = link.audioPage
+        deepLinkCenter.pending = nil
+    }
     
     @AppStorage(SettingsKeys.latticeDefaultZoomPreset)
     private var latticeDefaultZoomPresetRaw: String = LatticeZoomPreset.close.rawValue
@@ -488,6 +497,10 @@ struct StudioConsoleView: View {
     }
     
     @State private var activeCategory: SettingsCategory? = nil // nil = home screen
+    @StateObject private var deepLinkCenter = SettingsDeepLinkCenter.shared
+    @State private var latticeInitialDeepLink: SettingsDeepLinkLatticePage? = nil
+    @State private var oscilloscopeInitialDeepLink: SettingsDeepLinkOscilloscopePage? = nil
+    @State private var audioInitialDeepLink: SettingsDeepLinkAudioPage? = nil
     private let initialCategory: SettingsCategory?
     private let catAnim = Animation.easeInOut(duration: 0.22)
 
@@ -1008,6 +1021,7 @@ struct StudioConsoleView: View {
         // Snapping
         @Binding var snapSmall: Bool
         @Binding var maxDen: Int
+        let initialPage: SettingsDeepLinkOscilloscopePage?
 
         @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -1065,6 +1079,20 @@ struct StudioConsoleView: View {
             case .persistence: return "clock.arrow.circlepath"
             case .snapping:    return "number"
             }
+        }
+
+        private func mappedPage(from deepLink: SettingsDeepLinkOscilloscopePage) -> OscilloscopePage {
+            switch deepLink {
+            case .view: return .view
+            case .trace: return .trace
+            case .persistence: return .persistence
+            case .snapping: return .snapping
+            }
+        }
+
+        private func applyInitialPage(_ deepLink: SettingsDeepLinkOscilloscopePage?) {
+            guard let deepLink else { return }
+            switchTo(mappedPage(from: deepLink))
         }
 
         private func onOff(_ v: Bool) -> String { v ? "On" : "Off" }
@@ -1451,12 +1479,17 @@ struct StudioConsoleView: View {
                 pageSwitcher
                 pagedPanel
             }
+            .onAppear { applyInitialPage(initialPage) }
+            .onChange(of: initialPage) { newValue in
+                applyInitialPage(newValue)
+            }
         }
     }
 
     private struct AudioEnginePager: View {
         @Binding var cfg: ToneOutputEngine.Config
         @Binding var safeAmp: Double
+        let initialPage: SettingsDeepLinkAudioPage?
         
         @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
         @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -1504,6 +1537,20 @@ struct StudioConsoleView: View {
             case .envelope: return "waveform.path.ecg"
             case .headroom: return "level"
             }
+        }
+
+        private func mappedPage(from deepLink: SettingsDeepLinkAudioPage) -> Page {
+            switch deepLink {
+            case .device: return .device
+            case .tone: return .tone
+            case .envelope: return .envelope
+            case .headroom: return .headroom
+            }
+        }
+
+        private func applyInitialPage(_ deepLink: SettingsDeepLinkAudioPage?) {
+            guard let deepLink else { return }
+            switchTo(mappedPage(from: deepLink))
         }
 
         private func waveLabel(_ wave: ToneOutputEngine.GlobalWave) -> String {
@@ -1919,6 +1966,10 @@ struct StudioConsoleView: View {
                 pagedPanel
             }
             .onChange(of: cfg) { ToneOutputEngine.shared.config = $0 }
+            .onAppear { applyInitialPage(initialPage) }
+            .onChange(of: initialPage) { newValue in
+                applyInitialPage(newValue)
+            }
         }
 
         // existing helper lives in outer scope:
@@ -1965,6 +2016,7 @@ struct StudioConsoleView: View {
         @Binding var gridMajorEvery: Int
         
         @Binding var tenneyDistanceModeRaw: String
+        let initialPage: SettingsDeepLinkLatticePage?
         let previewToken: String
 
         @State private var page: LatticeUIPage = .view
@@ -2017,6 +2069,19 @@ struct StudioConsoleView: View {
                     case .distance: return "ruler"
                     }
                 }
+
+        private func mappedPage(from deepLink: SettingsDeepLinkLatticePage) -> LatticeUIPage {
+            switch deepLink {
+            case .view: return .view
+            case .grid: return .grid
+            case .distance: return .distance
+            }
+        }
+
+        private func applyInitialPage(_ deepLink: SettingsDeepLinkLatticePage?) {
+            guard let deepLink else { return }
+            switchTo(mappedPage(from: deepLink))
+        }
 
         private struct PageHeader: View {
             let title: String
@@ -2562,6 +2627,10 @@ struct StudioConsoleView: View {
                 // 3) Paged content panel (animated in/out)
                 pagedPanel
             }
+            .onAppear { applyInitialPage(initialPage) }
+            .onChange(of: initialPage) { newValue in
+                applyInitialPage(newValue)
+            }
         }
     }
     private struct GridStrengthStepperChip: View {
@@ -2777,8 +2846,14 @@ struct StudioConsoleView: View {
                 
             .statusBar(hidden: stageHideStatus)
             .preferredColorScheme(settingsScheme)
-            .onAppear { handleTunerRailDeepLinkIfNeeded() }
+            .onAppear {
+                handleTunerRailDeepLinkIfNeeded()
+                applyDeepLinkIfNeeded(deepLinkCenter.pending)
+            }
             .onChange(of: app.openSettingsToTunerRail) { _ in handleTunerRailDeepLinkIfNeeded() }
+            .onChange(of: deepLinkCenter.pending) { link in
+                applyDeepLinkIfNeeded(link)
+            }
             .sheet(isPresented: $showWhatsNewSheet, onDismiss: {
                 markWhatsNewSeen()
             }) {
@@ -3925,7 +4000,8 @@ private struct GlassNavTile<Destination: View>: View {
                     persistenceEnabled: $lissaPersistenceEnabled,
                     halfLife: $lissaHalfLife,
                     snapSmall: $lissaSnapSmall,
-                    maxDen: $lissaMaxDen
+                    maxDen: $lissaMaxDen,
+                    initialPage: oscilloscopeInitialDeepLink
                 )
             }
             .font(.callout)
@@ -4247,6 +4323,7 @@ private struct GlassNavTile<Destination: View>: View {
                 gridMajorEnabled: $gridMajorEnabled,
                 gridMajorEvery: $gridMajorEvery,
                 tenneyDistanceModeRaw: $tenneyDistanceModeRaw,
+                initialPage: latticeInitialDeepLink,
                 previewToken: "\(tenneyThemeIDRaw)|\(effectiveIsDark ? "dark" : "light")"
             )
         }
@@ -4462,7 +4539,7 @@ private struct GlassNavTile<Destination: View>: View {
             title: "",
             subtitle: ""
         ) {
-            AudioEnginePager(cfg: $cfg, safeAmp: $safeAmp)
+            AudioEnginePager(cfg: $cfg, safeAmp: $safeAmp, initialPage: audioInitialDeepLink)
         }
 
     }

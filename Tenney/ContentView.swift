@@ -54,6 +54,7 @@ private let libraryStore = ScaleLibraryStore.shared
     @EnvironmentObject private var app: AppModel
     @State private var mode: AppScreenMode = .tuner
     @State private var showSettings = false
+    @StateObject private var settingsDeepLinkCenter = SettingsDeepLinkCenter.shared
     
     @StateObject private var tunerRailStore = TunerRailStore()
     @State private var requestedSettingsCategory: StudioConsoleView.SettingsCategory? = nil
@@ -395,6 +396,25 @@ private let libraryStore = ScaleLibraryStore.shared
             }
             .sheet(isPresented: $app.showScaleLibraryDetent, onDismiss: librarySheetDismiss) { scaleLibraryDetent }
             .sheet(isPresented: $showRootStudio) { rootStudioDetent }
+            .onChange(of: settingsDeepLinkCenter.pending) { link in
+                guard let link else { return }
+                requestedSettingsCategory = link.category
+                showSettings = true
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .requestRootStudioTab)) { note in
+                guard let raw = note.object as? String else { return }
+                showRootStudio = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    NotificationCenter.default.post(name: .openRootStudioTab, object: raw)
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .requestRootStudioSection)) { note in
+                guard let section = note.object as? String else { return }
+                showRootStudio = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    NotificationCenter.default.post(name: .openRootStudioSection, object: section)
+                }
+            }
     }
 
     private var coreContent: some View {
@@ -2590,7 +2610,12 @@ fileprivate enum RootStudioTab: String, CaseIterable, Identifiable { case calcul
     }
 }
 
-extension Notification.Name { static let openRootStudioTab = Notification.Name("tenney.open.root.studio.tab") }
+extension Notification.Name {
+    static let openRootStudioTab = Notification.Name("tenney.open.root.studio.tab")
+    static let openRootStudioSection = Notification.Name("tenney.open.root.studio.section")
+    static let requestRootStudioTab = Notification.Name("tenney.request.root.studio.tab")
+    static let requestRootStudioSection = Notification.Name("tenney.request.root.studio.section")
+}
 
 private struct RootStudioSheet: View {
     @EnvironmentObject private var model: AppModel
@@ -2656,6 +2681,7 @@ private struct RootStudioSheet: View {
                                 .overlay(cardHighlight(for: .calculator))
 
                             nameAsCard
+                                .id("nameAs")
         
                             a4Card
                                 .id("a4")
@@ -2672,6 +2698,10 @@ private struct RootStudioSheet: View {
                         withAnimation(.snappy) { proxy.scrollTo(target, anchor: .top) }
                         highlight = t
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { withAnimation(.easeOut(duration: 0.25)) { highlight = nil } }
+                    }
+                    .onReceive(NotificationCenter.default.publisher(for: .openRootStudioSection)) { note in
+                        guard let section = note.object as? String else { return }
+                        withAnimation(.snappy) { proxy.scrollTo(section, anchor: .top) }
                     }
                 }
 #if targetEnvironment(macCatalyst)

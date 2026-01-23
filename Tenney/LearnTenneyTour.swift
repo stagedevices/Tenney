@@ -114,6 +114,7 @@ struct LearnTenneyTourView: View {
         case .lattice: latticeDone = true
         case .tuner: tunerDone = true
         case .builder: builderDone = true
+        case .learningSettings: break
         case .rootPitchTuningConfig: break
         }
     }
@@ -266,6 +267,8 @@ struct LearnTenneyTourView: View {
                     tryIt: "Make two tones interact (or use pads) and watch the shape evolve."
                 )
             ]
+        case .learningSettings:
+            return []
         case .rootPitchTuningConfig:
             return []
         }

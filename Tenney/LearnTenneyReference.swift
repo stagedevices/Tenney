@@ -211,6 +211,8 @@ struct LearnTenneyReferenceListView: View {
             ]
         case .rootPitchTuningConfig:
             return []
+        case .learningSettings:
+            return []
         }
     }
 }

@@ -63,7 +63,9 @@ struct LearnTenneyModuleView: View {
                         LearnTenneyPracticeView(module: module, focus: $practiceFocus)
                     }
                 case .reference:
-                    if module.referenceTopics.isEmpty {
+                    if module == .learningSettings {
+                        LearnTenneySettingsMapView()
+                    } else if module.referenceTopics.isEmpty {
                         LearnTenneyReferenceListView(module: module) { focus in
                             practiceFocus = focus
                             tab = .practice
