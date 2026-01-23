@@ -702,7 +702,7 @@ struct ScaleBuilderScreen: View {
                     }
                     .frame(maxWidth: .infinity, minHeight: 180)
                     .accessibilityIdentifier("LissajousCard")
-                    .learnTarget("builder_scope")
+                    .learnTarget(id: "builder_scope")
                     .onAppear {
                         LearnEventBus.shared.send(.builderOscilloscopeObserved)
                     }
@@ -732,7 +732,7 @@ struct ScaleBuilderScreen: View {
                         store.add(RatioRef(p: 1, q: 1, octave: 0, monzo: [:]))
                         LearnEventBus.shared.send(.builderRootAdded)
                     }
-                    .learnTarget("builder_add_root")
+                    .learnTarget(id: "builder_add_root")
                 }
                 
                 Spacer()
@@ -824,7 +824,7 @@ struct ScaleBuilderScreen: View {
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
             .buttonStyle(.plain)
-            .learnTarget("builder_pad")
+            .learnTarget(id: "builder_pad")
             .contextMenu {
                 Button("Remove") { store.remove(at: IndexSet(integer: idx)) }
                 Button("Inspect") { selectedPad = idx }
@@ -852,7 +852,7 @@ struct ScaleBuilderScreen: View {
         .contentShape(Circle())
         .accessibilityLabel(isExportMode ? "Back to pads" : "Export options")
         .accessibilityAddTraits(.isButton)
-        .learnTarget("builder_export")
+        .learnTarget(id: "builder_export")
     }
 
         
