@@ -119,6 +119,11 @@ final class PitchTracker {
 
     private var dbgAnalyzeFirstHitLogged = false
 
+    /// Truthy when the engine is running and mic capture tap is installed.
+    var isRunning: Bool {
+        graphStarted && engine.isRunning && tapInstalled && analysisRunning
+    }
+
     // MARK: - Lifecycle
     init(strictness: Strictness) {
         self.kalman = Kalman1D(q: strictness.kalmanQ, r: strictness.kalmanR)

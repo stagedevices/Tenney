@@ -71,10 +71,12 @@ final class AppModel: ObservableObject {
             self.showOnboardingWizard = !done
         DiagnosticsCenter.shared.event(category: "app", level: .info, message: "AppModel init")
         SentryService.shared.breadcrumb(category: "app", message: "AppModel init")
+        registerAudioSessionObservers()
     }
     
     deinit {
         if let o = _recenterObserver { NotificationCenter.default.removeObserver(o) }
+        audioSessionObservers.forEach(NotificationCenter.default.removeObserver)
     }
     
     enum MicPermissionState { case unknown, denied, granted }
@@ -138,7 +140,12 @@ final class AppModel: ObservableObject {
     private let audio = AudioEngineService()
     // Scene activity + desired mic state
     @Published private(set) var sceneIsActive: Bool = true
+    @Published private(set) var pipelineWanted: Bool = true
+    @Published private(set) var pipelineActive: Bool = false
+    @Published private(set) var pipelineInterrupted: Bool = false
     private var desiredMicActive: Bool = true
+    private var permissionRequestInFlight = false
+    private var audioSessionObservers: [NSObjectProtocol] = []
     private let toneOutput = ToneOutputEngine.shared
     // New DSP stack
     private var stableHzForSizing: Double = 261.63
@@ -453,15 +460,127 @@ final class AppModel: ObservableObject {
         case .undetermined: micPermission = .unknown
         }
 
-        // IMPORTANT: restartPipeline() is what will trigger the macOS prompt (via ensureGranted)
-        if sceneIsActive && desiredMicActive {
-            restartPipeline()
-        }
+        // IMPORTANT: reconcilePipeline() is what will trigger the macOS prompt (via ensureGranted)
+        reconcilePipeline(reason: "configureAndStart")
 
     }
+
+    private func registerAudioSessionObservers() {
+#if os(iOS) || targetEnvironment(macCatalyst)
+        let center = NotificationCenter.default
+        audioSessionObservers.append(
+            center.addObserver(
+                forName: AVAudioSession.interruptionNotification,
+                object: AVAudioSession.sharedInstance(),
+                queue: .main
+            ) { [weak self] note in
+                self?.handleAudioSessionInterruption(note)
+            }
+        )
+        audioSessionObservers.append(
+            center.addObserver(
+                forName: AVAudioSession.routeChangeNotification,
+                object: AVAudioSession.sharedInstance(),
+                queue: .main
+            ) { [weak self] _ in
+                self?.reconcilePipeline(reason: "routeChange", forceRestart: true)
+            }
+        )
+        audioSessionObservers.append(
+            center.addObserver(
+                forName: AVAudioSession.mediaServicesWereResetNotification,
+                object: AVAudioSession.sharedInstance(),
+                queue: .main
+            ) { [weak self] _ in
+                self?.reconcilePipeline(reason: "mediaServicesReset", forceRestart: true)
+            }
+        )
+#endif
+    }
+
+    private func suspendPipeline(reason: String?, deactivateSession: Bool) {
+        guard pipelineActive || audio.running else { return }
+        audio.stop(deactivateSession: deactivateSession)
+        pipelineActive = false
+        if let reason {
+            DiagnosticsCenter.shared.event(category: "audio", level: .info, message: "suspend pipeline", meta: ["reason": reason])
+        }
+        SentryService.shared.breadcrumb(category: "audio", message: "suspend pipeline")
+    }
+
+    private func reconcilePipeline(reason: String? = nil, forceRestart: Bool = false) {
+        guard pipelineWanted, sceneIsActive else {
+            if !sceneIsActive {
+                suspendPipeline(reason: reason, deactivateSession: true)
+            } else if !pipelineWanted {
+                suspendPipeline(reason: reason, deactivateSession: false)
+                pipelineInterrupted = false
+            }
+            return
+        }
+
+        let status = MicrophonePermission.status()
+        switch status {
+        case .granted:
+            micPermission = .granted
+            micDenied = false
+            if forceRestart || !audio.running {
+                restartPipeline(ensurePermission: false)
+            } else {
+                pipelineActive = audio.running
+                pipelineInterrupted = false
+            }
+        case .denied:
+            micPermission = .denied
+            micDenied = true
+            pipelineActive = false
+            suspendPipeline(reason: reason, deactivateSession: true)
+            display = .noInput(rootHz: effectiveRootHz)
+        case .undetermined:
+            micPermission = .unknown
+            guard !permissionRequestInFlight else { return }
+            permissionRequestInFlight = true
+            MicrophonePermission.ensure { [weak self] granted in
+                guard let self else { return }
+                self.permissionRequestInFlight = false
+                self.micPermission = granted ? .granted : .denied
+                self.micDenied = !granted
+                guard granted, self.pipelineWanted, self.sceneIsActive else {
+                    if !granted {
+                        self.display = .noInput(rootHz: self.effectiveRootHz)
+                    }
+                    return
+                }
+                self.restartPipeline(ensurePermission: false)
+            }
+        }
+    }
+
+    private func handleAudioSessionInterruption(_ notification: Notification) {
+        guard let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: typeValue) else {
+            return
+        }
+
+        switch type {
+        case .began:
+            pipelineInterrupted = true
+            suspendPipeline(reason: "interruptionBegan", deactivateSession: false)
+        case .ended:
+            pipelineInterrupted = false
+            let optionsValue = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt
+            let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue ?? 0)
+            if options.contains(.shouldResume) {
+                reconcilePipeline(reason: "interruptionEnded", forceRestart: true)
+            }
+        @unknown default:
+            pipelineInterrupted = false
+        }
+    }
     
-    func restartPipeline() {
+    func restartPipeline(ensurePermission: Bool = true) {
         audio.stop(deactivateSession: false)
+        pipelineActive = false
         fft = nil; phaseRefiner = nil; pll = nil; smoother = nil
         pipelineStart = Date()
         analysisBuffer.removeAll(); lastHzEstimate = nil
@@ -480,23 +599,38 @@ final class AppModel: ObservableObject {
         )
         print("mic status:", MicrophonePermission.status())
 
-        // Pass the config to audio.start (only after permission is granted)
-        MicrophonePermission.ensureGranted(
-            { [weak self] in
-                guard let self else { return }
-                self.micPermission = .granted
-                self.micDenied = false
-                self.audio.start(config: config) { [weak self] samples, sr in
-                    self?.process(samples: samples, sr: sr)
-                }
-            },
-            onDenied: { [weak self] in
-                guard let self else { return }
-                self.micPermission = .denied
-                self.micDenied = true
-                self.display = .noInput(rootHz: self.effectiveRootHz)
+        let startAudio: () -> Void = { [weak self] in
+            guard let self else { return }
+            self.micPermission = .granted
+            self.micDenied = false
+            self.audio.start(config: config) { [weak self] samples, sr in
+                self?.process(samples: samples, sr: sr)
             }
-        )
+            self.pipelineActive = self.audio.running
+            self.pipelineInterrupted = false
+        }
+
+        if ensurePermission {
+            permissionRequestInFlight = true
+            // Pass the config to audio.start (only after permission is granted)
+            MicrophonePermission.ensureGranted(
+                { [weak self] in
+                    guard let self else { return }
+                    self.permissionRequestInFlight = false
+                    startAudio()
+                },
+                onDenied: { [weak self] in
+                    guard let self else { return }
+                    self.permissionRequestInFlight = false
+                    self.micPermission = .denied
+                    self.micDenied = true
+                    self.pipelineActive = false
+                    self.display = .noInput(rootHz: self.effectiveRootHz)
+                }
+            )
+        } else {
+            startAudio()
+        }
 
     }
     
@@ -506,14 +640,11 @@ final class AppModel: ObservableObject {
     /// Request mic activity. Will only actually start if the scene is active and permission is granted.
     func setMicActive(_ active: Bool) {
         desiredMicActive = active
-        
-        let shouldRunMic = sceneIsActive && desiredMicActive
-        
-        if shouldRunMic, micPermission == .granted {
-            restartPipeline()
-        } else {
-            audio.stop(deactivateSession: false)
+        pipelineWanted = active
+        if !active {
+            pipelineInterrupted = false
         }
+        reconcilePipeline(reason: "setMicActive")
     }
 
     func setPipelineActive(_ active: Bool, reason: String? = nil) {
@@ -565,13 +696,11 @@ final class AppModel: ObservableObject {
     
     // MARK: Scene phase
     func scenePhaseDidChange(_ phase: ScenePhase) {
-        let shouldRunMic = (phase == .active) && desiredMicActive
         sceneIsActive = (phase == .active)
-        
-        if shouldRunMic, micPermission == .granted {
-            restartPipeline()
+        if sceneIsActive {
+            reconcilePipeline(reason: "sceneActive", forceRestart: true)
         } else {
-            audio.stop(deactivateSession: true)
+            suspendPipeline(reason: "sceneInactive", deactivateSession: true)
         }
     }
     

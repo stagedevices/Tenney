@@ -18,6 +18,10 @@ final class AudioEngineService {
     private var tapInstalled = false
     private var didLogTapFormat = false
 
+    var running: Bool {
+        isRunning && engine.isRunning
+    }
+
     func start(config: AudioIOConfig, callback: @escaping ([Float], Double) -> Void) {
         guard !isRunning else { return }
         // Ensure all AVAudioSession and engine mutations happen on the main thread.
@@ -228,4 +232,3 @@ final class AudioEngineService {
     }
 
 }
-

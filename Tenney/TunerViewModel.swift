@@ -40,6 +40,8 @@ final class TunerViewModel: ObservableObject {
     // Diagnostics
     @Published var inputRMS: Float = 0
     @Published var micGranted: Bool = false
+    @Published private(set) var pipelineActive = false
+    @Published var pipelineInterrupted: Bool = false
 
     // Test tone toggle (visible in UI)
     @Published var useTestTone: Bool = false {
@@ -77,8 +79,8 @@ final class TunerViewModel: ObservableObject {
     private let resolver = RatioResolver()
     private var lastSnapshot = Date.distantPast
     private var pipelineWanted = false
-    private var pipelineActive = false
     private var permissionRequestInFlight = false
+    private var audioSessionObservers: [NSObjectProtocol] = []
     
     private func confidenceFromRMS(_ rms: Float) -> Double {
         // RMS is linear 0..1-ish; tune these bounds for your input chain.
@@ -107,6 +109,7 @@ final class TunerViewModel: ObservableObject {
                     }
                 )
         micGranted = (MicrophonePermission.status() == .granted)
+        registerAudioSessionObservers()
     }
 
     deinit {
@@ -115,54 +118,132 @@ final class TunerViewModel: ObservableObject {
                 tracker.enableMicrophoneCapture(false)
                 tracker.shutdown()
             }
-        }
+            audioSessionObservers.forEach(NotificationCenter.default.removeObserver)
+    }
     
     func setPipelineActive(_ active: Bool, reason: String? = nil) {
         pipelineWanted = active
+        reconcilePipeline(reason: reason)
+    }
 
-        if active {
-            guard !pipelineActive else { return }
-            let status = MicrophonePermission.status()
-            switch status {
-            case .granted:
-                micGranted = true
+    func suspendPipeline(reason: String? = nil) {
+        guard pipelineActive || tracker.isRunning else { return }
+        stopPipeline(reason: reason)
+    }
+
+    func reconcilePipeline(reason: String? = nil, forceRestart: Bool = false) {
+        if !pipelineWanted {
+            stopPipeline(reason: reason)
+            pipelineInterrupted = false
+            return
+        }
+
+        let status = MicrophonePermission.status()
+        switch status {
+        case .granted:
+            micGranted = true
+            if forceRestart || !tracker.isRunning {
+                stopPipeline(reason: reason)
                 activatePipeline(reason: reason)
-            case .denied:
-                micGranted = false
-            case .undetermined:
-                guard !permissionRequestInFlight else { return }
-                permissionRequestInFlight = true
-                MicrophonePermission.ensure { [weak self] granted in
-                    guard let self else { return }
-                    self.permissionRequestInFlight = false
-                    self.micGranted = granted
-                    guard granted, self.pipelineWanted else { return }
-                    self.activatePipeline(reason: reason)
+            } else if !pipelineActive {
+                activatePipeline(reason: reason)
+            }
+        case .denied:
+            micGranted = false
+            stopPipeline(reason: reason)
+        case .undetermined:
+            guard !permissionRequestInFlight else { return }
+            permissionRequestInFlight = true
+            MicrophonePermission.ensure { [weak self] granted in
+                guard let self else { return }
+                self.permissionRequestInFlight = false
+                self.micGranted = granted
+                guard granted, self.pipelineWanted else {
+                    if !granted { self.stopPipeline(reason: reason) }
+                    return
                 }
+                self.reconcilePipeline(reason: reason, forceRestart: forceRestart)
             }
-        } else {
-            guard pipelineActive else { return }
-            pipelineActive = false
-            tracker.enableMicrophoneCapture(false)
-            tracker.shutdown()
-            if let reason {
-                DiagnosticsCenter.shared.event(category: "tuner", level: .info, message: "stop detection", meta: ["reason": reason])
-            }
-            SentryService.shared.breadcrumb(category: "tuner", message: "stop detection")
         }
     }
 
     private func activatePipeline(reason: String?) {
         guard !pipelineActive else { return }
-        pipelineActive = true
         tracker.startDetection()
         tracker.enableMicrophoneCapture(true)
+        pipelineActive = tracker.isRunning
         if let reason {
             DiagnosticsCenter.shared.event(category: "tuner", level: .info, message: "start detection", meta: ["reason": reason])
         } else {
             DiagnosticsCenter.shared.event(category: "tuner", level: .info, message: "start detection")
         }
         SentryService.shared.breadcrumb(category: "tuner", message: "start detection")
+    }
+
+    private func stopPipeline(reason: String?) {
+        guard pipelineActive || tracker.isRunning else { return }
+        pipelineActive = false
+        tracker.enableMicrophoneCapture(false)
+        tracker.shutdown()
+        if let reason {
+            DiagnosticsCenter.shared.event(category: "tuner", level: .info, message: "stop detection", meta: ["reason": reason])
+        }
+        SentryService.shared.breadcrumb(category: "tuner", message: "stop detection")
+    }
+
+    private func registerAudioSessionObservers() {
+#if os(iOS) || targetEnvironment(macCatalyst)
+        let center = NotificationCenter.default
+        audioSessionObservers.append(
+            center.addObserver(
+                forName: AVAudioSession.interruptionNotification,
+                object: AVAudioSession.sharedInstance(),
+                queue: .main
+            ) { [weak self] note in
+                self?.handleAudioSessionInterruption(note)
+            }
+        )
+        audioSessionObservers.append(
+            center.addObserver(
+                forName: AVAudioSession.routeChangeNotification,
+                object: AVAudioSession.sharedInstance(),
+                queue: .main
+            ) { [weak self] _ in
+                self?.reconcilePipeline(reason: "routeChange", forceRestart: true)
+            }
+        )
+        audioSessionObservers.append(
+            center.addObserver(
+                forName: AVAudioSession.mediaServicesWereResetNotification,
+                object: AVAudioSession.sharedInstance(),
+                queue: .main
+            ) { [weak self] _ in
+                self?.reconcilePipeline(reason: "mediaServicesReset", forceRestart: true)
+            }
+        )
+#endif
+    }
+
+    private func handleAudioSessionInterruption(_ notification: Notification) {
+        guard let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: typeValue) else {
+            return
+        }
+
+        switch type {
+        case .began:
+            pipelineInterrupted = true
+            suspendPipeline(reason: "interruptionBegan")
+        case .ended:
+            pipelineInterrupted = false
+            let optionsValue = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt
+            let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue ?? 0)
+            if options.contains(.shouldResume) {
+                reconcilePipeline(reason: "interruptionEnded", forceRestart: true)
+            }
+        @unknown default:
+            pipelineInterrupted = false
+        }
     }
 
     private func handle(hz: Double, monotonic: Double) {

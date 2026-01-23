@@ -107,6 +107,7 @@ struct TenneyApp: App {
                     if phase == .active {
                         latticeStore.performBootSelectionClearIfNeeded()
                     }
+                    appModel.scenePhaseDidChange(phase)
                     if phase == .background || phase == .inactive {
                         SessionCrashMarker.shared.markCleanTermination()
                     }
@@ -146,6 +147,7 @@ struct TenneyApp: App {
                     if phase == .active {
                         latticeStore.performBootSelectionClearIfNeeded()
                     }
+                    appModel.scenePhaseDidChange(phase)
                     if phase == .background || phase == .inactive {
                         SessionCrashMarker.shared.markCleanTermination()
                     }

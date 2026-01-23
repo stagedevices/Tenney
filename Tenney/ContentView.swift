@@ -1903,6 +1903,22 @@ private struct UtilityBar: View {
         }
     }
 
+    private var tunerStatusText: String {
+        if !app.pipelineWanted { return "Tuner off" }
+        if app.micPermission == .denied { return "Mic denied" }
+        if app.pipelineInterrupted { return "Tuner paused" }
+        if app.pipelineActive { return "Tuner active" }
+        return app.micPermission == .granted ? "Recovering" : "Initializing"
+    }
+
+    private var tunerStatusIcon: String {
+        if !app.pipelineWanted { return "waveform.slash" }
+        if app.micPermission == .denied { return "exclamationmark.triangle.fill" }
+        if app.pipelineInterrupted { return "pause.circle.fill" }
+        if app.pipelineActive { return "dot.radiowaves.left.and.right" }
+        return "waveform"
+    }
+
     private var modeSwitch: some View {
         HStack(spacing: 6) {
             ForEach(modeTabs) { tab in
@@ -1988,9 +2004,10 @@ private struct UtilityBar: View {
                 .tenneyChromaShadow(true)
                 .accessibilityLabel(app.latticeAuditionOn ? "Audition sound on" : "Audition sound off")
             } else {
-                            Image(systemName: "dot.radiowaves.left.and.right").imageScale(.large)
-                            Text(app.micPermission == .granted ? "Tuner active" : "Initializing")
-                                    }
+                Image(systemName: tunerStatusIcon)
+                    .imageScale(.large)
+                Text(tunerStatusText)
+            }
             Spacer()
 
             Button {
