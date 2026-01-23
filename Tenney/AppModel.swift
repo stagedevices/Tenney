@@ -178,6 +178,7 @@ final class AppModel: ObservableObject {
     enum ScaleLibraryLaunchMode: Equatable {
         case recents
         case favorites
+        case communityPacks
     }
 
     @Published var scaleLibraryLaunchMode: ScaleLibraryLaunchMode? = nil
