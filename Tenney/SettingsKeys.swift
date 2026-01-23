@@ -67,6 +67,8 @@ enum SettingsKeys {
     static let tenneyThemeScopeMode   = "tenney.theme.scope.mode"         // String (TenneyScopeColorMode)
     static let tenneyCustomThemes     = "tenney.theme.customThemes"       // Data ([CustomTheme])
     static let tenneyMonochromeTintHex = "tenney.monochromeTintHex"
+    static let tenneyColorBlindModeEnabled = "tenney.a11y.colorBlindModeEnabled"
+    static let tenneyColorBlindModePatternsEnabled = "tenney.a11y.colorBlindModePatternsEnabled"
 
     //scope tuner
     static let tunerScopePartial = "Tenney.Tuner.ScopePartial"

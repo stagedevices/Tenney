@@ -997,10 +997,18 @@ extension Notification.Name {
                         // tiny prime badge guesses from label (fast path; you already have NotationFormatter if needed)
                         let primes = label.split(separator: "/").flatMap { Int($0) }.flatMap { factors($0) }.filter { $0 > 2 }
                         HStack(spacing: 6) {
-                                                    ForEach(Array(Set(primes)).sorted(), id: \.self) { p in
-                                                        BadgeCapsule(text: "\(p)", style: AnyShapeStyle(theme.primeTint(p)))
-                                                    }
-                                                }
+                            ForEach(Array(Set(primes)).sorted(), id: \.self) { p in
+                                if theme.accessibilityEncoding.enabled {
+                                    TenneyPrimeLimitBadge(
+                                        prime: p,
+                                        tint: theme.primeTint(p),
+                                        encoding: theme.accessibilityEncoding
+                                    )
+                                } else {
+                                    BadgeCapsule(text: "\(p)", style: AnyShapeStyle(theme.primeTint(p)))
+                                }
+                            }
+                        }
                         Spacer()
                     }
 
@@ -1077,34 +1085,45 @@ extension Notification.Name {
                     Text("Limit").font(.caption).foregroundStyle(.secondary)
                     ForEach([3,5,7,11,13], id:\.self) { p in
                         let selected = (store.primeLimit == p)
-                        Button {
-                            withAnimation(.snappy) { store.primeLimit = p }
-                        } label: {
-                            Text("\(p)")
-                                .font(.footnote.weight(selected ? .semibold : .regular))
-                                .foregroundStyle(
-                                    selected
-                                    ? (theme.isDark ? Color.white : Color.black)
-                                    : Color.secondary
-                                )
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(
-                                    selected
-                                    ? AnyShapeStyle(.thinMaterial)
-                                    : AnyShapeStyle(.ultraThinMaterial),
-                                    in: Capsule()
-                                )
-                                .overlay(
-                                    Capsule().stroke(
+                        if theme.accessibilityEncoding.enabled {
+                            TenneyPrimeLimitChip(
+                                prime: p,
+                                isOn: selected,
+                                tint: theme.primeTint(p),
+                                encoding: theme.accessibilityEncoding
+                            ) {
+                                withAnimation(.snappy) { store.primeLimit = p }
+                            }
+                        } else {
+                            Button {
+                                withAnimation(.snappy) { store.primeLimit = p }
+                            } label: {
+                                Text("\(p)")
+                                    .font(.footnote.weight(selected ? .semibold : .regular))
+                                    .foregroundStyle(
                                         selected
-                                        ? AnyShapeStyle(theme.primeTint(p))
-                                        : AnyShapeStyle(Color.secondary.opacity(0.12)),
-                                        lineWidth: 1
+                                        ? (theme.isDark ? Color.white : Color.black)
+                                        : Color.secondary
                                     )
-                                )
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(
+                                        selected
+                                        ? AnyShapeStyle(.thinMaterial)
+                                        : AnyShapeStyle(.ultraThinMaterial),
+                                        in: Capsule()
+                                    )
+                                    .overlay(
+                                        Capsule().stroke(
+                                            selected
+                                            ? AnyShapeStyle(theme.primeTint(p))
+                                            : AnyShapeStyle(Color.secondary.opacity(0.12)),
+                                            lineWidth: 1
+                                        )
+                                    )
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
                     Spacer()
                 }
@@ -1217,23 +1236,34 @@ extension Notification.Name {
                                 Text("Limit").font(.caption).foregroundStyle(.secondary)
                                 ForEach([3,5,7,11,13], id:\.self) { p in
                                     let selected = (store.primeLimit == p)
-                                    Button {
-                                        withAnimation(.snappy) { store.primeLimit = p }
-                                    } label: {
-                                        Text("\(p)")
-                                            .font(.footnote.weight(selected ? .semibold : .regular))
-                                            .foregroundStyle(selected ? (theme.isDark ? .white : .black) : .secondary)
-                                            .padding(.horizontal, 8)
-                                            .padding(.vertical, 5)
-                                            .background(selected ? AnyShapeStyle(.thinMaterial) : AnyShapeStyle(.ultraThinMaterial), in: Capsule())
-                                            .overlay(
-                                                Capsule().stroke(
-                                                    selected ? AnyShapeStyle(theme.primeTint(p)) : AnyShapeStyle(Color.secondary.opacity(0.12)),
-                                                    lineWidth: 1
+                                    if theme.accessibilityEncoding.enabled {
+                                        TenneyPrimeLimitChip(
+                                            prime: p,
+                                            isOn: selected,
+                                            tint: theme.primeTint(p),
+                                            encoding: theme.accessibilityEncoding
+                                        ) {
+                                            withAnimation(.snappy) { store.primeLimit = p }
+                                        }
+                                    } else {
+                                        Button {
+                                            withAnimation(.snappy) { store.primeLimit = p }
+                                        } label: {
+                                            Text("\(p)")
+                                                .font(.footnote.weight(selected ? .semibold : .regular))
+                                                .foregroundStyle(selected ? (theme.isDark ? .white : .black) : .secondary)
+                                                .padding(.horizontal, 8)
+                                                .padding(.vertical, 5)
+                                                .background(selected ? AnyShapeStyle(.thinMaterial) : AnyShapeStyle(.ultraThinMaterial), in: Capsule())
+                                                .overlay(
+                                                    Capsule().stroke(
+                                                        selected ? AnyShapeStyle(theme.primeTint(p)) : AnyShapeStyle(Color.secondary.opacity(0.12)),
+                                                        lineWidth: 1
+                                                    )
                                                 )
-                                            )
+                                        }
+                                        .buttonStyle(.plain)
                                     }
-                                    .buttonStyle(.plain)
                                 }
                                 Spacer(minLength: 0)
                             }
