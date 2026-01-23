@@ -52,7 +52,7 @@ enum LearnStepFactory {
                         "Prime chips constrain what primes are “in play”.",
                         "They’re also a status readout: your current constraint set at a glance."
                     ],
-                    tryIt: "Tap the 7 limit prime chip (purple, top left) to toggle 7 limit ratios on/off, etc.",
+                    tryIt: "Tap the 7 limit prime chip (top left pill) to toggle 7 limit ratios on/off, etc.",
                     gate: .init(), // no gating for now
                     validate: { event in
                         if case .latticePrimeChipToggled = event { return true }
