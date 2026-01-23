@@ -300,69 +300,79 @@ struct CommunityPacksPageList: View {
     @State private var didTriggerRefresh = false
     @State private var selectedPack: CommunityPackViewModel?
     @Namespace private var packNamespace
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         GeometryReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 16) {
-                    if store.showingCachedBanner {
-                        OfflineBanner()
-                    }
+            ZStack(alignment: .top) {
+                ScrollView {
+                    LazyVStack(spacing: 16) {
+                        if store.showingCachedBanner {
+                            OfflineBanner()
+                        }
 
-                    CommunityPacksHeader(
-                        installedCount: installedCount,
-                        availableCount: availableCount,
-                        updatesCount: updatesCount
-                    )
-
-                    if case .schemaMismatch = store.state {
-                        ContentUnavailableView(
-                            "This pack format is newer than your app",
-                            systemImage: "exclamationmark.triangle",
-                            description: Text("Update Tenney to browse Community Packs.")
+                        CommunityPacksHeader(
+                            installedCount: installedCount,
+                            availableCount: availableCount,
+                            updatesCount: updatesCount
                         )
-                        .padding(.top, 12)
-                    } else if case .failed(let message) = store.state, store.packs.isEmpty {
-                        VStack(spacing: 12) {
+
+                        if case .schemaMismatch = store.state {
                             ContentUnavailableView(
-                                "Community Packs unavailable",
-                                systemImage: "wifi.slash",
-                                description: Text(message)
+                                "This pack format is newer than your app",
+                                systemImage: "exclamationmark.triangle",
+                                description: Text("Update Tenney to browse Community Packs.")
                             )
-                            Button("Retry") {
-                                Task {
-                                    await store.refresh(force: true)
+                            .padding(.top, 12)
+                        } else if case .failed(let message) = store.state, store.packs.isEmpty {
+                            VStack(spacing: 12) {
+                                ContentUnavailableView(
+                                    "Community Packs unavailable",
+                                    systemImage: "wifi.slash",
+                                    description: Text(message)
+                                )
+                                Button("Retry") {
+                                    Task {
+                                        await store.refresh(force: true)
+                                    }
                                 }
                             }
-                        }
-                        .padding(.top, 12)
-                    } else if store.packs.isEmpty, case .loading = store.state {
-                        CommunityPacksLoadingView()
-                            .frame(maxWidth: .infinity)
-                            .frame(minHeight: proxy.size.height * 0.65)
-                    } else {
-                        let filteredPacks = filteredPacks()
-                        if filteredPacks.isEmpty {
-                            FullPageEmptyState(
-                                onClearFilters: onClearFilters
-                            )
-                            .frame(minHeight: proxy.size.height * 0.6)
+                            .padding(.top, 12)
+                        } else if store.packs.isEmpty, case .loading = store.state {
+                            CommunityPacksLoadingView()
+                                .frame(maxWidth: .infinity)
+                                .frame(minHeight: proxy.size.height * 0.65)
                         } else {
-                            CommunityPacksSections(
-                                filteredPacks: filteredPacks,
-                                selectedPack: $selectedPack,
-                                namespace: packNamespace
-                            )
+                            let filteredPacks = filteredPacks()
+                            if filteredPacks.isEmpty {
+                                FullPageEmptyState(
+                                    onClearFilters: onClearFilters
+                                )
+                                .frame(minHeight: proxy.size.height * 0.6)
+                            } else {
+                                CommunityPacksSections(
+                                    filteredPacks: filteredPacks,
+                                    selectedPack: $selectedPack,
+                                    namespace: packNamespace
+                                )
+                            }
                         }
                     }
+                    .padding(.horizontal, 12)
+                    .padding(.top, 4)
+                    .padding(.bottom, 20)
                 }
-                .padding(.horizontal, 12)
-                .padding(.top, 4)
-                .padding(.bottom, 20)
+                .refreshable {
+                    await store.refresh(force: true)
+                }
+
+                if store.state == .loading, !store.packs.isEmpty {
+                    RefreshingPill()
+                        .padding(.top, 12)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
             }
-            .refreshable {
-                await store.refresh(force: true)
-            }
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: store.state)
         }
         .sheet(item: $selectedPack) { pack in
             NavigationStack {
@@ -459,6 +469,26 @@ struct CommunityPacksPageList: View {
 
     private func isDeleted(_ pack: CommunityPackViewModel) -> Bool {
         store.isDeleted(pack.packID)
+    }
+}
+
+private struct RefreshingPill: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            ProgressView()
+                .controlSize(.regular)
+                .scaleEffect(1.05)
+            Text("Refreshing…")
+                .font(.footnote.weight(.semibold))
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.ultraThinMaterial, in: Capsule())
+        .overlay(
+            Capsule()
+                .stroke(Color.secondary.opacity(0.2))
+        )
+        .shadow(color: Color.black.opacity(0.08), radius: 6, y: 3)
     }
 }
 
@@ -811,13 +841,14 @@ private struct PackCardPrimaryActionButton: View {
             HStack(spacing: 8) {
                 if isInstalling {
                     ProgressView()
-                        .controlSize(.small)
+                        .controlSize(.regular)
                 } else {
                     symbolImage
                 }
                 Text(isInstalling ? "Installing…" : title)
                     .font(.caption.weight(.semibold))
             }
+            .frame(minWidth: 96)
         }
         .modifier(PackButtonStyleModifier(isProminent: isProminent))
     }

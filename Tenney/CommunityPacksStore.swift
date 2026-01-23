@@ -96,8 +96,22 @@ final class CommunityPacksStore: ObservableObject {
 
     func refresh(force: Bool) async {
         guard state != .loading else { return }
-        showingCachedBanner = false
         let shouldHydrateCache = packs.isEmpty
+        var didUseCache = false
+        let previousCachedBanner = showingCachedBanner
+        defer {
+            if state == .loading {
+                setState(.idle)
+            }
+            if previousCachedBanner != didUseCache {
+                showingCachedBanner = didUseCache
+                #if DEBUG
+                print("[CommunityPacks] cachedBanner=\(showingCachedBanner) state=\(state)")
+                #endif
+            } else {
+                showingCachedBanner = didUseCache
+            }
+        }
         if shouldHydrateCache {
             if let cached = try? await loadCached() {
                 setPacks(cached)
@@ -109,7 +123,6 @@ final class CommunityPacksStore: ObservableObject {
             let result = try await fetchRemote()
             setPacks(result)
             setState(.loaded)
-            showingCachedBanner = false
             return
         } catch is CancellationError {
             setState(.idle)
@@ -126,7 +139,7 @@ final class CommunityPacksStore: ObservableObject {
                 let cached = try await loadCached()
                 setPacks(cached)
                 setState(.loaded)
-                showingCachedBanner = true
+                didUseCache = true
                 return
             } catch CommunityPacksError.schemaMismatch {
                 setState(.schemaMismatch)
