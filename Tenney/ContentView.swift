@@ -1025,6 +1025,7 @@ extension Notification.Name {
                 }
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
     }
 
     private func lockHalo(accent: Color) -> some View {
@@ -1426,6 +1427,7 @@ extension Notification.Name {
         }
      
          private var portraitBody: some View {
+             let dialSlotMinHeight: CGFloat = 320
              VStack(spacing: 14) {
 
                  // Header row: Mode glyph strip (left) • Style strip • Stage toggle (right)
@@ -1505,8 +1507,8 @@ extension Notification.Name {
                     liveNearest: liveNearest
                 )
                 .frame(maxWidth: .infinity)
-                                .frame(minHeight: (store.viewStyle == .Gauge ? 320 : 260))
-                                .layoutPriority(1)
+                .frame(minHeight: dialSlotMinHeight)
+                .layoutPriority(1)
                 // add back in when ready to test phasescope
                           //      .frame(
                            //         minHeight: 260,
