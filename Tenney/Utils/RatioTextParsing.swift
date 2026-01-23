@@ -22,3 +22,15 @@ func ratioResultFromText(_ s: String, octave: Int = 0) -> RatioResult? {
     guard let pq = parseRatioTextPQ(s) else { return nil }
     return RatioResult(num: pq.p, den: pq.q, octave: octave)
 }
+
+func lockRecentString(_ ratio: RatioResult) -> String {
+    "\(ratio.num)/\(ratio.den)|\(ratio.octave)"
+}
+
+func ratioResultFromLockRecent(_ s: String) -> RatioResult? {
+    let parts = s.split(separator: "|")
+    let ratioText = parts.first.map(String.init) ?? s
+    let octave = parts.count > 1 ? Int(parts[1]) ?? 0 : 0
+    guard let pq = parseRatioTextPQ(ratioText) else { return nil }
+    return RatioResult(num: pq.p, den: pq.q, octave: octave)
+}

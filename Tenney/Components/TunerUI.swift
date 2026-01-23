@@ -127,7 +127,20 @@ final class TunerStore: ObservableObject {
         (UserDefaults.standard.string(forKey: SettingsKeys.tunerMode) ?? TunerUIMode.auto.rawValue)
     }() { didSet { UserDefaults.standard.set(modeRaw, forKey: SettingsKeys.tunerMode) } }
 
-    @Published var lockedTarget: RatioResult? = nil  // exact JI target when locked
+    @Published var lockedTarget: RatioResult? = nil {  // exact JI target when locked
+        didSet {
+            guard let target = lockedTarget else { return }
+            recordLockRecent(target)
+        }
+    }
+
+    @Published var lockRecents: [String] = {
+        UserDefaults.standard.array(forKey: SettingsKeys.tunerLockRecents) as? [String] ?? []
+    }() {
+        didSet {
+            UserDefaults.standard.set(lockRecents, forKey: SettingsKeys.tunerLockRecents)
+        }
+    }
 
     @Published var viewStyleRaw: String = {
         UserDefaults.standard.string(forKey: SettingsKeys.tunerViewStyle)
@@ -167,6 +180,16 @@ final class TunerStore: ObservableObject {
             lockedTarget = currentNearest
         }
         LearnEventBus.shared.send(.tunerLockToggled(lockedTarget != nil))
+    }
+
+    private func recordLockRecent(_ target: RatioResult) {
+        let entry = lockRecentString(target)
+        var updated = lockRecents.filter { $0 != entry }
+        updated.insert(entry, at: 0)
+        if updated.count > 5 {
+            updated = Array(updated.prefix(5))
+        }
+        lockRecents = updated
     }
 
 }
