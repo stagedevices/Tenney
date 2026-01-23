@@ -1399,7 +1399,7 @@ extension Notification.Name {
                     }
 
                     // 9 o’clock: suggestions (tap to lock)
-                    if store.lockedTarget == nil {
+                    if !(model.display.lowerText.isEmpty && model.display.higherText.isEmpty) {
                         HStack {
                             NextChip(title: "Lower",  text: model.display.lowerText)
                                 .onTapGesture {
@@ -1409,8 +1409,6 @@ extension Notification.Name {
                                     }
                                 }
                                 .gated("tuner_target", gate: learnGate)
-                            Spacer(minLength: 12)
-                            BadgeCapsule(text: "Current \(ratioDisplayText)", style: AnyShapeStyle(Color.secondary.opacity(0.15)))
                             Spacer(minLength: 12)
                             NextChip(title: "Higher", text: model.display.higherText)
                                 .onTapGesture {
