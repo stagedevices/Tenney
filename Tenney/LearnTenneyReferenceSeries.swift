@@ -438,7 +438,7 @@ private struct LearnReferenceCard: View {
                                 Text(action.title)
                                     .frame(maxWidth: .infinity, minHeight: 36)
                             }
-                            .buttonStyle(action.isProminent ? .borderedProminent : .bordered)
+                            .buttonStyle(.borderedProminent)
                         }
                     }
                 }
