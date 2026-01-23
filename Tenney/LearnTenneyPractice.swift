@@ -45,8 +45,6 @@ struct LearnTenneyPracticeView: View {
             return "builder_pad"
         case .builderAddRoot:
             return "builder_add_root"
-        case .builderExport:
-            return "builder_export"
         case .builderOscilloscope:
             return "builder_scope"
         default:
@@ -125,6 +123,7 @@ struct LearnTenneyPracticeView: View {
         .onChange(of: focus) { newValue in
             focusTarget = learnTargetID(for: newValue)
         }
+        .environment(\.learnPracticeCompleted, coordinator.completed)
 
         .navigationTitle("Practice")
         .navigationBarTitleDisplayMode(.inline)
@@ -247,6 +246,7 @@ private struct BuilderPracticeHost: View {
 
     var body: some View {
         ScaleBuilderScreen(store: store)
+            .environment(\.tenneyPracticeActive, true)
             .onAppear {
                 guard !didSeed else { return }
                 didSeed = true

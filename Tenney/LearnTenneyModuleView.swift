@@ -27,7 +27,6 @@ enum LearnPracticeFocus: Hashable, Sendable {
     case tunerETvsJI
     case builderPads
     case builderAddRoot
-    case builderExport
     case builderOscilloscope
 }
 
