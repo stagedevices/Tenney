@@ -247,13 +247,16 @@ struct LockTargetSheet: View {
             } else if let preview = lockPreview {
                 let targetHz = preview.targetHz(rootHz: rootHz)
                 let cents = signedCents(actualHz: liveHz, rootHz: rootHz, target: preview)
+
                 Text("Locks to: \(tunerDisplayRatioString(preview))")
                     .font(.footnote.weight(.semibold).monospacedDigit())
                     .foregroundStyle(.secondary)
-                Text("Target Hz: \(targetHz.isFinite ? String(format: \"%.2f\", targetHz) : \"—\")")
+
+                Text("Target Hz: \(targetHz.isFinite ? String(format: "%.2f", targetHz) : "—")")
                     .font(.footnote.monospacedDigit())
                     .foregroundStyle(.secondary)
-                Text("At current pitch: \(cents.isFinite ? String(format: \"%+.1f¢\", cents) : \"—\")")
+
+                Text("At current pitch: \(cents.isFinite ? String(format: "%+.1f¢", cents) : "—")")
                     .font(.footnote.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
