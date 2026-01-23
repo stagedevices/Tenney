@@ -738,6 +738,7 @@ extension Notification.Name {
     @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
     @Environment(\.verticalSizeClass) private var vSize
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.learnGate) private var learnGate
      
     private var accentStyle: AnyShapeStyle {
         ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency)
@@ -801,7 +802,9 @@ extension Notification.Name {
     }
      private var stageButton: some View {
          Button {
-             withAnimation(.snappy) { stageActive.toggle() }
+             let newValue = !stageActive
+             withAnimation(.snappy) { stageActive = newValue }
+             LearnEventBus.shared.send(.tunerStageModeChanged(newValue))
          } label: {
              HStack(spacing: 6) {
                 Image(systemName: stageActive ? "theatermasks.fill" : "theatermasks")
@@ -850,6 +853,8 @@ extension Notification.Name {
          .buttonStyle(.plain)
          .accessibilityLabel("Stage Mode")
          .accessibilityHint("Boosts contrast, thicker strobe, calmer text motion for performance.")
+         .learnTarget(id: "tuner_stage_mode")
+         .gated("tuner_stage_mode", gate: learnGate)
      }
 
      private var isPhoneLandscapeCompact: Bool {
@@ -880,12 +885,15 @@ extension Notification.Name {
                     // ✅ Preferred (fits on wider devices)
                     HStack {
                         TunerModeStrip(mode: $store.mode)
+                            .gated("tuner_mode", gate: learnGate)
                         TunerViewStyleStrip(
                             style: Binding(
                                 get: { store.viewStyle },
                                 set: { store.viewStyle = $0 }
                             )
                         )
+                        .learnTarget(id: "tuner_view_switch")
+                        .gated("tuner_view_switch", gate: learnGate)
 
                         Spacer()
                         stageButton
@@ -895,6 +903,7 @@ extension Notification.Name {
                     VStack(spacing: 10) {
                         HStack {
                             TunerModeStrip(mode: $store.mode)
+                                .gated("tuner_mode", gate: learnGate)
                             Spacer()
                             stageButton
                         }
@@ -906,6 +915,8 @@ extension Notification.Name {
                                     set: { store.viewStyle = $0 }
                                 )
                             )
+                            .learnTarget(id: "tuner_view_switch")
+                            .gated("tuner_view_switch", gate: learnGate)
                             Spacer()
                         }
                     }
@@ -956,6 +967,8 @@ extension Notification.Name {
                     UIImpactFeedbackGenerator(style: .soft).impactOccurred()
                     store.toggleLock(currentNearest: (currentNearest ?? liveNearest))
                 }
+                .learnTarget(id: "tuner_lock")
+                .gated("tuner_lock", gate: learnGate)
 
                 
                 .overlay(alignment: .topTrailing) {
@@ -988,22 +1001,35 @@ extension Notification.Name {
 
                     // 3 & 6 o’clock: ET cents and JI delta (mode-aware)
                     HStack(spacing: 12) {
-                        StatTile(label: "ET", value: model.display.cents.isFinite ? String(format: "%+.1f¢", model.display.cents) : "—")
-                        if store.mode == .live, store.lockedTarget == nil {
-                            StatTile(label: "vs JI", value: String(format: "%+.1f¢", model.display.cents))
-                        } else if let lock = store.lockedTarget {
-                            let vsValue: String = {
-                                guard rawCents.isFinite else { return "—" }
-                                if rawCents < -200 { return "LOW" }
-                                if rawCents >  200 { return "HIGH" }
-                                return String(format: "%+.1f¢", centsShown)
-                            }()
-                            StatTile(label: "vs \(lock.num)/\(lock.den)", value: vsValue)
-
+                        HStack(spacing: 12) {
+                            StatTile(label: "ET", value: model.display.cents.isFinite ? String(format: "%+.1f¢", model.display.cents) : "—")
+                            if store.mode == .live, store.lockedTarget == nil {
+                                StatTile(label: "vs JI", value: String(format: "%+.1f¢", model.display.cents))
+                            } else if let lock = store.lockedTarget {
+                                let vsValue: String = {
+                                    guard rawCents.isFinite else { return "—" }
+                                    if rawCents < -200 { return "LOW" }
+                                    if rawCents >  200 { return "HIGH" }
+                                    return String(format: "%+.1f¢", centsShown)
+                                }()
+                                StatTile(label: "vs \(lock.num)/\(lock.den)", value: vsValue)
+                            }
                         } // .strict hides the extra JI label by design
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            LearnEventBus.shared.send(.tunerETJIDidInteract)
+                        }
+                        .learnTarget(id: "tuner_et_ji")
+                        .gated("tuner_et_ji", gate: learnGate)
                         Spacer()
                         StatTile(label: "Hz", value: String(format: "%.1f", model.display.hz))
                         StatTile(label: "Conf", value: String(format: "%.0f%%", model.display.confidence*100))
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                LearnEventBus.shared.send(.tunerConfidenceInteracted)
+                            }
+                            .learnTarget(id: "tuner_confidence")
+                            .gated("tuner_confidence", gate: learnGate)
                     }
 
                     // 9 o’clock: suggestions (tap to lock)
@@ -1016,6 +1042,7 @@ extension Notification.Name {
                                         store.lockedTarget = r
                                     }
                                 }
+                                .gated("tuner_target", gate: learnGate)
                             Spacer(minLength: 12)
                             BadgeCapsule(text: "Current \(ratioDisplayText)", style: AnyShapeStyle(Color.secondary.opacity(0.15)))
                             Spacer(minLength: 12)
@@ -1026,12 +1053,14 @@ extension Notification.Name {
                                         store.lockedTarget = r
                                     }
                                 }
+                                .gated("tuner_target", gate: learnGate)
                         }
                         .transition(.opacity)
                     } else {
                         // Tap to clear lock
                         Button("Clear Target") { withAnimation(.snappy) { store.lockedTarget = nil } }
                             .buttonStyle(.borderedProminent)
+                            .gated("tuner_target", gate: learnGate)
                     }
                 }
                 .onChange(of: model.display.ratioText) { txt in
@@ -1075,6 +1104,8 @@ extension Notification.Name {
                     Spacer()
                 }
                 .padding(.top, 4)
+                .learnTarget(id: "tuner_prime_limit")
+                .gated("tuner_prime_limit", gate: learnGate)
                 .onChange(of: store.primeLimit) { model.tunerPrimeLimit = $0 }
                 .onAppear { store.primeLimit = model.tunerPrimeLimit }
 
@@ -1148,6 +1179,8 @@ extension Notification.Name {
                         UIImpactFeedbackGenerator(style: .soft).impactOccurred()
                         store.toggleLock(currentNearest: (currentNearest ?? liveNearest))
                     }
+                    .learnTarget(id: "tuner_lock")
+                    .gated("tuner_lock", gate: learnGate)
                     .simultaneousGesture(
                         DragGesture(minimumDistance: 18, coordinateSpace: .local)
                             .onEnded { v in
@@ -1201,6 +1234,8 @@ extension Notification.Name {
                             }
                             .padding(8)
                             .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .learnTarget(id: "tuner_prime_limit")
+                            .gated("tuner_prime_limit", gate: learnGate)
                         }
                         .padding(8)
                         .onChange(of: store.primeLimit) { model.tunerPrimeLimit = $0 }
@@ -1248,10 +1283,22 @@ extension Notification.Name {
                     HStack(spacing: 10) {
                         StatTile(label: centsLabel,
                                  value: (store.lockedTarget != nil ? vsValue : String(format: "%+.1f", centsShown)))
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                LearnEventBus.shared.send(.tunerETJIDidInteract)
+                            }
+                            .learnTarget(id: "tuner_et_ji")
+                            .gated("tuner_et_ji", gate: learnGate)
                         StatTile(label: "Hz", value: String(format: "%.1f", liveHz))
                     }
 
                     StatTile(label: "Conf", value: String(format: "%.0f%%", liveConf*100))
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            LearnEventBus.shared.send(.tunerConfidenceInteracted)
+                        }
+                        .learnTarget(id: "tuner_confidence")
+                        .gated("tuner_confidence", gate: learnGate)
 
                     HStack(spacing: 10) {
                         NextChip(title: "Lower",  text: model.display.lowerText)
@@ -1262,6 +1309,7 @@ extension Notification.Name {
                                     withAnimation(.snappy) { store.lockedTarget = r }
                                 }
                             }
+                            .gated("tuner_target", gate: learnGate)
 
                         NextChip(title: "Higher", text: model.display.higherText)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -1271,6 +1319,7 @@ extension Notification.Name {
                                     withAnimation(.snappy) { store.lockedTarget = r }
                                 }
                             }
+                            .gated("tuner_target", gate: learnGate)
                     }
 
                     Spacer(minLength: 0)

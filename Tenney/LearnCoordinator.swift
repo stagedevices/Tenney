@@ -63,10 +63,11 @@ final class LearnCoordinator: ObservableObject {
     private func handle(_ event: LearnEvent) {
         guard currentStepIndex < steps.count else { return }
         let step = steps[currentStepIndex]
+        let validated = step.validate(event)
 #if DEBUG
-        print("[LearnCoordinator] step \(currentStepIndex + 1)/\(steps.count) \"\(step.title)\" event=\(event)")
+        print("[LearnCoordinator] module=\(module) step \(currentStepIndex + 1)/\(steps.count) \"\(step.title)\" event=\(event) validated=\(validated)")
 #endif
-        if step.validate(event) {
+        if validated {
             advance()
         } else if gate.isActive, !isAttemptedDisallowedAction(event) {            LearnEventBus.shared.send(.attemptedDisallowedAction("\(event)"))
         }
