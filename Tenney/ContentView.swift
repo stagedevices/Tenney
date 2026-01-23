@@ -872,7 +872,7 @@ extension Notification.Name {
                 HStack(spacing: 10) {
                     Text(label)
                         .font(.system(size: 34, weight: .semibold, design: .monospaced))
-                        .hidden(!showRatioText)
+                        .opacity(showRatioText ? 1 : 0)
                         .accessibilityHidden(!showRatioText)
                     HStack(spacing: 6) {
                         ForEach(Array(Set(primes)).sorted(), id: \.self) { p in
@@ -894,7 +894,7 @@ extension Notification.Name {
                     HStack(spacing: 10) {
                         Text(label)
                             .font(.system(size: 34, weight: .semibold, design: .monospaced))
-                            .hidden(!showRatioText)
+                            .opacity(showRatioText ? 1 : 0)
                             .accessibilityHidden(!showRatioText)
                         HStack(spacing: 6) {
                             ForEach(Array(Set(primes)).sorted(), id: \.self) { p in
@@ -1429,7 +1429,7 @@ extension Notification.Name {
      
          private var portraitBody: some View {
              let dialSlotMinHeight: CGFloat = 320
-             VStack(spacing: 14) {
+             return VStack(spacing: 14) {
 
                  // Header row: Mode glyph strip (left) • Style strip • Stage toggle (right)
                 ViewThatFits(in: .horizontal) {
