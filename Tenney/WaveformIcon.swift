@@ -41,9 +41,9 @@ struct WaveformIcon: View {
 
     var body: some View {
         Image(systemName: WaveformSymbol.systemName(for: waveform))
-            .font(.system(size: 18, weight: .semibold))
+            .font(.system(size: 22, weight: .semibold))
             .symbolRenderingMode(.monochrome)
-            .foregroundStyle(scheme == .dark ? Color.black : Color.primary)
+            .foregroundStyle(scheme == .dark ? Color.white : Color.primary)
             .frame(width: slot, height: slot, alignment: .center)
             .accessibilityLabel(WaveformSymbol.a11yLabel(for: waveform))
     }
