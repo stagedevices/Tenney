@@ -171,6 +171,8 @@ struct LearnTenneyReferenceListView: View {
                     focus: .builderOscilloscope
                 )
             ]
+        case .rootPitchTuning:
+            return []
         }
     }
 }

@@ -35,38 +35,47 @@ struct LearnTenneyModuleView: View {
 
     @State private var tab: LearnTenneyTab = .practice
     @State private var practiceFocus: LearnPracticeFocus? = nil
+    @State private var referenceFocus: LearnReferenceTopic? = nil
 
     var body: some View {
         VStack(spacing: 0) {
-            // Top rail (segmented)
-            VStack(spacing: 10) {
-                Picker("", selection: $tab) {
-                    Text("Practice").tag(LearnTenneyTab.practice)
-                    Text("Reference").tag(LearnTenneyTab.reference)
+            if module.isReferenceOnly {
+                LearnTenneyReferenceTopicListView(focus: $referenceFocus)
+            } else {
+                // Top rail (segmented)
+                VStack(spacing: 10) {
+                    Picker("", selection: $tab) {
+                        Text("Practice").tag(LearnTenneyTab.practice)
+                        Text("Reference").tag(LearnTenneyTab.reference)
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 10)
+                    .padding(.bottom, 10)
                 }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, 16)
-                .padding(.top, 10)
-                .padding(.bottom, 10)
-            }
-            .background(.ultraThinMaterial)
+                .background(.ultraThinMaterial)
 
-            // Content (single scroll container per tab)
-            Group {
-                switch tab {
-                case .practice:
-                    LearnTenneyPracticeView(module: module, focus: $practiceFocus)
-                case .reference:
-                    LearnTenneyReferenceListView(module: module) { focus in
-                        practiceFocus = focus
-                        tab = .practice
+                // Content (single scroll container per tab)
+                Group {
+                    switch tab {
+                    case .practice:
+                        LearnTenneyPracticeView(module: module, focus: $practiceFocus)
+                    case .reference:
+                        LearnTenneyReferenceListView(module: module) { focus in
+                            practiceFocus = focus
+                            tab = .practice
+                        }
                     }
                 }
             }
         }
         .navigationTitle(module.title)
         .navigationBarTitleDisplayMode(.inline)
-        
+        .onAppear {
+            if module.isReferenceOnly {
+                LearnTenneyPersistence.shared.markCompleted(module)
+            }
+        }
     }
     private struct LearnTenneyTourView: View {
         let module: LearnTenneyModule

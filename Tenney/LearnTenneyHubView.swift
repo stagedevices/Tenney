@@ -14,7 +14,7 @@ enum LearnTenneyEntryPoint: Sendable {
 }
 
 enum LearnTenneyModule: String, CaseIterable, Identifiable, Sendable {
-    case lattice, tuner, builder
+    case lattice, tuner, builder, rootPitchTuning
     var id: String { rawValue }
 
     var title: String {
@@ -22,6 +22,7 @@ enum LearnTenneyModule: String, CaseIterable, Identifiable, Sendable {
         case .lattice: return "Lattice"
         case .tuner:   return "Tuner"
         case .builder: return "Builder"
+        case .rootPitchTuning: return "Root Pitch & Tuning Configuration"
         }
     }
 
@@ -30,6 +31,7 @@ enum LearnTenneyModule: String, CaseIterable, Identifiable, Sendable {
         case .lattice: return "Selection, limits, axis shift, and auditioning"
         case .tuner:   return "Views, locks, confidence, limits, and stage mode"
         case .builder: return "Pads, root, and the oscilloscope"
+        case .rootPitchTuning: return "Root Hz, tonic naming, and concert pitch"
         }
     }
 
@@ -38,6 +40,7 @@ enum LearnTenneyModule: String, CaseIterable, Identifiable, Sendable {
         case .lattice: return "dot.circle.and.hand.point.up.left.fill"
         case .tuner:   return "dial.high.fill"
         case .builder: return "pianokeys.inverse"
+        case .rootPitchTuning: return "tuningfork"
         }
     }
 
@@ -46,6 +49,10 @@ enum LearnTenneyModule: String, CaseIterable, Identifiable, Sendable {
         guard let idx = modules.firstIndex(of: self) else { return nil }
         let nextIdx = modules.index(after: idx)
         return nextIdx < modules.endIndex ? modules[nextIdx] : nil
+    }
+
+    var isReferenceOnly: Bool {
+        self == .rootPitchTuning
     }
 }
 
@@ -119,6 +126,7 @@ struct LearnTenneyHubView: View {
             } footer: {
                 Text("Each module includes a short tour through an interactive practice sandbox and a searchable control glossary.")
             }
+
         }
         .navigationTitle("Learn Tenney")
         .navigationBarTitleDisplayMode(.inline)

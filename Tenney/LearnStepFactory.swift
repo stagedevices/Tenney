@@ -169,6 +169,8 @@ enum LearnStepFactory {
                     validate: { $0 == .builderScopeTimedSatisfied }
                 )
             ]
+        case .rootPitchTuning:
+            return []
         }
     }
 }
