@@ -22,39 +22,41 @@ struct TenneyLimitGlyph: View {
             )
             .overlay(innerRingOverlay)
     }
+
     @ViewBuilder
     private var patternOverlay: some View {
-        if showPattern, let kind = TenneyLimitPattern.kind(for: bucket) {
-            switch kind {
-            case .stroke:
-                LimitPatternShape(bucket: bucket)
-                    .stroke(stroke.opacity(0.65), lineWidth: max(0.8, strokeWidth * 0.6))
-                    .clipShape(LimitShape(bucket: bucket))
-            case .dots:
-                LimitPatternShape(bucket: bucket)
-                    .fill(stroke.opacity(0.65))
-                    .clipShape(LimitShape(bucket: bucket))
-            }
-        } else {
+        guard showPattern, let kind = TenneyLimitPattern.kind(for: bucket) else {
             EmptyView()
+            return
+        }
+
+        switch kind {
+        case .stroke:
+            LimitPatternShape(bucket: bucket)
+                .stroke(stroke.opacity(0.65), lineWidth: max(0.8, strokeWidth * 0.6))
+                .clipShape(LimitShape(bucket: bucket))
+        case .dots:
+            LimitPatternShape(bucket: bucket)
+                .fill(stroke.opacity(0.65))
+                .clipShape(LimitShape(bucket: bucket))
         }
     }
 
-
     @ViewBuilder
     private var innerRingOverlay: some View {
-        if showPattern, bucket.rawValue >= TenneyLimitBucket.limit17.rawValue {
-            LimitShape(bucket: bucket)
-                .stroke(stroke.opacity(0.75), lineWidth: max(1.2, strokeWidth))
-                .overlay(
-                    LimitShape(bucket: bucket)
-                        .fill(fill.opacity(0.35))
-                        .scaleEffect(0.62)
-                )
-                .clipShape(LimitShape(bucket: bucket))
-        } else {
+        guard showPattern, bucket.rawValue >= TenneyLimitBucket.limit17.rawValue else {
             EmptyView()
+            return
         }
+
+        LimitShape(bucket: bucket)
+            .stroke(stroke.opacity(0.75), lineWidth: max(1.2, strokeWidth))
+            .overlay(
+                LimitShape(bucket: bucket)
+                    .fill(fill.opacity(0.35))
+                    .scaleEffect(0.62)
+            )
+            .clipShape(LimitShape(bucket: bucket))
     }
 }
 

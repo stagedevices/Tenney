@@ -3891,7 +3891,7 @@ struct LatticeView: View {
                             center: sp,
                             nodeR: nodeR,
                             tint: tint,
-                            a11y: activeTheme.accessibilityEncoding,
+                            a11y: theme.accessibilityEncoding,
                             focused: isFocused,
                             phase: phase,
                             now: now,
@@ -4279,7 +4279,7 @@ struct LatticeView: View {
         
         let fill: Color = activeTheme.nodeColor(e3: node.coord.e3, e5: node.coord.e5)
         let alpha = min(1.0, 0.35 + 2.0 / sqrt(Double(node.tenneyHeight)))
-        let a11y = activeTheme.accessibilityEncoding
+        let a11y = theme.accessibilityEncoding
         let bucket = TenneyLimitBucket.limit5
         let nodePath = a11y.enabled ? limitShapePath(bucket: bucket, in: rect) : Path(ellipseIn: rect)
         let fillAlpha = a11y.enabled ? (alpha * 0.88) : alpha
@@ -4449,7 +4449,7 @@ struct LatticeView: View {
             let alpha: CGFloat = isAnimating ? (baseAlpha * local) : baseAlpha
 
             // ✅ crisp ONLY (no bloom / blur / screen passes)
-            let a11y = activeTheme.accessibilityEncoding
+            let a11y = theme.accessibilityEncoding
             let bucket = bucket(forPrime: p)
             let nodePath = a11y.enabled ? limitShapePath(bucket: bucket, in: rect) : Path(ellipseIn: rect)
             let fillAlpha = a11y.enabled ? (alpha * 0.88) : alpha
@@ -4534,7 +4534,7 @@ struct LatticeView: View {
         alpha: CGFloat,
         stroke: Color
     ) {
-        guard activeTheme.accessibilityEncoding.limitSymbolStyle == .shapeAndHatch else { return }
+        guard theme.accessibilityEncoding.limitSymbolStyle == .shapeAndHatch else { return }
 
         var g = ctx
         g.clip(to: shape)
@@ -4562,19 +4562,17 @@ struct LatticeView: View {
     // MARK: - Overlays (UI)
     private var overlayChips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            let primes = overlayChipPrimes
-
             HStack(spacing: 6) {
-                ForEach(primes, id: \.self) { p in
+                ForEach(overlayChipPrimes, id: \.self) { p in
                     let on = store.visiblePrimes.contains(p)
 
                     Group {
-                        if activeTheme.accessibilityEncoding.enabled {
+                        if theme.accessibilityEncoding.enabled {
                             TenneyPrimeLimitChip(
                                 prime: p,
                                 isOn: on,
                                 tint: activeTheme.primeTint(p),
-                                encoding: activeTheme.accessibilityEncoding
+                                encoding: theme.accessibilityEncoding
                             ) {
                                 // If a long-press just fired, swallow the “button tap” that can follow on release.
                                 if overlayPrimeHoldConsumedTap {
