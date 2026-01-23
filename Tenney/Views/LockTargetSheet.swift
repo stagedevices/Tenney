@@ -509,7 +509,7 @@ private extension LockTargetSheet {
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            HStack(spacing: 6) {
+            let label = HStack(spacing: 6) {
                 Image(systemName: systemImage)
                 Text(title)
                     .font(.callout.weight(.semibold))
@@ -517,7 +517,14 @@ private extension LockTargetSheet {
             .frame(maxWidth: fillsWidth ? .infinity : nil, minHeight: minHeight)
             .padding(.horizontal, horizontalPadding)
             .foregroundStyle(isDestructive ? .white : (tint ?? .primary))
-            .modifier(isDestructive ? GlassRedRoundedRect(corner: 12) : GlassRoundedRect(corner: 12))
+
+            Group {
+                if isDestructive {
+                    label.modifier(GlassRedRoundedRect(corner: 12))
+                } else {
+                    label.modifier(GlassRoundedRect(corner: 12))
+                }
+            }
         }
         .buttonStyle(GlassPressFeedback())
     }

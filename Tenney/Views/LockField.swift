@@ -266,7 +266,7 @@ struct LockPill: View {
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
-            .frame(width: width, minHeight: 34)
+            .frame(width: width, height: 34)
             .background(pillBackground)
             .overlay(pillStroke)
         }
