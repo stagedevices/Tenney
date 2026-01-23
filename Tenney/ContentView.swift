@@ -752,6 +752,7 @@ extension Notification.Name {
     @Environment(\.verticalSizeClass) private var vSize
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.learnGate) private var learnGate
      
     private var accentStyle: AnyShapeStyle {
@@ -808,6 +809,118 @@ extension Notification.Name {
         }
         .opacity(lockFieldDim ? 0.6 : 1.0)
         .accessibilityLabel(isLocked ? "Locked target" : "Edit lock target")
+    }
+
+    private var hejiLabelText: String? {
+        guard store.viewStyle != .posterFraction else { return nil }
+        let pref = AccidentalPreference(rawValue: accidentalPreferenceRaw) ?? .auto
+        let ratioHint = store.lockedTarget ?? liveNearest
+        let ratioRef = ratioHint.map { RatioRef(p: $0.num, q: $0.den, octave: $0.octave, monzo: [:]) }
+        let context = HejiContext(
+            referenceA4Hz: a4Staff,
+            rootHz: model.effectiveRootHz,
+            rootRatio: nil,
+            preferred: pref,
+            maxPrime: max(3, store.primeLimit),
+            allowApproximation: true,
+            scaleDegreeHint: ratioRef
+        )
+        let spelling = ratioRef.map { HejiNotation.spelling(forRatio: $0, context: context) }
+            ?? HejiNotation.spelling(forFrequency: liveHz, context: context)
+        return String(HejiNotation.textLabel(spelling, showCents: true).characters)
+    }
+
+    private var prefersStackedHejiLabel: Bool {
+        dynamicTypeSize.isAccessibilitySize && !isPhoneLandscapeCompact
+    }
+
+    private func hejiLabelView(_ label: String) -> some View {
+        Text(label)
+            .font(.footnote.weight(.semibold))
+            .monospacedDigit()
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+            .allowsTightening(true)
+            .allowsHitTesting(false)
+    }
+
+    @ViewBuilder
+    private func hejiAnnotatedRow<Content: View>(
+        hejiLabel: String?,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        if let hejiLabel {
+            if prefersStackedHejiLabel {
+                VStack(alignment: .leading, spacing: 2) {
+                    hejiLabelView(hejiLabel)
+                    content()
+                }
+            } else {
+                content()
+                    .overlay(alignment: .topLeading) {
+                        hejiLabelView(hejiLabel)
+                            .offset(y: -16)
+                    }
+            }
+        } else {
+            content()
+        }
+    }
+
+    @ViewBuilder
+    private func ratioReadoutRow(label: String, hejiLabel: String?) -> some View {
+        let primes = label.split(separator: "/").flatMap { Int($0) }.flatMap { factors($0) }.filter { $0 > 2 }
+        hejiAnnotatedRow(hejiLabel: hejiLabel) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) {
+                    if store.viewStyle != .posterFraction {
+                        Text(label)
+                            .font(.system(size: 34, weight: .semibold, design: .monospaced))
+                    }
+                    HStack(spacing: 6) {
+                        ForEach(Array(Set(primes)).sorted(), id: \.self) { p in
+                            if theme.accessibilityEncoding.enabled {
+                                TenneyPrimeLimitBadge(
+                                    prime: p,
+                                    tint: theme.primeTint(p),
+                                    encoding: theme.accessibilityEncoding
+                                )
+                            } else {
+                                BadgeCapsule(text: "\(p)", style: AnyShapeStyle(theme.primeTint(p)))
+                            }
+                        }
+                    }
+                    Spacer()
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 10) {
+                        if store.viewStyle != .posterFraction {
+                            Text(label)
+                                .font(.system(size: 34, weight: .semibold, design: .monospaced))
+                        }
+                        HStack(spacing: 6) {
+                            ForEach(Array(Set(primes)).sorted(), id: \.self) { p in
+                                if theme.accessibilityEncoding.enabled {
+                                    TenneyPrimeLimitBadge(
+                                        prime: p,
+                                        tint: theme.primeTint(p),
+                                        encoding: theme.accessibilityEncoding
+                                    )
+                                } else {
+                                    BadgeCapsule(text: "\(p)", style: AnyShapeStyle(theme.primeTint(p)))
+                                }
+                            }
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    HStack {
+                        Spacer()
+                    }
+                }
+            }
+        }
     }
      
      @ViewBuilder
@@ -1243,56 +1356,7 @@ extension Notification.Name {
                 VStack(spacing: 8) {
                     // 12 o’clock: Ratio + prime badges
                     let label = ratioDisplayText
-                    let primes = label.split(separator: "/").flatMap { Int($0) }.flatMap { factors($0) }.filter { $0 > 2 }
-                    ViewThatFits(in: .horizontal) {
-                        HStack(spacing: 10) {
-                            if store.viewStyle != .posterFraction {
-                                Text(label)
-                                    .font(.system(size: 34, weight: .semibold, design: .monospaced))
-                            }
-                            // tiny prime badge guesses from label (fast path; you already have NotationFormatter if needed)
-                            HStack(spacing: 6) {
-                                ForEach(Array(Set(primes)).sorted(), id: \.self) { p in
-                                    if theme.accessibilityEncoding.enabled {
-                                        TenneyPrimeLimitBadge(
-                                            prime: p,
-                                            tint: theme.primeTint(p),
-                                            encoding: theme.accessibilityEncoding
-                                        )
-                                    } else {
-                                        BadgeCapsule(text: "\(p)", style: AnyShapeStyle(theme.primeTint(p)))
-                                    }
-                                }
-                            }
-                            Spacer()
-                        }
-
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack(spacing: 10) {
-                                if store.viewStyle != .posterFraction {
-                                    Text(label)
-                                        .font(.system(size: 34, weight: .semibold, design: .monospaced))
-                                }
-                                HStack(spacing: 6) {
-                                    ForEach(Array(Set(primes)).sorted(), id: \.self) { p in
-                                        if theme.accessibilityEncoding.enabled {
-                                            TenneyPrimeLimitBadge(
-                                                prime: p,
-                                                tint: theme.primeTint(p),
-                                                encoding: theme.accessibilityEncoding
-                                            )
-                                        } else {
-                                            BadgeCapsule(text: "\(p)", style: AnyShapeStyle(theme.primeTint(p)))
-                                        }
-                                    }
-                                }
-                                Spacer(minLength: 0)
-                            }
-                            HStack {
-                                Spacer()
-                            }
-                        }
-                    }
+                    ratioReadoutRow(label: label, hejiLabel: hejiLabelText)
                     if store.lockedTarget != nil {
                         Text(lockLabelText)
                             .font(.footnote.weight(.semibold).monospacedDigit())
@@ -1586,48 +1650,8 @@ extension Notification.Name {
                             .offset(y: 12)
                     }
 
-                    if store.viewStyle != .posterFraction {
-                        let pref = AccidentalPreference(rawValue: accidentalPreferenceRaw) ?? .auto
-                        let ratioHint = store.lockedTarget ?? liveNearest
-                        let ratioRef = ratioHint.map { RatioRef(p: $0.num, q: $0.den, octave: $0.octave, monzo: [:]) }
-                        let context = HejiContext(
-                            referenceA4Hz: a4Staff,
-                            rootHz: model.effectiveRootHz,
-                            rootRatio: nil,
-                            preferred: pref,
-                            maxPrime: max(3, store.primeLimit),
-                            allowApproximation: true,
-                            scaleDegreeHint: ratioRef
-                        )
-                        let spelling = ratioRef.map { HejiNotation.spelling(forRatio: $0, context: context) }
-                            ?? HejiNotation.spelling(forFrequency: liveHz, context: context)
-                        let hejiLabel = String(HejiNotation.textLabel(spelling, showCents: true).characters)
-                        ViewThatFits(in: .horizontal) {
-                            HStack(alignment: .firstTextBaseline, spacing: 12) {
-                                Text(hejiLabel)
-                                    .font(.system(size: 58, weight: .semibold, design: .monospaced))
-                                    .foregroundStyle(.primary)
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.55)
-                                Spacer(minLength: 0)
-                            }
-
-                            VStack(alignment: .leading, spacing: 10) {
-                                Text(hejiLabel)
-                                    .font(.system(size: 58, weight: .semibold, design: .monospaced))
-                                    .foregroundStyle(.primary)
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.55)
-                                HStack {
-                                    Spacer(minLength: 0)
-                                }
-                            }
-                        }
-                    } else {
-                        HStack {
-                            Spacer()
-                        }
-                    }
+                    let ratioLabel = ratioDisplayText
+                    ratioReadoutRow(label: ratioLabel, hejiLabel: hejiLabelText)
 
                     HStack(spacing: 10) {
                         StatTile(label: centsLabel,
