@@ -106,8 +106,14 @@ final class TunerViewModel: ObservableObject {
         micGranted = (MicrophonePermission.status() == .granted)
     }
 
-    deinit { setPipelineActive(false, reason: "deinit") }
-
+    deinit {
+            let tracker = self.tracker
+            Task { @MainActor in
+                tracker.enableMicrophoneCapture(false)
+                tracker.shutdown()
+            }
+        }
+    
     func setPipelineActive(_ active: Bool, reason: String? = nil) {
         pipelineWanted = active
 
