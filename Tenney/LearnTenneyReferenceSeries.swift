@@ -431,8 +431,7 @@ private struct LearnReferenceCard: View {
 
                 if !actions.isEmpty {
                     HStack(spacing: 10) {
-                        ForEach(Array(actions.enumerated()), id: \.offset) { _, action in
-                            let action = actions[idx]
+                        ForEach(actions) { action in
                             Button {
                                 action.action()
                             } label: {
