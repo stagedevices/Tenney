@@ -89,16 +89,6 @@ enum LearnStepFactory {
                     validate: { if case .tunerViewStyleChanged = $0 { return true } else { return false } }
                 ),
                 LearnStep(
-                    title: "Confidence",
-                    bullets: [
-                        "Confidence is: how sure Tenney is that the detected pitch is stable + real.",
-                        "Low confidence usually means noise, breath, room tone, or unstable partials."
-                    ],
-                    tryIt: "Hum a steady tone, then stop—watch confidence rise/fall with stability.",
-                    gate: .init(allowedTargets: ["tuner_confidence"], isActive: true),
-                    validate: { $0 == .tunerConfidenceInteracted }
-                ),
-                LearnStep(
                     title: "Lock target (long-press)",
                     bullets: [
                         "Lock fixes your target so the UI stops “chasing” nearby ratios.",
@@ -108,26 +98,26 @@ enum LearnStepFactory {
                     gate: .init(allowedTargets: ["tuner_lock"], isActive: true),
                     validate: { if case .tunerLockToggled = $0 { return true } else { return false } }
                 ),
-                LearnStep(
-                    title: "Prime limit chips",
-                    bullets: [
-                        "Prime limit changes which ratios are eligible matches.",
-                        "Lower limit = simpler vocabulary; higher limit = more nuance (and more ambiguity)."
-                    ],
-                    tryIt: "Change prime limit and watch the suggested ratio set tighten/expand.",
-                    gate: .init(allowedTargets: ["tuner_prime_limit"], isActive: true),
-                    validate: { if case .tunerPrimeLimitChanged = $0 { return true } else { return false } }
-                ),
-                LearnStep(
-                    title: "ET vs JI readouts",
-                    bullets: [
-                        "ET shows tempered note context; JI shows ratio context.",
-                        "They are complementary: ET for quick naming, JI for exactness."
-                    ],
-                    tryIt: "Play a stable pitch and compare the ET label vs the JI ratio.",
-                    gate: .init(allowedTargets: ["tuner_et_ji"], isActive: true),
-                    validate: { $0 == .tunerETJIDidInteract }
-                ),
+          //      LearnStep(
+                //            title: "Prime limit chips",
+                //             bullets: [
+                //                 "Prime limit changes which ratios are eligible matches.",
+                //                   "Lower limit = simpler vocabulary; higher limit = more nuance (and more ambiguity)."
+                //               ],
+                //              tryIt: "Change prime limit and watch the suggested ratio set tighten/expand.",
+                //              gate: .init(allowedTargets: ["tuner_prime_limit"], isActive: true),
+                //              validate: { if case .tunerPrimeLimitChanged = $0 { return true } else { return false } }
+                //           ),
+                //        LearnStep(
+                //              title: "ET vs JI readouts",
+                //              bullets: [
+                //                  "ET shows tempered note context; JI shows ratio context.",
+                //               "They are complementary: ET for quick naming, JI for exactness."
+                //            ],
+            //            tryIt: "Play a stable pitch and compare the ET label vs the JI ratio.",
+                //             gate: .init(allowedTargets: ["tuner_et_ji"], isActive: true),
+                //             validate: { $0 == .tunerETJIDidInteract }
+                //         ),
                 LearnStep(
                     title: "Stage mode",
                     bullets: [
