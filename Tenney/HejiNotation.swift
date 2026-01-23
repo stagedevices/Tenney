@@ -42,22 +42,28 @@ enum AccidentalPreference: String, CaseIterable, Identifiable {
 }
 
 struct HejiContext {
-    var referenceA4Hz: Double
+    /// Concert pitch reference (audio/test tone behavior).
+    var concertA4Hz: Double
+    /// Absolute note-name reference (ET mapping for octave/letter).
+    var noteNameA4Hz: Double
     var rootHz: Double
     var rootRatio: RatioRef?
     var preferred: AccidentalPreference
     var maxPrime: Int
     var allowApproximation: Bool
     var scaleDegreeHint: RatioRef?
+    var tonicE3: Int?
 
     static let `default` = HejiContext(
-        referenceA4Hz: 440,
+        concertA4Hz: 440,
+        noteNameA4Hz: 440,
         rootHz: 440,
         rootRatio: nil,
         preferred: .auto,
         maxPrime: 13,
         allowApproximation: true,
-        scaleDegreeHint: nil
+        scaleDegreeHint: nil,
+        tonicE3: nil
     )
 }
 
@@ -123,17 +129,6 @@ enum HejiNotation {
     private static let baseFifth = [0, 1, 2, 3, 4, 5, -1]
 
     private static let hejiSearchRange = -16...16
-    private static let degreeInferenceToleranceCents = 25.0
-    private static let degreeLandmarks: [(degree: Int, cents: Double)] = [
-        (1, 0.0),
-        (2, 203.910),
-        (3, 386.314),
-        (4, 498.045),
-        (5, 701.955),
-        (6, 884.359),
-        (7, 1088.269)
-    ]
-
     static func spelling(forRatio ratioRef: RatioRef, context: HejiContext) -> HejiSpelling {
         let ratio = Ratio(ratioRef.p, ratioRef.q)
         return spelling(forRatio: ratio, octave: ratioRef.octave, context: context)
@@ -142,17 +137,16 @@ enum HejiNotation {
     static func spelling(forRatio ratio: Ratio, octave: Int = 0, context: HejiContext) -> HejiSpelling {
         let value = ratio.value * pow(2.0, Double(octave))
         let folded = foldToUnit(value)
-        let inferredDegree = inferDiatonicDegree(for: folded)
-        let forcedLetter = inferredDegree.flatMap { expectedLetter(root: rootLetter(context: context), degree: $0) }
-        let best = bestThreeLimitCandidate(for: folded, preference: context.preferred, forcedLetter: forcedLetter)
-        let base = letter(for: best.e3)
+        let best = bestThreeLimitCandidate(for: folded, preference: context.preferred)
+        let e3Total = context.tonicE3.map { $0 + best.e3 } ?? best.e3
+        let base = letter(for: e3Total)
         let accidental = HejiAccidental(
             diatonicAccidental: base.accidentalCount,
             microtonalComponents: microtonalComponents(for: ratio, maxPrime: context.maxPrime)
         )
 
         let hz = context.rootHz > 0 ? context.rootHz * value : value
-        let staff = NotationFormatter.staffNoteName(freqHz: hz, a4Hz: context.referenceA4Hz)
+        let staff = NotationFormatter.staffNoteName(freqHz: hz, a4Hz: context.noteNameA4Hz)
         let octaveOut = staff.octave
 
         let unsupported = unsupportedPrimes(in: ratio)
@@ -247,9 +241,8 @@ enum HejiNotation {
 
     // MARK: - 3-limit base
 
-    private static func bestThreeLimitCandidate(for ratio: Double, preference: AccidentalPreference, forcedLetter: String?) -> Candidate {
+    private static func bestThreeLimitCandidate(for ratio: Double, preference: AccidentalPreference) -> Candidate {
         var best: Candidate?
-        var bestFallback: Candidate?
         for e3 in hejiSearchRange {
             let base = pow(3.0, Double(e3))
             let e2 = -Int(floor(log2(base)))
@@ -258,13 +251,9 @@ enum HejiNotation {
             let letterInfo = letter(for: e3)
             let acc = letterInfo.accidentalCount
             let candidateScore = Candidate(e3: e3, e2: e2, cents: cents, accidentalCount: acc)
-            bestFallback = chooseBestCandidate(current: bestFallback, candidate: candidateScore, preference: preference)
-            if let forcedLetter, letterInfo.letter != forcedLetter { continue }
             best = chooseBestCandidate(current: best, candidate: candidateScore, preference: preference)
         }
-        if let best { return best }
-        if let bestFallback { return bestFallback }
-        return Candidate(e3: 0, e2: 0, cents: 0, accidentalCount: 0)
+        return best ?? Candidate(e3: 0, e2: 0, cents: 0, accidentalCount: 0)
     }
 
     private static func letter(for e3: Int) -> (letter: String, accidentalCount: Int) {
@@ -295,59 +284,6 @@ enum HejiNotation {
             }
         }
         return current
-    }
-
-    private static func inferDiatonicDegree(for ratio: Double) -> Int? {
-        let cents = 1200.0 * log2(ratio)
-        var best: (degree: Int, diff: Double)?
-        for landmark in degreeLandmarks {
-            let diff = abs(cents - landmark.cents)
-            if diff <= degreeInferenceToleranceCents {
-                if best == nil || diff < (best?.diff ?? .infinity) {
-                    best = (landmark.degree, diff)
-                }
-            }
-        }
-        return best?.degree
-    }
-
-    private static func expectedLetter(root: String?, degree: Int) -> String? {
-        guard let root, let rootIndex = diatonicOrder.firstIndex(of: root.uppercased()) else { return nil }
-        let offset = max(0, min(6, degree - 1))
-        let idx = (rootIndex + offset) % diatonicOrder.count
-        return diatonicOrder[idx]
-    }
-
-    private static let diatonicOrder = ["C", "D", "E", "F", "G", "A", "B"]
-
-    private static func rootLetter(context: HejiContext) -> String? {
-        guard context.rootHz.isFinite, context.rootHz > 0, context.referenceA4Hz.isFinite, context.referenceA4Hz > 0 else {
-            return nil
-        }
-        let midiFloat = 69.0 + 12.0 * log2(context.rootHz / context.referenceA4Hz)
-        let midi = Int(midiFloat.rounded())
-        let idx = ((midi % 12) + 12) % 12
-        let spelling = spelledNote(forSemitone: idx, preference: context.preferred)
-        return spelling.letter
-    }
-
-    private static func spelledNote(forSemitone idx: Int, preference: AccidentalPreference) -> (letter: String, accidentalCount: Int) {
-        let sharps: [(String, Int)] = [
-            ("C", 0), ("C", 1), ("D", 0), ("D", 1),
-            ("E", 0), ("F", 0), ("F", 1), ("G", 0),
-            ("G", 1), ("A", 0), ("A", 1), ("B", 0)
-        ]
-        let flats: [(String, Int)] = [
-            ("C", 0), ("D", -1), ("D", 0), ("E", -1),
-            ("E", 0), ("F", 0), ("G", -1), ("G", 0),
-            ("A", -1), ("A", 0), ("B", -1), ("B", 0)
-        ]
-        switch preference {
-        case .preferFlats:
-            return flats[idx]
-        case .preferSharps, .auto:
-            return sharps[idx]
-        }
     }
 
     // MARK: - Microtonal components

@@ -53,7 +53,8 @@ enum SettingsKeys {
     // Tuning
     static let a4Choice      = "tenney.tuner.a4Choice"     // "440" | "442" | "custom"
     static let a4CustomHz    = "tenney.tuner.a4CustomHz"   // Double
-    static let staffA4Hz     = "tenney.tuner.staffA4Hz"    // Double (cached, used by NotationFormatter)
+    static let staffA4Hz     = "tenney.tuner.staffA4Hz"    // Double (concert pitch A4)
+    static let noteNameA4Hz  = "tenney.noteName.a4Hz"      // Double (absolute note-name reference)
     // Tuner UI style (Gauge vs Chrono Dial vs Scope)
     static let tunerViewStyle = "Tenney.Tuner.ViewStyle"
 
@@ -91,6 +92,8 @@ enum SettingsKeys {
     static let rootAnchorFifthsFromC = "tenney.label.rootAnchor.fifthsFromC" // Int
     static let rootAnchorDiatonicNumber = "tenney.label.rootAnchor.diatonicNumber" // Int
     static let rootAnchorIsFrozen = "tenney.label.rootAnchor.isFrozen" // Bool
+    static let tonicNameMode = "tenney.label.tonicName.mode" // "auto" | "manual"
+    static let tonicE3 = "tenney.label.tonicE3" // Int (fifths exponent for tonic spelling)
 
     // Lattice UI
     static let nodeSize      = "tenney.ui.nodeSize"        // "s" | "m" | "mplus" | "l"

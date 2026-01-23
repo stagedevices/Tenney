@@ -106,7 +106,8 @@ func ratioDisplayString(_ r: RatioRef) -> String {
 
 /// If you need name/octave from an effective frequency (cents vs ET can be filled by your model later)
 func hejiDisplay(freqHz: Double) -> (name: String, oct: Int, cents: Double) {
-    let (name, oct) = NotationFormatter.staffNoteName(freqHz: freqHz)
+    let reference = TonicSpelling.resolvedNoteNameA4Hz()
+    let (name, oct) = NotationFormatter.staffNoteName(freqHz: freqHz, a4Hz: reference)
     // If you want ET cents here, compute it using your own ET helper.
     return (name, oct, 0)
 }

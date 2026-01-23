@@ -12,14 +12,14 @@
 //
 //  Re-styled A4 reference picker using the same card language as SettingsThemePickerView.
 //  - Presets: 425 / 440 / 442 / 444 + Custom
-//  - Writes to @AppStorage(SettingsKeys.staffA4Hz)
+//  - Writes to @AppStorage(SettingsKeys.noteNameA4Hz)
 //  - Calls onSelectionChanged(hz) when the value changes (used by the wizard for live preview)
 //
 
 import SwiftUI
 
 struct SettingsA4PickerView: View {
-    @AppStorage(SettingsKeys.staffA4Hz) private var staffA4Hz: Double = 440
+    @AppStorage(SettingsKeys.noteNameA4Hz) private var noteNameA4Hz: Double = 440
 
     var onSelectionChanged: ((Double) -> Void)? = nil
 
@@ -100,7 +100,7 @@ struct SettingsA4PickerView: View {
 
     // MARK: - Logic
     private func syncFromStored() {
-        let current = staffA4Hz
+        let current = noteNameA4Hz
         if let match = [425.0, 440.0, 442.0, 444.0].first(where: { abs($0 - current) < 0.01 }) {
             switch match {
             case 425: selected = ._425
@@ -119,8 +119,8 @@ struct SettingsA4PickerView: View {
         if let hz = p.hz {
             commit(hz)
         } else {
-            // keep customHz; selecting custom doesn’t change staffA4Hz until edited
-            customHz = staffA4Hz
+            // keep customHz; selecting custom doesn’t change noteNameA4Hz until edited
+            customHz = noteNameA4Hz
         }
     }
 
@@ -130,8 +130,8 @@ struct SettingsA4PickerView: View {
     }
 
     private func commit(_ hz: Double) {
-        staffA4Hz = hz
-        postSetting(SettingsKeys.staffA4Hz, hz)
+        noteNameA4Hz = hz
+        postSetting(SettingsKeys.noteNameA4Hz, hz)
         onSelectionChanged?(hz)
     }
 }

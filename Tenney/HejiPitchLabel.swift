@@ -35,9 +35,9 @@ struct HejiPitchLabel: View {
     private var ratioSpelling: HejiRatioSpelling? {
         guard case .ratio(let ratio) = pitch else { return nil }
         let pref = context.preferred
-        let anchor = resolveRootAnchor(rootHz: context.rootHz, a4Hz: context.referenceA4Hz, preference: pref)
+        let anchor = resolveRootAnchor(rootHz: context.rootHz, a4Hz: context.noteNameA4Hz, preference: pref)
         let ratioContext = PitchContext(
-            a4Hz: context.referenceA4Hz,
+            a4Hz: context.noteNameA4Hz,
             rootHz: context.rootHz,
             rootAnchor: anchor,
             accidentalPreference: pref,

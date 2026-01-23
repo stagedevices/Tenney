@@ -724,8 +724,11 @@ extension Notification.Name {
 
 
  struct TunerCard: View {
-     @AppStorage(SettingsKeys.staffA4Hz)  private var a4Staff: Double = 440
-         @AppStorage(SettingsKeys.accidentalPreference) private var accidentalPreferenceRaw: String = AccidentalPreference.auto.rawValue
+    @AppStorage(SettingsKeys.staffA4Hz)  private var concertA4Hz: Double = 440
+    @AppStorage(SettingsKeys.noteNameA4Hz) private var noteNameA4Hz: Double = 440
+    @AppStorage(SettingsKeys.tonicNameMode) private var tonicNameModeRaw: String = TonicNameMode.auto.rawValue
+    @AppStorage(SettingsKeys.tonicE3) private var tonicE3: Int = 0
+    @AppStorage(SettingsKeys.accidentalPreference) private var accidentalPreferenceRaw: String = AccidentalPreference.auto.rawValue
     @EnvironmentObject private var model: AppModel
     @ObservedObject var store: TunerStore
     private var liveHz: Double { model.display.hz }
@@ -809,16 +812,26 @@ extension Notification.Name {
     private var hejiLabelText: String? {
         guard store.viewStyle != .posterFraction else { return nil }
         let pref = AccidentalPreference(rawValue: accidentalPreferenceRaw) ?? .auto
+        let mode = TonicNameMode(rawValue: tonicNameModeRaw) ?? .auto
+        let resolvedTonicE3 = TonicSpelling.resolvedTonicE3(
+            mode: mode,
+            manualE3: tonicE3,
+            rootHz: model.effectiveRootHz,
+            noteNameA4Hz: noteNameA4Hz,
+            preference: pref
+        )
         let ratioHint = store.lockedTarget ?? liveNearest
         let ratioRef = ratioHint.map { RatioRef(p: $0.num, q: $0.den, octave: $0.octave, monzo: [:]) }
         let context = HejiContext(
-            referenceA4Hz: a4Staff,
+            concertA4Hz: concertA4Hz,
+            noteNameA4Hz: noteNameA4Hz,
             rootHz: model.effectiveRootHz,
             rootRatio: nil,
             preferred: pref,
             maxPrime: max(3, store.primeLimit),
             allowApproximation: true,
-            scaleDegreeHint: ratioRef
+            scaleDegreeHint: ratioRef,
+            tonicE3: resolvedTonicE3
         )
         let spelling = ratioRef.map { HejiNotation.spelling(forRatio: $0, context: context) }
             ?? HejiNotation.spelling(forFrequency: liveHz, context: context)
@@ -2360,51 +2373,79 @@ private struct NextChip: View {
 // MARK: Control Cards (compact root)
 private struct RootCardCompact: View {
     @EnvironmentObject private var model: AppModel
+    @AppStorage(SettingsKeys.noteNameA4Hz) private var noteNameA4Hz: Double = 440
+    @AppStorage(SettingsKeys.tonicNameMode) private var tonicNameModeRaw: String = TonicNameMode.auto.rawValue
+    @AppStorage(SettingsKeys.tonicE3) private var tonicE3: Int = 0
+    @AppStorage(SettingsKeys.accidentalPreference) private var accidentalPreferenceRaw: String = AccidentalPreference.auto.rawValue
     let ns: Namespace.ID
     @Binding var showSheet: Bool
     @State private var input: String = ""
     @State private var animateTick = false
+    @State private var showTonicSheet = false
 
     var body: some View {
         GlassCard {
-            HStack(spacing: 10) {
-                // Root chip (hero to modal)
-                Button {
-                    showSheet = true
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "tuningfork")
-                            .imageScale(.medium)
-                        Text(String(format: "%.1f Hz", model.rootHz))
-                            .font(.headline.monospacedDigit())
-                            .matchedGeometryEffect(id: "rootValue", in: ns)  // ← hero
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 10) {
+                    // Root chip (hero to modal)
+                    Button {
+                        showSheet = true
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "tuningfork")
+                                .imageScale(.medium)
+                            Text(String(format: "%.1f Hz", model.rootHz))
+                                .font(.headline.monospacedDigit())
+                                .matchedGeometryEffect(id: "rootValue", in: ns)  // ← hero
+                        }
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .background(.thinMaterial, in: Capsule())
                     }
-                    .padding(.horizontal, 10).padding(.vertical, 6)
-                    .background(.thinMaterial, in: Capsule())
-                }
-                .buttonStyle(.plain)
-                .contextMenu {
-                    Button("Copy", systemImage: "doc.on.doc") {
-                        UIPasteboard.general.string = String(format: "%.4f", model.rootHz)
+                    .buttonStyle(.plain)
+                    .contextMenu {
+                        Button("Copy", systemImage: "doc.on.doc") {
+                            UIPasteboard.general.string = String(format: "%.4f", model.rootHz)
+                        }
+                    }
+
+                    // Inline evaluator (commit-on-return)
+                    TextField("p/q×base (e.g. 16/9×220)", text: $input, onCommit: commitInput)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled(true)
+                        .keyboardType(.numbersAndPunctuation)
+                        .submitLabel(.done)
+                        .font(.subheadline.monospaced())
+                        .textFieldStyle(.roundedBorder)
+
+                    Spacer(minLength: 4)
+
+                    // Action chips — History, Favorites, Calculator
+                    HStack(spacing: 8) {
+                        IconChip("clock.arrow.circlepath") { open(.history) }
+                        IconChip("star") { open(.favorites) }
+                        IconChip("function") { open(.calculator) }
                     }
                 }
 
-                // Inline evaluator (commit-on-return)
-                TextField("p/q×base (e.g. 16/9×220)", text: $input, onCommit: commitInput)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled(true)
-                    .keyboardType(.numbersAndPunctuation)
-                    .submitLabel(.done)
-                    .font(.subheadline.monospaced())
-                    .textFieldStyle(.roundedBorder)
-
-                Spacer(minLength: 4)
-
-                // Action chips — History, Favorites, Calculator
                 HStack(spacing: 8) {
-                    IconChip("clock.arrow.circlepath") { open(.history) }
-                    IconChip("star") { open(.favorites) }
-                    IconChip("function") { open(.calculator) }
+                    Text("Name as")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Button(action: { showTonicSheet = true }) {
+                        HStack(spacing: 6) {
+                            Text(currentTonicSpelling.displayText)
+                                .font(.subheadline.monospaced())
+                            if tonicMode == .auto {
+                                Text("Auto")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.ultraThinMaterial, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }
@@ -2413,6 +2454,22 @@ private struct RootCardCompact: View {
             input = String(format: "%.1f", v)
             withAnimation(.spring(response: 0.25, dampingFraction: 0.9)) { animateTick.toggle() }
         }
+        .sheet(isPresented: $showTonicSheet) {
+            TonicNamePickerSheet(rootHz: model.rootHz)
+        }
+    }
+
+    private var tonicMode: TonicNameMode {
+        TonicNameMode(rawValue: tonicNameModeRaw) ?? .auto
+    }
+
+    private var currentTonicSpelling: TonicSpelling {
+        let pref = AccidentalPreference(rawValue: accidentalPreferenceRaw) ?? .auto
+        if tonicMode == .manual {
+            return TonicSpelling(e3: tonicE3)
+        }
+        return TonicSpelling.from(rootHz: model.rootHz, noteNameA4Hz: noteNameA4Hz, preference: pref)
+            ?? TonicSpelling(e3: tonicE3)
     }
 
     private func open(_ tab: RootStudioTab) {
@@ -2497,7 +2554,7 @@ private struct RootStudioSheet: View {
     @EnvironmentObject private var model: AppModel
     @AppStorage(SettingsKeys.a4Choice)   private var a4Choice = "440"
     @AppStorage(SettingsKeys.a4CustomHz) private var a4Custom: Double = 440
-    @AppStorage(SettingsKeys.staffA4Hz)  private var a4Staff: Double = 440
+    @AppStorage(SettingsKeys.staffA4Hz)  private var concertA4Hz: Double = 440
     @AppStorage(SettingsKeys.accidentalPreference) private var accidentalPreferenceRaw: String = AccidentalPreference.auto.rawValue
     @Environment(\.dismiss) private var dismiss
 
@@ -2659,7 +2716,7 @@ private struct RootStudioSheet: View {
                         Spacer()
                     }
                 }
-                Text("Used for staff/ET reference. Root remains independent.")
+                Text("Used for concert pitch behaviors. Root naming stays independent.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
             .onChange(of: a4Choice) { _ in updateA4() }
@@ -2667,7 +2724,7 @@ private struct RootStudioSheet: View {
         }
     private func updateA4() {
         let chosen: Double = (a4Choice == "442" ? 442 : (a4Choice == "custom" ? max(200, min(1000, a4Custom)) : 440))
-        a4Staff = chosen
+        concertA4Hz = chosen
         postSetting(SettingsKeys.staffA4Hz, chosen)
     }
 
@@ -2755,6 +2812,145 @@ fileprivate enum RootFavorites {
     }
     static func remove(_ v: Double) {
         var arr = load(); arr.removeAll { abs($0 - v) < 0.0001 }; UserDefaults.standard.set(arr, forKey: key)
+    }
+}
+
+private struct TonicNamePickerSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @AppStorage(SettingsKeys.noteNameA4Hz) private var noteNameA4Hz: Double = 440
+    @AppStorage(SettingsKeys.tonicNameMode) private var tonicNameModeRaw: String = TonicNameMode.auto.rawValue
+    @AppStorage(SettingsKeys.tonicE3) private var tonicE3: Int = 0
+    @AppStorage(SettingsKeys.accidentalPreference) private var accidentalPreferenceRaw: String = AccidentalPreference.auto.rawValue
+
+    let rootHz: Double
+
+    @State private var manualLetter: String = "C"
+    @State private var manualAccidental: Int = 0
+
+    private var tonicMode: TonicNameMode {
+        TonicNameMode(rawValue: tonicNameModeRaw) ?? .auto
+    }
+
+    private var preference: AccidentalPreference {
+        AccidentalPreference(rawValue: accidentalPreferenceRaw) ?? .auto
+    }
+
+    private var autoSpelling: TonicSpelling? {
+        TonicSpelling.from(rootHz: rootHz, noteNameA4Hz: noteNameA4Hz, preference: preference)
+    }
+
+    private var manualSpelling: TonicSpelling {
+        TonicSpelling.from(letter: manualLetter, accidental: manualAccidental)
+    }
+
+    private var suggestedSpellings: [TonicSpelling] {
+        let sharp = TonicSpelling.from(rootHz: rootHz, noteNameA4Hz: noteNameA4Hz, preference: .preferSharps)
+        let flat = TonicSpelling.from(rootHz: rootHz, noteNameA4Hz: noteNameA4Hz, preference: .preferFlats)
+        return [sharp, flat].compactMap { $0 }.uniquedBy { $0.displayText }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Mode") {
+                    Picker("Tonic naming", selection: $tonicNameModeRaw) {
+                        Text("Auto").tag(TonicNameMode.auto.rawValue)
+                        Text("Manual").tag(TonicNameMode.manual.rawValue)
+                    }
+                    .pickerStyle(.segmented)
+
+                    if let autoSpelling {
+                        HStack {
+                            Text("Current")
+                            Spacer()
+                            Text(autoSpelling.displayText)
+                                .font(.headline.monospaced())
+                        }
+                    }
+                }
+
+                if !suggestedSpellings.isEmpty {
+                    Section("Suggested") {
+                        ForEach(suggestedSpellings, id: \.self) { spelling in
+                            HStack {
+                                Text(spelling.displayText)
+                                if spelling.displayText == autoSpelling?.displayText {
+                                    Spacer()
+                                    Text("Default")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Section("Manual") {
+                    Picker("Letter", selection: $manualLetter) {
+                        ForEach(["C", "D", "E", "F", "G", "A", "B"], id: \.self) { letter in
+                            Text(letter).tag(letter)
+                        }
+                    }
+                    Picker("Accidental", selection: $manualAccidental) {
+                        ForEach(-2...2, id: \.self) { value in
+                            Text(accidentalLabel(value)).tag(value)
+                        }
+                    }
+                    HStack {
+                        Text("Preview")
+                        Spacer()
+                        Text(manualSpelling.displayText)
+                            .font(.headline.monospaced())
+                    }
+                }
+                .disabled(tonicMode != .manual)
+            }
+            .navigationTitle("Name as")
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+        .onAppear(perform: syncManualFromStored)
+        .onChange(of: tonicNameModeRaw) { _, newValue in
+            guard let mode = TonicNameMode(rawValue: newValue) else { return }
+            if mode == .manual, let auto = autoSpelling {
+                tonicE3 = auto.e3
+                syncManualFromStored()
+            }
+        }
+        .onChange(of: manualLetter) { _, _ in updateManualE3IfNeeded() }
+        .onChange(of: manualAccidental) { _, _ in updateManualE3IfNeeded() }
+    }
+
+    private func syncManualFromStored() {
+        let spelling = TonicSpelling(e3: tonicE3)
+        manualLetter = spelling.letter
+        manualAccidental = spelling.accidentalCount
+    }
+
+    private func updateManualE3IfNeeded() {
+        guard tonicMode == .manual else { return }
+        tonicE3 = manualSpelling.e3
+    }
+
+    private func accidentalLabel(_ value: Int) -> String {
+        if value == 0 { return "♮" }
+        if value > 0 { return String(repeating: "♯", count: value) }
+        return String(repeating: "♭", count: abs(value))
+    }
+}
+
+private extension Array {
+    func uniquedBy<T: Hashable>(_ key: (Element) -> T) -> [Element] {
+        var seen: Set<T> = []
+        return filter { element in
+            let k = key(element)
+            if seen.contains(k) { return false }
+            seen.insert(k)
+            return true
+        }
     }
 }
 private struct PrimeLimitCard: View {

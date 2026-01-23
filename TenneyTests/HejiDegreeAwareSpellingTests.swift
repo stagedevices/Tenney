@@ -8,47 +8,57 @@ import Testing
 
 struct HejiDegreeAwareSpellingTests {
 
-    @Test func majorSeventhDegreeUsesDiatonicLetterWithSharps() async throws {
+    @Test func manualTonicTransposesIntervalLetter() async throws {
+        let tonic = TonicSpelling.from(letter: "G", accidental: 1)
         let context = HejiContext(
-            referenceA4Hz: 440,
+            concertA4Hz: 440,
+            noteNameA4Hz: 440,
             rootHz: 415,
             rootRatio: nil,
             preferred: .preferSharps,
             maxPrime: 13,
             allowApproximation: false,
-            scaleDegreeHint: nil
+            scaleDegreeHint: nil,
+            tonicE3: tonic.e3
         )
         let spelling = HejiNotation.spelling(forRatio: RatioRef(p: 15, q: 8, octave: 0, monzo: [:]), context: context)
         #expect(spelling.baseLetter == "F")
         #expect(spelling.accidental.diatonicAccidental == 2)
     }
 
-    @Test func majorSeventhDegreeUsesDiatonicLetterWithFlats() async throws {
-        let context = HejiContext(
-            referenceA4Hz: 440,
-            rootHz: 415,
-            rootRatio: nil,
-            preferred: .preferFlats,
-            maxPrime: 13,
-            allowApproximation: false,
-            scaleDegreeHint: nil
-        )
-        let spelling = HejiNotation.spelling(forRatio: RatioRef(p: 15, q: 8, octave: 0, monzo: [:]), context: context)
-        #expect(spelling.baseLetter == "G")
-        #expect(spelling.accidental.diatonicAccidental == 0)
-    }
-
-    @Test func nonLandmarkRatioFallsBackToDefaultSpelling() async throws {
-        let context = HejiContext(
-            referenceA4Hz: 440,
+    @Test func concertPitchDoesNotAffectLetterChoice() async throws {
+        let tonic = TonicSpelling.from(letter: "G", accidental: 1)
+        let context440 = HejiContext(
+            concertA4Hz: 440,
+            noteNameA4Hz: 440,
             rootHz: 415,
             rootRatio: nil,
             preferred: .preferSharps,
             maxPrime: 13,
             allowApproximation: false,
-            scaleDegreeHint: nil
+            scaleDegreeHint: nil,
+            tonicE3: tonic.e3
         )
-        let spelling = HejiNotation.spelling(forRatio: RatioRef(p: 11, q: 8, octave: 0, monzo: [:]), context: context)
-        #expect(!spelling.baseLetter.isEmpty)
+        let context415 = HejiContext(
+            concertA4Hz: 415,
+            noteNameA4Hz: 440,
+            rootHz: 415,
+            rootRatio: nil,
+            preferred: .preferSharps,
+            maxPrime: 13,
+            allowApproximation: false,
+            scaleDegreeHint: nil,
+            tonicE3: tonic.e3
+        )
+        let spelling440 = HejiNotation.spelling(forRatio: RatioRef(p: 15, q: 8, octave: 0, monzo: [:]), context: context440)
+        let spelling415 = HejiNotation.spelling(forRatio: RatioRef(p: 15, q: 8, octave: 0, monzo: [:]), context: context415)
+        #expect(spelling440.baseLetter == spelling415.baseLetter)
+        #expect(spelling440.accidental.diatonicAccidental == spelling415.accidental.diatonicAccidental)
+    }
+
+    @Test func autoTonicDerivationUsesNamingReference() async throws {
+        let spelling = TonicSpelling.from(rootHz: 415, noteNameA4Hz: 440, preference: .preferSharps)
+        #expect(spelling?.letter == "G")
+        #expect(spelling?.accidentalCount == 1)
     }
 }

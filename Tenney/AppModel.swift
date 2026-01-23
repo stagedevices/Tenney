@@ -56,7 +56,12 @@ final class AppModel: ObservableObject {
     @Published var builderPresented: Bool = false
     private var _recenterObserver: NSObjectProtocol?
     init() {
-    
+        if UserDefaults.standard.object(forKey: SettingsKeys.noteNameA4Hz) == nil {
+            let legacy = UserDefaults.standard.double(forKey: SettingsKeys.staffA4Hz)
+            if legacy > 0 {
+                UserDefaults.standard.set(legacy, forKey: SettingsKeys.noteNameA4Hz)
+            }
+        }
         _recenterObserver = NotificationCenter.default.addObserver(
             forName: UIApplication.willResignActiveNotification,
             object: nil,
