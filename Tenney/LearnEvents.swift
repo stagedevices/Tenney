@@ -50,6 +50,7 @@ enum LearnEvent: Equatable, Sendable {
     case builderRootPlayed
     case builderExportOpened
     case builderOscilloscopeObserved
+    case builderScopeTimedSatisfied
 
     // Meta
     case attemptedDisallowedAction(String)
