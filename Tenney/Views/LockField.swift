@@ -14,6 +14,8 @@ struct LockFieldMatchedGeometry {
 }
 
 struct LockFieldPill: View {
+    @Environment(\.tenneyTheme) private var theme
+
     enum Size {
         case compact
         case large
@@ -130,7 +132,7 @@ struct LockFieldPill: View {
         .frame(maxWidth: size.maxWidth)
         .background(pillBackground)
         .overlay(pillStroke)
-        .shadow(color: isLocked ? tint.opacity(theme.isDark ? 0.28 : 0.18) : .clear, radius: 8, y: 4)
+          .shadow(color: isLocked ? tint.opacity(theme.isDark ? 0.28 : 0.18) : .clear, radius: 8, y: 4)
     }
 
     private var pillBackground: some View {
