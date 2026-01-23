@@ -8,6 +8,8 @@
 import SwiftUI
 #if os(iOS)
 import UIKit
+#elseif os(macOS)
+import AppKit
 #endif
 
 struct LockTargetSheet: View {
@@ -31,6 +33,7 @@ struct LockTargetSheet: View {
     @Environment(\.tenneyTheme) private var theme
     @FocusState private var focusedField: Field?
     @State private var showKeypad: Bool = false
+    @State private var pasteMessage: String? = nil
 
     private enum Field {
         case numerator
@@ -137,13 +140,7 @@ struct LockTargetSheet: View {
                         keypad
                     }
                 }
-
-                if let pasteRatio = pasteboardRatio {
-                    Button("Paste \(pasteRatio)") {
-                        applyRatioText(pasteRatio)
-                    }
-                    .buttonStyle(.bordered)
-                }
+                pasteControls
             }
         }
     }
@@ -339,14 +336,60 @@ struct LockTargetSheet: View {
         applyRatio(parsed)
     }
 
-    private var pasteboardRatio: String? {
+    private var pasteControls: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if #available(iOS 16.0, macOS 13.0, *) {
+                PasteButton(payloadType: String.self) { strings in
+                    handlePasteStrings(strings)
+                }
+                .buttonStyle(.bordered)
+                .labelStyle(.titleAndIcon)
+            } else {
+                Button("Paste ratio") {
+                    handleLegacyPaste()
+                }
+                .buttonStyle(.bordered)
+            }
+
+            if let pasteMessage {
+                Text(pasteMessage)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func handlePasteStrings(_ strings: [String]) {
+        guard let text = strings.first else {
+            pasteMessage = "Paste permission denied."
+            return
+        }
+        applyPasteText(text)
+    }
+
+    private func handleLegacyPaste() {
 #if os(iOS)
-        let string = UIPasteboard.general.string ?? ""
+        let text = UIPasteboard.general.string
+#elseif os(macOS)
+        let text = NSPasteboard.general.string(forType: .string)
 #else
-        let string = ""
+        let text: String? = nil
 #endif
-        let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
-        return parseRatioTextPQ(trimmed) != nil ? trimmed : nil
+        guard let text else {
+            pasteMessage = "Paste permission denied."
+            return
+        }
+        applyPasteText(text)
+    }
+
+    private func applyPasteText(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let parsed = ratioResultFromText(trimmed) else {
+            pasteMessage = "Paste contains no ratio."
+            return
+        }
+        pasteMessage = nil
+        applyRatio(parsed)
     }
 
     private var pickItems: [LockPickItem] {

@@ -18,6 +18,20 @@ struct LockFieldPill: View {
         case compact
         case large
 
+        var maxWidth: CGFloat {
+#if os(macOS) || targetEnvironment(macCatalyst)
+            switch self {
+            case .compact: return 220
+            case .large: return 320
+            }
+#else
+            switch self {
+            case .compact: return 190
+            case .large: return 280
+            }
+#endif
+        }
+
         var font: Font {
             switch self {
             case .compact: return .footnote.weight(.semibold)
@@ -34,8 +48,8 @@ struct LockFieldPill: View {
 
         var padding: EdgeInsets {
             switch self {
-            case .compact: return EdgeInsets(top: 6, leading: 10, bottom: 6, trailing: 10)
-            case .large: return EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16)
+            case .compact: return EdgeInsets(top: 5, leading: 8, bottom: 5, trailing: 8)
+            case .large: return EdgeInsets(top: 10, leading: 14, bottom: 10, trailing: 14)
             }
         }
 
@@ -58,8 +72,10 @@ struct LockFieldPill: View {
     let isLocked: Bool
     let displayText: String?
     let tint: Color
-    let placeholder: String
+    let placeholderShort: String
+    let placeholderLong: String
     let matchedGeometry: LockFieldMatchedGeometry?
+    let isExpanded: Bool
     let action: (() -> Void)?
 
     @Environment(\.tenneyTheme) private var theme
@@ -71,16 +87,20 @@ struct LockFieldPill: View {
         isLocked: Bool,
         displayText: String?,
         tint: Color,
-        placeholder: String = "p/q",
+        placeholderShort: String = "Lock ratio",
+        placeholderLong: String = "Ratio (e.g. 5/4)",
         matchedGeometry: LockFieldMatchedGeometry? = nil,
+        isExpanded: Bool = false,
         action: (() -> Void)? = nil
     ) {
         self.size = size
         self.isLocked = isLocked
         self.displayText = displayText
         self.tint = tint
-        self.placeholder = placeholder
+        self.placeholderShort = placeholderShort
+        self.placeholderLong = placeholderLong
         self.matchedGeometry = matchedGeometry
+        self.isExpanded = isExpanded
         self.action = action
     }
 
@@ -102,13 +122,12 @@ struct LockFieldPill: View {
     private var lockFieldBody: some View {
         ViewThatFits(in: .horizontal) {
             pillSingleLine(showTag: isLocked)
-                .frame(minWidth: size == .compact ? 220 : 320)
             pillSingleLine(showTag: false)
-                .frame(minWidth: size == .compact ? 200 : 280)
             pillTwoLine
         }
         .padding(size.padding)
         .frame(minHeight: size.minHeight)
+        .frame(maxWidth: size.maxWidth)
         .background(pillBackground)
         .overlay(pillStroke)
         .shadow(color: isLocked ? tint.opacity(theme.isDark ? 0.28 : 0.18) : .clear, radius: 8, y: 4)
@@ -182,7 +201,7 @@ struct LockFieldPill: View {
     }
 
     private var editGlyph: some View {
-        Image(systemName: "slider.horizontal.3")
+        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
             .font(size.iconFont)
             .foregroundStyle(.secondary)
             .padding(6)
@@ -197,14 +216,14 @@ struct LockFieldPill: View {
         let ratio = (trimmed?.isEmpty == false) ? trimmed : nil
         return LockRatioField(
             ratioText: ratio,
-            placeholder: placeholder,
+            placeholderShort: placeholderShort,
+            placeholderLong: placeholderLong,
             font: size.font,
             tint: tint,
             caretHeight: size.caretHeight,
             caretPulse: $caretPulse
         )
         .applyMatchedGeometry(matchedGeometry, reduceMotion: reduceMotion, id: \.ratioID)
-        .layoutPriority(2)
         .onAppear {
             guard !reduceMotion else { return }
             withAnimation(.easeInOut(duration: 4.2).repeatForever(autoreverses: true)) {
@@ -228,7 +247,8 @@ struct LockFieldPill: View {
 
 private struct LockRatioField: View {
     let ratioText: String?
-    let placeholder: String
+    let placeholderShort: String
+    let placeholderLong: String
     let font: Font
     let tint: Color
     let caretHeight: CGFloat
@@ -248,9 +268,12 @@ private struct LockRatioField: View {
             .mask(FadeEdgeMask())
         } else {
             HStack(spacing: 4) {
-                Text(placeholder)
-                    .font(font.monospacedDigit())
-                    .foregroundStyle(.secondary)
+                ViewThatFits(in: .horizontal) {
+                    Text(placeholderLong)
+                    Text(placeholderShort)
+                }
+                .font(font.monospacedDigit())
+                .foregroundStyle(.secondary)
                 Rectangle()
                     .fill(tint.opacity(0.7))
                     .frame(width: 2, height: caretHeight)
