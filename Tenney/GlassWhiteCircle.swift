@@ -98,6 +98,35 @@ public struct GlassWhiteCircle: ViewModifier {
             .shadow(color: .black.opacity(0.18), radius: 10, x: 0, y: 6)
     }
 }
+
+struct GlassWhiteCircleIconButton: View {
+    let systemName: String
+    let accessibilityLabel: String
+    let action: () -> Void
+    var size: CGFloat = 44
+    var font: Font = .system(size: 16, weight: .semibold)
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var ink: Color {
+        colorScheme == .dark ? .black : .primary
+    }
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .symbolRenderingMode(.monochrome)
+                .foregroundStyle(ink)
+                .font(font)
+                .frame(width: size, height: size)
+                .modifier(GlassWhiteCircle())
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .tint(ink)
+        .accessibilityLabel(Text(accessibilityLabel))
+    }
+}
 public struct GlassRedRoundedRect: ViewModifier {
     
     let corner: CGFloat
