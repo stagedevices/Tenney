@@ -4468,43 +4468,6 @@ private struct GlassNavTile<Destination: View>: View {
     }
 
 
-    // MARK: Wave options + preview tile
-    // Inside StudioConsoleView
-    private static func previewWaveY(_ kind: ToneOutputEngine.GlobalWave, x: CGFloat) -> CGFloat {
-        let t = x - floor(x)
-        switch kind {
-        case .foldedSine: return (abs(sin(2 * .pi * t)) * 2) - 1
-        case .triangle:   return 1 - abs((t * 4).truncatingRemainder(dividingBy: 4) - 2)
-        case .saw:        return (t * 2) - 1
-        default:          return sin(2 * .pi * t)
-        }
-    }
-
-
-    fileprivate struct WavePreview: View {
-        let kind: ToneOutputEngine.GlobalWave
-        var body: some View {
-            GeometryReader { geo in
-                let w = geo.size.width, h = geo.size.height
-                let mid = h / 2
-                let amp = h * 0.36
-                Canvas { ctx, size in
-                    var p = Path()
-                    let samples = max(24, Int(size.width))
-                    for i in 0...samples {
-                        let x01 = CGFloat(i) / CGFloat(samples)
-                        let y01 = previewWaveY(kind, x: x01)   // ✅ now visible here
-                        let px  = x01 * w
-                        let py  = mid - (y01 * amp)
-                        if i == 0 { p.move(to: .init(x: px, y: py)) }
-                        else      { p.addLine(to: .init(x: px, y: py)) }
-                    }
-                    ctx.stroke(p, with: .color(.primary.opacity(0.85)), lineWidth: 6)
-                }
-            }
-        }
-    }
-
     fileprivate struct WaveTile: View {
         @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
         @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -4521,7 +4484,8 @@ private struct GlassNavTile<Destination: View>: View {
                     ZStack(alignment: .topTrailing) {
                         if #available(iOS 26.0, *) {
                             GlassEffectContainer {
-                                WavePreview(kind: option.wave)
+                                WaveformIcon(waveform: option.wave)
+                                    .accessibilityHidden(true)
                                     .padding(10)
                                     .frame(minWidth: 120, minHeight: 64)
                                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -4541,7 +4505,8 @@ private struct GlassNavTile<Destination: View>: View {
                             RoundedRectangle(cornerRadius: 12, style: .continuous)
                                 .fill(.ultraThinMaterial)
                                 .overlay(
-                                    WavePreview(kind: option.wave)
+                                    WaveformIcon(waveform: option.wave)
+                                        .accessibilityHidden(true)
                                         .padding(10)
                                         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                                 )
@@ -4570,6 +4535,7 @@ private struct GlassNavTile<Destination: View>: View {
                     }
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(WaveformSymbol.a11yLabel(for: option.wave))
 
 
                 // Label OUTSIDE the button, secondary
@@ -4577,6 +4543,7 @@ private struct GlassNavTile<Destination: View>: View {
                     .font(.caption2.weight(selected ? .semibold : .regular))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                    .accessibilityHidden(true)
             }
             .contentTransition(.opacity)
         }
