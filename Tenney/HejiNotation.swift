@@ -258,31 +258,9 @@ enum HejiNotation {
             let letterInfo = letter(for: e3)
             let acc = letterInfo.accidentalCount
             let candidateScore = Candidate(e3: e3, e2: e2, cents: cents, accidentalCount: acc)
-            if bestFallback == nil { bestFallback = candidateScore }
+            bestFallback = chooseBestCandidate(current: bestFallback, candidate: candidateScore, preference: preference)
             if let forcedLetter, letterInfo.letter != forcedLetter { continue }
-            if best == nil {
-                best = candidateScore
-                continue
-            }
-            guard let current = best else { continue }
-            if cents < current.cents - 1e-6 {
-                best = candidateScore
-            } else if abs(cents - current.cents) <= 1e-6 {
-                let complexity = abs(acc)
-                let currentComplexity = abs(current.accidentalCount)
-                if complexity < currentComplexity {
-                    best = candidateScore
-                } else if complexity == currentComplexity {
-                    switch preference {
-                    case .preferSharps:
-                        if acc > current.accidentalCount { best = candidateScore }
-                    case .preferFlats:
-                        if acc < current.accidentalCount { best = candidateScore }
-                    case .auto:
-                        break
-                    }
-                }
-            }
+            best = chooseBestCandidate(current: best, candidate: candidateScore, preference: preference)
         }
         if let best { return best }
         if let bestFallback { return bestFallback }
@@ -294,6 +272,29 @@ enum HejiNotation {
         let base = baseFifth[idx]
         let accidental = (e3 - base) / 7
         return (fifthLetters[idx], accidental)
+    }
+
+    private static func chooseBestCandidate(current: Candidate?, candidate: Candidate, preference: AccidentalPreference) -> Candidate {
+        guard let current else { return candidate }
+        if candidate.cents < current.cents - 1e-6 {
+            return candidate
+        } else if abs(candidate.cents - current.cents) <= 1e-6 {
+            let complexity = abs(candidate.accidentalCount)
+            let currentComplexity = abs(current.accidentalCount)
+            if complexity < currentComplexity {
+                return candidate
+            } else if complexity == currentComplexity {
+                switch preference {
+                case .preferSharps:
+                    if candidate.accidentalCount > current.accidentalCount { return candidate }
+                case .preferFlats:
+                    if candidate.accidentalCount < current.accidentalCount { return candidate }
+                case .auto:
+                    break
+                }
+            }
+        }
+        return current
     }
 
     private static func inferDiatonicDegree(for ratio: Double) -> Int? {
