@@ -50,6 +50,7 @@ enum LearnReferenceTopic: String, CaseIterable, Identifiable, Sendable {
 
 struct LearnTenneyReferenceTopicView: View {
     let topic: LearnReferenceTopic
+    let module: LearnTenneyModule? = nil
 
     var body: some View {
         ScrollView {
@@ -70,6 +71,11 @@ struct LearnTenneyReferenceTopicView: View {
         }
         .navigationTitle(topic.title)
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            if let module {
+                TenneyPracticeSnapshot.shared.markReferenceCompleted(module, topic: topic)
+            }
+        }
     }
 }
 

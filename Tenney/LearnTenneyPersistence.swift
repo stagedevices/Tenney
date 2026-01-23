@@ -102,7 +102,13 @@ extension TenneyPracticeSnapshot {
     }
 
     func loadState(_ module: LearnTenneyModule) -> ModuleState {
-        ModuleState(stepIndex: loadCurrentStep(module), completed: isCompleted(module))
+        if module.supportsPractice {
+            return ModuleState(stepIndex: loadCurrentStep(module), completed: isCompleted(module))
+        }
+        if module.supportsReference {
+            return referenceState(for: module)
+        }
+        return ModuleState(stepIndex: 0, completed: false)
     }
 
     func saveState(_ module: LearnTenneyModule, stepIndex: Int, completed: Bool) {
@@ -115,6 +121,26 @@ extension TenneyPracticeSnapshot {
     func resetState(_ module: LearnTenneyModule) {
         saveState(module, stepIndex: 0, completed: false)
     }
+
+    func markReferenceCompleted(_ module: LearnTenneyModule, topic: LearnReferenceTopic) {
+        UserDefaults.standard.set(true, forKey: referenceKey(module: module, topic: topic))
+        LearnTenneyStateStore.shared.updateState(module, state: referenceState(for: module))
+    }
+
+    func isReferenceCompleted(_ module: LearnTenneyModule, topic: LearnReferenceTopic) -> Bool {
+        UserDefaults.standard.bool(forKey: referenceKey(module: module, topic: topic))
+    }
+
+    private func referenceKey(module: LearnTenneyModule, topic: LearnReferenceTopic) -> String {
+        "learn.\(module.rawValue).reference.\(topic.rawValue).completed"
+    }
+
+    private func referenceState(for module: LearnTenneyModule) -> ModuleState {
+        let topics = module.referenceTopics
+        let completedCount = topics.filter { isReferenceCompleted(module, topic: $0) }.count
+        let completed = !topics.isEmpty && completedCount == topics.count
+        return ModuleState(stepIndex: completedCount, completed: completed)
+    }
 }
 
 final class LearnTenneyStateStore: ObservableObject {
@@ -122,6 +148,7 @@ final class LearnTenneyStateStore: ObservableObject {
 
     @Published private(set) var states: [LearnTenneyModule: TenneyPracticeSnapshot.ModuleState]
     @Published var pendingModuleToOpen: LearnTenneyModule? = nil
+    @Published var pendingReferenceTopic: LearnReferenceTopic? = nil
 
     private init() {
         var initial: [LearnTenneyModule: TenneyPracticeSnapshot.ModuleState] = [:]
