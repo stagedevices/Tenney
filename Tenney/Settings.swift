@@ -1469,6 +1469,7 @@ struct StudioConsoleView: View {
             guard cfg.wave != w else { return }
             cfg.wave = w
             ToneOutputEngine.shared.config = cfg
+            LearnEventBus.shared.send(.tunerOutputWaveChanged(waveLabel(w)))
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
         }
 
@@ -3793,7 +3794,11 @@ private struct GlassNavTile<Destination: View>: View {
                                         UserDefaults.standard.set(true, forKey: SettingsKeys.latticeRememberLastView)
                                         postSetting(SettingsKeys.latticeRememberLastView, true)
                 }
-                .onChange(of: tunerNeedleHoldRaw) { postSetting(SettingsKeys.tunerNeedleHoldMode, $0) }
+                .onChange(of: tunerNeedleHoldRaw) { value in
+                    postSetting(SettingsKeys.tunerNeedleHoldMode, value)
+                    let gateValue = (value == NeedleHoldMode.snapHold.rawValue) ? 1.0 : 0.0
+                    LearnEventBus.shared.send(.tunerConfidenceGateChanged(gateValue))
+                }
                 .onChange(of: defaultView)   { postSetting(SettingsKeys.defaultView, $0) }
                 .onChange(of: a4Staff)       { postSetting(SettingsKeys.staffA4Hz, $0) }
                 .onChange(of: labelDefault)  { postSetting(SettingsKeys.labelDefault, $0) }

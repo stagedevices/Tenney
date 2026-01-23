@@ -92,6 +92,7 @@ final class AppModel: ObservableObject {
             if playTestTone { toneOutput.setFrequency(rootHz) }
             // Broadcast so interested views can react live (e.g., Lattice/Tuner)
             postSetting(SettingsKeys.rootHz, rootHz)
+            LearnEventBus.shared.send(.tunerRootChanged(rootHz))
         }
     }
     @Published var tunerRootOverride: RatioRef? = nil
@@ -111,6 +112,7 @@ final class AppModel: ObservableObject {
             } else {
                 toneOutput.stop()
             }
+            LearnEventBus.shared.send(.tunerOutputEnabledChanged(playTestTone))
         }
     }
     /// Controls showing the onboarding wizard as a liquid-glass modal overlay.

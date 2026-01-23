@@ -40,6 +40,7 @@ final class LearnCoordinator: ObservableObject {
 
     private func subscribe() {
         LearnEventBus.shared.publisher
+            .receive(on: RunLoop.main)
             .sink { [weak self] event in self?.handle(event) }
             .store(in: &cancellables)
     }
@@ -62,9 +63,12 @@ final class LearnCoordinator: ObservableObject {
     private func handle(_ event: LearnEvent) {
         guard currentStepIndex < steps.count else { return }
         let step = steps[currentStepIndex]
+#if DEBUG
+        print("[LearnCoordinator] step \(currentStepIndex + 1)/\(steps.count) \"\(step.title)\" event=\(event)")
+#endif
         if step.validate(event) {
             advance()
-        } else if gate.isActive {
+        } else if gate.isActive, event != .attemptedDisallowedAction {
             LearnEventBus.shared.send(.attemptedDisallowedAction("\(event)"))
         }
     }
