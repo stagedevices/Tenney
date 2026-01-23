@@ -259,12 +259,20 @@ struct LockPill: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 8) {
-                lockIcon
+            ZStack {
                 ratioField
-                Image(systemName: "chevron.down")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, iconSlotWidth)
+
+                HStack {
+                    lockIcon
+                        .frame(width: iconSlotWidth, height: iconSlotWidth)
+                    Spacer()
+                    Image(systemName: "chevron.down")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: iconSlotWidth, height: iconSlotWidth)
+                }
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
@@ -291,6 +299,8 @@ struct LockPill: View {
             )
             .shadow(color: isLocked ? tint.opacity(0.25) : .clear, radius: 3, y: 2)
     }
+
+    private var iconSlotWidth: CGFloat { 24 }
 
     private var ratioField: some View {
         let trimmed = displayText?.trimmingCharacters(in: .whitespacesAndNewlines)

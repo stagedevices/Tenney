@@ -782,8 +782,8 @@ extension Notification.Name {
         return nil
     }
 
-    private var lockPillWidth: CGFloat { 136 }
-    private var lockPillSpacing: CGFloat { 10 }
+    private var lockButtonWidth: CGFloat { 136 }
+    private var lockButtonSpacing: CGFloat { 10 }
 
     private var lockFieldMatchedGeometry: LockFieldMatchedGeometry? {
         guard !reduceMotion else { return nil }
@@ -801,21 +801,13 @@ extension Notification.Name {
             isLocked: isLocked,
             displayText: lockPillText,
             tint: tint,
-            width: lockPillWidth,
+            width: lockButtonWidth,
             matchedGeometry: lockFieldMatchedGeometry
         ) {
             showLockSheet = true
         }
         .opacity(lockFieldDim ? 0.6 : 1.0)
         .accessibilityLabel(isLocked ? "Locked target" : "Edit lock target")
-    }
-
-    private func lockPillOverlay<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
-        content()
-            .padding(.trailing, lockPillWidth + lockPillSpacing)
-            .overlay(alignment: .trailing) {
-                lockField
-            }
     }
      
      @ViewBuilder
@@ -1253,13 +1245,34 @@ extension Notification.Name {
                     let label = ratioDisplayText
                     let primes = label.split(separator: "/").flatMap { Int($0) }.flatMap { factors($0) }.filter { $0 > 2 }
                     ViewThatFits(in: .horizontal) {
-                        lockPillOverlay {
+                        HStack(spacing: 10) {
+                            if store.viewStyle != .posterFraction {
+                                Text(label)
+                                    .font(.system(size: 34, weight: .semibold, design: .monospaced))
+                            }
+                            // tiny prime badge guesses from label (fast path; you already have NotationFormatter if needed)
+                            HStack(spacing: 6) {
+                                ForEach(Array(Set(primes)).sorted(), id: \.self) { p in
+                                    if theme.accessibilityEncoding.enabled {
+                                        TenneyPrimeLimitBadge(
+                                            prime: p,
+                                            tint: theme.primeTint(p),
+                                            encoding: theme.accessibilityEncoding
+                                        )
+                                    } else {
+                                        BadgeCapsule(text: "\(p)", style: AnyShapeStyle(theme.primeTint(p)))
+                                    }
+                                }
+                            }
+                            Spacer()
+                        }
+
+                        VStack(alignment: .leading, spacing: 8) {
                             HStack(spacing: 10) {
                                 if store.viewStyle != .posterFraction {
                                     Text(label)
                                         .font(.system(size: 34, weight: .semibold, design: .monospaced))
                                 }
-                                // tiny prime badge guesses from label (fast path; you already have NotationFormatter if needed)
                                 HStack(spacing: 6) {
                                     ForEach(Array(Set(primes)).sorted(), id: \.self) { p in
                                         if theme.accessibilityEncoding.enabled {
@@ -1273,35 +1286,10 @@ extension Notification.Name {
                                         }
                                     }
                                 }
-                                Spacer()
+                                Spacer(minLength: 0)
                             }
-                        }
-
-                        lockPillOverlay {
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack(spacing: 10) {
-                                    if store.viewStyle != .posterFraction {
-                                        Text(label)
-                                            .font(.system(size: 34, weight: .semibold, design: .monospaced))
-                                    }
-                                    HStack(spacing: 6) {
-                                        ForEach(Array(Set(primes)).sorted(), id: \.self) { p in
-                                            if theme.accessibilityEncoding.enabled {
-                                                TenneyPrimeLimitBadge(
-                                                    prime: p,
-                                                    tint: theme.primeTint(p),
-                                                    encoding: theme.accessibilityEncoding
-                                                )
-                                            } else {
-                                                BadgeCapsule(text: "\(p)", style: AnyShapeStyle(theme.primeTint(p)))
-                                            }
-                                        }
-                                    }
-                                    Spacer(minLength: 0)
-                                }
-                                HStack {
-                                    Spacer()
-                                }
+                            HStack {
+                                Spacer()
                             }
                         }
                     }
@@ -1377,51 +1365,57 @@ extension Notification.Name {
                 }
 
                 // Tuner-local prime limit chips (walled off)
-                HStack(spacing: 8) {
-                    Text("Limit").font(.caption).foregroundStyle(.secondary)
-                    ForEach([3,5,7,11,13], id:\.self) { p in
-                        let selected = (store.primeLimit == p)
-                        if theme.accessibilityEncoding.enabled {
-                            TenneyPrimeLimitChip(
-                                prime: p,
-                                isOn: selected,
-                                tint: theme.primeTint(p),
-                                encoding: theme.accessibilityEncoding
-                            ) {
-                                withAnimation(.snappy) { store.primeLimit = p }
-                            }
-                        } else {
-                            Button {
-                                withAnimation(.snappy) { store.primeLimit = p }
-                            } label: {
-                                Text("\(p)")
-                                    .font(.footnote.weight(selected ? .semibold : .regular))
-                                    .foregroundStyle(
-                                        selected
-                                        ? (theme.isDark ? Color.white : Color.black)
-                                        : Color.secondary
-                                    )
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 6)
-                                    .background(
-                                        selected
-                                        ? AnyShapeStyle(.thinMaterial)
-                                        : AnyShapeStyle(.ultraThinMaterial),
-                                        in: Capsule()
-                                    )
-                                    .overlay(
-                                        Capsule().stroke(
+                ZStack(alignment: .trailing) {
+                    HStack(spacing: 8) {
+                        Text("Limit").font(.caption).foregroundStyle(.secondary)
+                        ForEach([3,5,7,11,13], id:\.self) { p in
+                            let selected = (store.primeLimit == p)
+                            if theme.accessibilityEncoding.enabled {
+                                TenneyPrimeLimitChip(
+                                    prime: p,
+                                    isOn: selected,
+                                    tint: theme.primeTint(p),
+                                    encoding: theme.accessibilityEncoding
+                                ) {
+                                    withAnimation(.snappy) { store.primeLimit = p }
+                                }
+                            } else {
+                                Button {
+                                    withAnimation(.snappy) { store.primeLimit = p }
+                                } label: {
+                                    Text("\(p)")
+                                        .font(.footnote.weight(selected ? .semibold : .regular))
+                                        .foregroundStyle(
                                             selected
-                                            ? AnyShapeStyle(theme.primeTint(p))
-                                            : AnyShapeStyle(Color.secondary.opacity(0.12)),
-                                            lineWidth: 1
+                                            ? (theme.isDark ? Color.white : Color.black)
+                                            : Color.secondary
                                         )
-                                    )
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 6)
+                                        .background(
+                                            selected
+                                            ? AnyShapeStyle(.thinMaterial)
+                                            : AnyShapeStyle(.ultraThinMaterial),
+                                            in: Capsule()
+                                        )
+                                        .overlay(
+                                            Capsule().stroke(
+                                                selected
+                                                ? AnyShapeStyle(theme.primeTint(p))
+                                                : AnyShapeStyle(Color.secondary.opacity(0.12)),
+                                                lineWidth: 1
+                                            )
+                                        )
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
                         }
+                        Spacer()
                     }
-                    Spacer()
+                    .padding(.trailing, lockButtonWidth + lockButtonSpacing)
+
+                    lockField
+                        .frame(width: lockButtonWidth)
                 }
                 .padding(.top, 4)
                 .learnTarget(id: "tuner_prime_limit")
@@ -1526,40 +1520,46 @@ extension Notification.Name {
 // Prime limit chips (still “under” the dial visually),
                         // but they no longer constrain the dial’s size.
                         ViewThatFits(in: .horizontal) {
-                            HStack(spacing: 8) {
-                                Text("Limit").font(.caption).foregroundStyle(.secondary)
-                                ForEach([3,5,7,11,13], id:\.self) { p in
-                                    let selected = (store.primeLimit == p)
-                                    if theme.accessibilityEncoding.enabled {
-                                        TenneyPrimeLimitChip(
-                                            prime: p,
-                                            isOn: selected,
-                                            tint: theme.primeTint(p),
-                                            encoding: theme.accessibilityEncoding
-                                        ) {
-                                            withAnimation(.snappy) { store.primeLimit = p }
-                                        }
-                                    } else {
-                                        Button {
-                                            withAnimation(.snappy) { store.primeLimit = p }
-                                        } label: {
-                                            Text("\(p)")
-                                                .font(.footnote.weight(selected ? .semibold : .regular))
-                                                .foregroundStyle(selected ? (theme.isDark ? .white : .black) : .secondary)
-                                                .padding(.horizontal, 8)
-                                                .padding(.vertical, 5)
-                                                .background(selected ? AnyShapeStyle(.thinMaterial) : AnyShapeStyle(.ultraThinMaterial), in: Capsule())
-                                                .overlay(
-                                                    Capsule().stroke(
-                                                        selected ? AnyShapeStyle(theme.primeTint(p)) : AnyShapeStyle(Color.secondary.opacity(0.12)),
-                                                        lineWidth: 1
+                            ZStack(alignment: .trailing) {
+                                HStack(spacing: 8) {
+                                    Text("Limit").font(.caption).foregroundStyle(.secondary)
+                                    ForEach([3,5,7,11,13], id:\.self) { p in
+                                        let selected = (store.primeLimit == p)
+                                        if theme.accessibilityEncoding.enabled {
+                                            TenneyPrimeLimitChip(
+                                                prime: p,
+                                                isOn: selected,
+                                                tint: theme.primeTint(p),
+                                                encoding: theme.accessibilityEncoding
+                                            ) {
+                                                withAnimation(.snappy) { store.primeLimit = p }
+                                            }
+                                        } else {
+                                            Button {
+                                                withAnimation(.snappy) { store.primeLimit = p }
+                                            } label: {
+                                                Text("\(p)")
+                                                    .font(.footnote.weight(selected ? .semibold : .regular))
+                                                    .foregroundStyle(selected ? (theme.isDark ? .white : .black) : .secondary)
+                                                    .padding(.horizontal, 8)
+                                                    .padding(.vertical, 5)
+                                                    .background(selected ? AnyShapeStyle(.thinMaterial) : AnyShapeStyle(.ultraThinMaterial), in: Capsule())
+                                                    .overlay(
+                                                        Capsule().stroke(
+                                                            selected ? AnyShapeStyle(theme.primeTint(p)) : AnyShapeStyle(Color.secondary.opacity(0.12)),
+                                                            lineWidth: 1
+                                                        )
                                                     )
-                                                )
+                                            }
+                                            .buttonStyle(.plain)
                                         }
-                                        .buttonStyle(.plain)
                                     }
+                                    Spacer(minLength: 0)
                                 }
-                                Spacer(minLength: 0)
+                                .padding(.trailing, lockButtonWidth + lockButtonSpacing)
+
+                                lockField
+                                    .frame(width: lockButtonWidth)
                             }
                             .padding(8)
                             .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -1603,35 +1603,29 @@ extension Notification.Name {
                             ?? HejiNotation.spelling(forFrequency: liveHz, context: context)
                         let hejiLabel = String(HejiNotation.textLabel(spelling, showCents: true).characters)
                         ViewThatFits(in: .horizontal) {
-                            lockPillOverlay {
-                                HStack(alignment: .firstTextBaseline, spacing: 12) {
-                                    Text(hejiLabel)
-                                        .font(.system(size: 58, weight: .semibold, design: .monospaced))
-                                        .foregroundStyle(.primary)
-                                        .lineLimit(1)
-                                        .minimumScaleFactor(0.55)
-                                    Spacer(minLength: 0)
-                                }
+                            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                                Text(hejiLabel)
+                                    .font(.system(size: 58, weight: .semibold, design: .monospaced))
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.55)
+                                Spacer(minLength: 0)
                             }
 
-                            lockPillOverlay {
-                                VStack(alignment: .leading, spacing: 10) {
-                                    Text(hejiLabel)
-                                        .font(.system(size: 58, weight: .semibold, design: .monospaced))
-                                        .foregroundStyle(.primary)
-                                        .lineLimit(1)
-                                        .minimumScaleFactor(0.55)
-                                    HStack {
-                                        Spacer(minLength: 0)
-                                    }
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text(hejiLabel)
+                                    .font(.system(size: 58, weight: .semibold, design: .monospaced))
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.55)
+                                HStack {
+                                    Spacer(minLength: 0)
                                 }
                             }
                         }
                     } else {
-                        lockPillOverlay {
-                            HStack {
-                                Spacer()
-                            }
+                        HStack {
+                            Spacer()
                         }
                     }
 
