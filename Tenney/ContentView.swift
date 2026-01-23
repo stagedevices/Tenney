@@ -1003,7 +1003,11 @@ extension Notification.Name {
                 liveNearest: liveNearest
             )
             .overlay {
-                if isLocked, liveHz.isFinite, liveConf > 0.1, rawCents.isFinite {
+                if isLocked,
+                   store.viewStyle == .posterFraction,
+                   liveHz.isFinite,
+                   liveConf > 0.1,
+                   rawCents.isFinite {
                     ExclusionEclipse(
                         cents: rawCents,
                         confidence: liveConf,
