@@ -375,6 +375,7 @@ struct CommunityPacksPageList: View {
             .presentationDetents([.large])
             .presentationDragIndicator(.hidden)
             .presentationBackground(PremiumModalSurface.background)
+            .tenneySheetSizing()
         }
         .task {
             guard !didTriggerRefresh else { return }

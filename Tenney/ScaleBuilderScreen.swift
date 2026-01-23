@@ -371,6 +371,7 @@ struct ScaleBuilderScreen: View {
                     // Optional: play ascending scale quickly (non-blocking)
                     playScalePreview(scale)
                 }
+                .tenneySheetSizing()
             }
             .onChange(of: store.degrees) { _ in
                 // Any structural change (including Clear) → silence and reset offsets
@@ -529,6 +530,7 @@ struct ScaleBuilderScreen: View {
                 }
             }) {
                 ActivityView(activityItems: exportURLs)
+                    .tenneySheetSizing()
             }
 
             

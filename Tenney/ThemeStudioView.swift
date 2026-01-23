@@ -301,6 +301,7 @@ var body: some View {
             }
         )
         .presentationDetents([.medium, .large])
+        .tenneySheetSizing()
     }
     .onChange(of: focus) { newFocus in
         // Commit on focus loss (identity only)
