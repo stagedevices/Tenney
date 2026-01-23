@@ -799,7 +799,9 @@ extension Notification.Name {
                  stageAccent: stageAccent,
                  showFarHint: showFar,
                  heldByConfidence: held,
-                 farLabel: "Far"
+                 farLabel: "Far",
+                 isLocked: store.lockedTarget != nil,
+                 lockAccent: stageAccent
              )
 
          case .chronoDial:
@@ -838,8 +840,9 @@ extension Notification.Name {
         liveNearest: RatioResult?
     ) -> some View {
         let isLocked = store.lockedTarget != nil
+        let showsLockRing = isLocked && store.viewStyle != .Gauge
         ZStack {
-            if isLocked && !reduceTransparency {
+            if showsLockRing && !reduceTransparency {
                 lockHalo(accent: stageAccent)
             }
             tunerDial(
@@ -852,7 +855,7 @@ extension Notification.Name {
                 liveNearest: liveNearest
             )
             .overlay {
-                if isLocked {
+                if showsLockRing {
                     lockRing(accent: stageAccent)
                 }
             }

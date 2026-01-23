@@ -543,6 +543,8 @@ struct Gauge: View {
     let showFarHint: Bool
     let heldByConfidence: Bool   // for de-emphasis
     let farLabel: String         // e.g. "Far"
+    let isLocked: Bool
+    let lockAccent: Color
 
     @State private var breathe = false
     private let dialSweepDeg: CGFloat = 140
@@ -573,6 +575,11 @@ struct Gauge: View {
             let rTickInnerMajor = rOuter * 0.90
             let rTickInnerMinor = rOuter * 0.935
             let rNeedle = rOuter * 0.92
+            let lockedRailTint = lockAccent.opacity(theme.isDark ? 0.85 : 0.75)
+            let lockedSecondaryTint = lockAccent.opacity(theme.isDark ? 0.65 : 0.55)
+            let railColor = isLocked ? lockedRailTint : theme.tunerTicks
+            let secondaryRailColor = isLocked ? lockedSecondaryTint : theme.tunerTicks
+            let railWidthBump: CGFloat = isLocked ? 0.8 : 0.0
 
             ZStack {
                 // subtle arc wash (restrained, “ink on glass”)
@@ -585,7 +592,8 @@ struct Gauge: View {
                         clockwise: false
                     )
                 }
-                .stroke(theme.tunerTicks.opacity((stageMode ? 0.08 : 0.12) * theme.tunerTickOpacity), lineWidth: stageMode ? 5 : 7)
+                .stroke(railColor.opacity((stageMode ? 0.08 : 0.12) * theme.tunerTickOpacity),
+                        lineWidth: (stageMode ? 5 : 7) + railWidthBump)
                 .blur(radius: stageMode ? 0 : 0.5)
                 .opacity(heldByConfidence ? 0.65 : 1.0)
 
@@ -626,8 +634,8 @@ struct Gauge: View {
                         var path = Path()
                         path.move(to: p0); path.addLine(to: p1)
 
-                        let lw: CGFloat = isZero ? 2.8 : (isEnd ? 2.2 : 2.0)
-                        ctx.stroke(path, with: .color(theme.tunerTicks.opacity(majorTickOpacity)),
+                        let lw: CGFloat = (isZero ? 2.8 : (isEnd ? 2.2 : 2.0)) + (isLocked ? 0.6 : 0.0)
+                        ctx.stroke(path, with: .color(railColor.opacity(majorTickOpacity)),
                                    style: StrokeStyle(lineWidth: lw, lineCap: .butt))
                     }
 
@@ -648,9 +656,9 @@ struct Gauge: View {
                         var path = Path()
                         path.move(to: p0); path.addLine(to: p1)
 
-                        let op = majorTickOpacity * (isFive ? 1.05 : 0.55)
-                        let lw: CGFloat = isFive ? 1.9 : 1.4
-                        ctx.stroke(path, with: .color(theme.tunerTicks.opacity(op)),
+                        let op = majorTickOpacity * (isFive ? 1.05 : 0.55) * (isLocked ? 0.85 : 1.0)
+                        let lw: CGFloat = (isFive ? 1.9 : 1.4) + (isLocked ? 0.5 : 0.0)
+                        ctx.stroke(path, with: .color(secondaryRailColor.opacity(op)),
                                    style: StrokeStyle(lineWidth: lw, lineCap: .butt))
                     }
 
@@ -661,8 +669,9 @@ struct Gauge: View {
                         let p1 = CGPoint(x: pivot.x + (rTickOuter * 0.995) * cos(th),      y: pivot.y + (rTickOuter * 0.995) * sin(th))
                         var path = Path()
                         path.move(to: p0); path.addLine(to: p1)
-                        ctx.stroke(path, with: .color(theme.tunerTicks.opacity(stageMode ? 0 : minorTickOpacity)),
-                                   style: StrokeStyle(lineWidth: 1.1, lineCap: .butt))
+                        let microOpacity = (stageMode ? 0 : minorTickOpacity) * (isLocked ? 0.8 : 1.0)
+                        ctx.stroke(path, with: .color(secondaryRailColor.opacity(microOpacity)),
+                                   style: StrokeStyle(lineWidth: 1.1 + (isLocked ? 0.4 : 0.0), lineCap: .butt))
                     }
 
 
