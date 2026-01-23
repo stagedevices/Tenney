@@ -78,7 +78,6 @@ struct LockFieldPill: View {
     let isExpanded: Bool
     let action: (() -> Void)?
 
-    @Environment(\.tenneyTheme) private var theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var caretPulse = false
 
@@ -243,6 +242,93 @@ struct LockFieldPill: View {
                 Capsule()
                     .fill(tint.opacity(theme.isDark ? 0.28 : 0.18))
             )
+    }
+}
+
+struct LockPill: View {
+    let isLocked: Bool
+    let displayText: String?
+    let tint: Color
+    let width: CGFloat
+    let matchedGeometry: LockFieldMatchedGeometry?
+    let action: () -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                lockIcon
+                ratioField
+                Image(systemName: "chevron.down")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .frame(width: width, minHeight: 34)
+            .background(pillBackground)
+            .overlay(pillStroke)
+        }
+        .buttonStyle(.plain)
+        .contentShape(Capsule())
+    }
+
+    private var lockIcon: some View {
+        Image(systemName: isLocked ? "lock.fill" : "lock")
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(isLocked ? .primary : .secondary)
+            .padding(5)
+            .background(
+                Circle()
+                    .fill(.ultraThinMaterial)
+                    .overlay(
+                        Circle()
+                            .strokeBorder(tint.opacity(isLocked ? 0.5 : 0.25), lineWidth: 1)
+                    )
+            )
+            .shadow(color: isLocked ? tint.opacity(0.25) : .clear, radius: 3, y: 2)
+    }
+
+    private var ratioField: some View {
+        let trimmed = displayText?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let ratio = (trimmed?.isEmpty == false) ? trimmed : nil
+        let text = ratio ?? "Lock ratio"
+        let color: Color = ratio == nil ? .secondary : .primary
+
+        return ScrollView(.horizontal, showsIndicators: false) {
+            Text(text)
+                .font(.footnote.weight(.semibold).monospacedDigit())
+                .foregroundStyle(color)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .padding(.vertical, 2)
+                .padding(.horizontal, 2)
+        }
+        .mask(FadeEdgeMask())
+        .applyMatchedGeometry(matchedGeometry, reduceMotion: reduceMotion, id: \.ratioID)
+    }
+
+    private var pillBackground: some View {
+        Group {
+            if #available(iOS 26.0, *) {
+                Color.clear
+                    .glassEffect(.regular.tint(tint.opacity(isLocked ? 0.32 : 0.18)), in: Capsule())
+            } else {
+                Capsule()
+                    .fill(.ultraThinMaterial)
+                    .overlay(
+                        Capsule()
+                            .fill(tint.opacity(isLocked ? 0.22 : 0.12))
+                    )
+            }
+        }
+        .applyMatchedGeometry(matchedGeometry, reduceMotion: reduceMotion, id: \.backgroundID)
+    }
+
+    private var pillStroke: some View {
+        Capsule()
+            .strokeBorder(tint.opacity(isLocked ? 0.7 : 0.32), lineWidth: isLocked ? 1.4 : 1)
     }
 }
 
