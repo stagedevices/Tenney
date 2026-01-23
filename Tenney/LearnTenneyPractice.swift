@@ -254,14 +254,16 @@ private struct LatticePracticeHost: View {
 private struct TunerPracticeHost: View {
     @State private var stageActive = false
     @StateObject private var tunerStore = TunerStore()
+    @State private var tunerLease: MicTunerLeaseManager.LeaseToken?
     @EnvironmentObject private var app: AppModel
     var body: some View {
         TunerCard(store: tunerStore, stageActive: $stageActive)
             .onAppear {
-                app.setPipelineActive(true, reason: "learn_practice_tuner")
+                tunerLease = app.acquireTunerLease(reason: "learn_practice_tuner")
             }
             .onDisappear {
-                app.setPipelineActive(false, reason: "learn_practice_tuner")
+                tunerLease?.release()
+                tunerLease = nil
             }
     }
 }
