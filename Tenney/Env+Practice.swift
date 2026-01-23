@@ -16,6 +16,10 @@ private struct LearnPracticeCompletedKey: EnvironmentKey {
     static let defaultValue: Bool = false
 }
 
+private struct TenneyPracticeChromeKey: EnvironmentKey {
+    static let defaultValue: Bool = false
+}
+
 extension EnvironmentValues {
     var tenneyPracticeActive: Bool {
         get { self[TenneyPracticeActiveKey.self] }
@@ -25,5 +29,10 @@ extension EnvironmentValues {
     var learnPracticeCompleted: Bool {
         get { self[LearnPracticeCompletedKey.self] }
         set { self[LearnPracticeCompletedKey.self] = newValue }
+    }
+
+    var tenneyPracticeChrome: Bool {
+        get { self[TenneyPracticeChromeKey.self] }
+        set { self[TenneyPracticeChromeKey.self] = newValue }
     }
 }
