@@ -2683,7 +2683,7 @@ private struct RootStudioSheet: View {
         .onChange(of: manualAccidental) { _, _ in updateManualE3IfNeeded() }
         .sheet(isPresented: $showReference) {
             NavigationStack {
-                LearnTenneyReferenceTopicView(topic: .rootTonicConcert)
+                LearnTenneyHubView(entryPoint: .settings)
             }
         }
     }
@@ -2947,6 +2947,8 @@ private struct RootStudioSheet: View {
             let emphasisOpacity = referenceEmphasis ? 0.9 : 0.0
             return glassCard("Reference") {
                 Button {
+                    LearnTenneyStateStore.shared.pendingModuleToOpen = .rootPitchTuningConfig
+                    LearnTenneyStateStore.shared.pendingReferenceTopic = .rootTonicConcert
                     showReference = true
                 } label: {
                     HStack(spacing: 12) {

@@ -179,6 +179,9 @@ private struct PracticeContent: View {
 
             case .builder:
                 BuilderPracticeHost()
+
+            case .rootPitchTuningConfig:
+                EmptyView()
             }
         }
     }

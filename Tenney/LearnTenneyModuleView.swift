@@ -35,38 +35,63 @@ struct LearnTenneyModuleView: View {
 
     @State private var tab: LearnTenneyTab = .practice
     @State private var practiceFocus: LearnPracticeFocus? = nil
+    @State private var selectedReferenceTopic: LearnReferenceTopic? = nil
+    @StateObject private var store = LearnTenneyStateStore.shared
 
     var body: some View {
         VStack(spacing: 0) {
             // Top rail (segmented)
-            VStack(spacing: 10) {
-                Picker("", selection: $tab) {
-                    Text("Practice").tag(LearnTenneyTab.practice)
-                    Text("Reference").tag(LearnTenneyTab.reference)
+            if module.supportsPractice && module.supportsReference {
+                VStack(spacing: 10) {
+                    Picker("", selection: $tab) {
+                        Text("Practice").tag(LearnTenneyTab.practice)
+                        Text("Reference").tag(LearnTenneyTab.reference)
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 10)
+                    .padding(.bottom, 10)
                 }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, 16)
-                .padding(.top, 10)
-                .padding(.bottom, 10)
+                .background(.ultraThinMaterial)
             }
-            .background(.ultraThinMaterial)
 
             // Content (single scroll container per tab)
             Group {
                 switch tab {
                 case .practice:
-                    LearnTenneyPracticeView(module: module, focus: $practiceFocus)
+                    if module.supportsPractice {
+                        LearnTenneyPracticeView(module: module, focus: $practiceFocus)
+                    }
                 case .reference:
-                    LearnTenneyReferenceListView(module: module) { focus in
-                        practiceFocus = focus
-                        tab = .practice
+                    if module.referenceTopics.isEmpty {
+                        LearnTenneyReferenceListView(module: module) { focus in
+                            practiceFocus = focus
+                            tab = .practice
+                        }
+                    } else {
+                        LearnTenneyReferenceTopicsListView(module: module, selectedTopic: $selectedReferenceTopic)
                     }
                 }
             }
         }
         .navigationTitle(module.title)
         .navigationBarTitleDisplayMode(.inline)
-        
+        .onAppear {
+            if !module.supportsPractice && module.supportsReference {
+                tab = .reference
+            }
+            if module == .rootPitchTuningConfig, let pending = store.pendingReferenceTopic {
+                selectedReferenceTopic = pending
+                store.pendingReferenceTopic = nil
+                tab = .reference
+            }
+        }
+        .onChange(of: store.pendingReferenceTopic) { pending in
+            guard module == .rootPitchTuningConfig, let pending else { return }
+            selectedReferenceTopic = pending
+            store.pendingReferenceTopic = nil
+            tab = .reference
+        }
     }
     private struct LearnTenneyTourView: View {
         let module: LearnTenneyModule

@@ -10,6 +10,44 @@ struct LearnControlRef: Identifiable, Hashable {
     let focus: LearnPracticeFocus?
 }
 
+struct LearnTenneyReferenceTopicsListView: View {
+    let module: LearnTenneyModule
+    @Binding var selectedTopic: LearnReferenceTopic?
+
+    var body: some View {
+        List {
+            ForEach(module.referenceTopics) { topic in
+                NavigationLink(tag: topic, selection: $selectedTopic) {
+                    LearnTenneyReferenceTopicView(topic: topic, module: module)
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: topic.systemImage)
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(.tint)
+                            .frame(width: 30, height: 30)
+                            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(topic.title)
+                                .font(.headline)
+                            Text(topic.subtitle)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
+
+                        Spacer()
+                    }
+                    .padding(.vertical, 2)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(Text(topic.title))
+                    .accessibilityValue(Text(topic.subtitle))
+                }
+            }
+        }
+    }
+}
+
 struct LearnTenneyReferenceListView: View {
     let module: LearnTenneyModule
     var onTryInPractice: (LearnPracticeFocus) -> Void
@@ -171,6 +209,8 @@ struct LearnTenneyReferenceListView: View {
                     focus: .builderOscilloscope
                 )
             ]
+        case .rootPitchTuningConfig:
+            return []
         }
     }
 }
