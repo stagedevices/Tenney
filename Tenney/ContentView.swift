@@ -978,6 +978,8 @@ extension Notification.Name {
     @ViewBuilder
     private func tunerDialWithLockDecorations(
         centsShown: Double,
+        rawCents: Double,
+        liveHz: Double,
         liveConf: Double,
         stageAccent: Color,
         showFar: Bool,
@@ -1000,6 +1002,23 @@ extension Notification.Name {
                 currentNearest: currentNearest,
                 liveNearest: liveNearest
             )
+            .overlay {
+                if isLocked,
+                   store.viewStyle == .posterFraction,
+                   liveHz.isFinite,
+                   liveConf > 0.1,
+                   rawCents.isFinite {
+                    ExclusionEclipse(
+                        cents: rawCents,
+                        confidence: liveConf,
+                        inTuneWindow: 5,
+                        accent: stageAccent,
+                        reduceMotion: reduceMotion,
+                        reduceTransparency: reduceTransparency,
+                        isDark: theme.isDark
+                    )
+                }
+            }
             .overlay {
                 if showsLockRing {
                     lockRing(accent: stageAccent)
@@ -1035,6 +1054,158 @@ extension Notification.Name {
                 .scaleEffect(lockPulse ? 1.02 : 1.0)
         }
         .allowsHitTesting(false)
+    }
+
+    private struct ExclusionEclipse: View {
+        let cents: Double
+        let confidence: Double
+        let inTuneWindow: Double
+        let accent: Color
+        let reduceMotion: Bool
+        let reduceTransparency: Bool
+        let isDark: Bool
+
+        @State private var settlePulse = false
+
+        var body: some View {
+            GeometryReader { geo in
+                let size = min(geo.size.width, geo.size.height)
+                let clamped = clamp(cents, -50, 50)
+                let distance = min(abs(clamped), 50)
+                let isPerfect = abs(cents) <= inTuneWindow && confidence >= 0.35
+                let baseScale = isPerfect ? 1.0 : scale(for: clamped)
+                let settleScale = reduceMotion ? 1.0 : (settlePulse ? 1.02 : 1.0)
+                let proximity = 1.0 - (distance / 50.0)
+                let strongNear = easeOutCubic(proximity)
+                let shift = yShift(for: distance, positive: clamped > 0)
+                let (opacity, blur) = visualTuning(
+                    distance: distance,
+                    strongNear: strongNear,
+                    isPerfect: isPerfect
+                )
+                let blend: BlendMode = isDark ? .difference : .exclusion
+
+                ZStack {
+                    if clamped < 0 {
+                        Circle()
+                            .fill(accent.opacity(fillOpacity(strongNear: strongNear, isPerfect: isPerfect)))
+                            .overlay(
+                                Circle()
+                                    .stroke(accent.opacity(0.4), lineWidth: 1.0)
+                            )
+                    } else {
+                        Circle()
+                            .fill(accent.opacity(softFillOpacity(strongNear: strongNear, isPerfect: isPerfect)))
+                            .overlay(
+                                Circle()
+                                    .stroke(
+                                        accent.opacity(strokeOpacity(strongNear: strongNear, isPerfect: isPerfect)),
+                                        lineWidth: strokeWidth(distance: distance)
+                                    )
+                            )
+                    }
+                }
+                .frame(width: size, height: size)
+                .position(x: geo.size.width / 2, y: geo.size.height / 2)
+                .scaleEffect(baseScale * settleScale)
+                .offset(y: shift)
+                .blur(radius: blur)
+                .opacity(opacity)
+                .blendMode(reduceTransparency ? .normal : blend)
+                .compositingGroup()
+            }
+            .allowsHitTesting(false)
+            .onChange(of: abs(cents) <= inTuneWindow && confidence >= 0.35) { isPerfect in
+                guard isPerfect, !reduceMotion else { return }
+                settlePulse = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                    settlePulse = false
+                }
+            }
+        }
+
+        private func scale(for cents: Double) -> Double {
+            if cents < 0 {
+                let t = clamp(-cents / 50.0, 0, 1)
+                let eased = easeOutCubic(t)
+                return lerp(1.0, 0.12, eased)
+            } else {
+                let t = clamp(cents / 50.0, 0, 1)
+                let eased = easeInOutCubic(t)
+                return lerp(1.0, 1.28, eased)
+            }
+        }
+
+        private func yShift(for distance: Double, positive: Bool) -> Double {
+            let t = clamp(distance / 50.0, 0, 1)
+            let eased = easeOutCubic(t)
+            let shift = lerp(0.0, 4.0, eased)
+            return positive ? -shift : shift
+        }
+
+        private func visualTuning(distance: Double, strongNear: Double, isPerfect: Bool) -> (Double, Double) {
+            var opacity = 0.55 + (0.4 * strongNear)
+            var blur = (1.0 - strongNear) * 3.5
+
+            if distance > 35 {
+                opacity *= 0.78
+                blur += 1.5
+            }
+
+            if isPerfect {
+                opacity = reduceTransparency ? 0.9 : 1.0
+                blur = reduceTransparency ? 0.6 : 0.0
+            }
+
+            if reduceTransparency {
+                blur = min(blur, 1.0)
+                opacity = max(min(opacity, 0.95), 0.65)
+            }
+
+            return (opacity, blur)
+        }
+
+        private func fillOpacity(strongNear: Double, isPerfect: Bool) -> Double {
+            if isPerfect { return reduceTransparency ? 0.9 : 0.98 }
+            return 0.65 + (0.25 * strongNear)
+        }
+
+        private func softFillOpacity(strongNear: Double, isPerfect: Bool) -> Double {
+            if isPerfect { return reduceTransparency ? 0.45 : 0.35 }
+            return 0.12 + (0.1 * strongNear)
+        }
+
+        private func strokeOpacity(strongNear: Double, isPerfect: Bool) -> Double {
+            if isPerfect { return reduceTransparency ? 0.9 : 0.95 }
+            return 0.6 + (0.25 * strongNear)
+        }
+
+        private func strokeWidth(distance: Double) -> Double {
+            let t = clamp(distance / 50.0, 0, 1)
+            return lerp(2.0, 3.5, t)
+        }
+
+        private func clamp(_ value: Double, _ minValue: Double, _ maxValue: Double) -> Double {
+            min(max(value, minValue), maxValue)
+        }
+
+        private func lerp(_ a: Double, _ b: Double, _ t: Double) -> Double {
+            a + (b - a) * t
+        }
+
+        private func easeOutCubic(_ t: Double) -> Double {
+            let clamped = clamp(t, 0, 1)
+            return 1 - pow(1 - clamped, 3)
+        }
+
+        private func easeInOutCubic(_ t: Double) -> Double {
+            let clamped = clamp(t, 0, 1)
+            if clamped < 0.5 {
+                return 4 * clamped * clamped * clamped
+            } else {
+                return 1 - pow(-2 * clamped + 2, 3) / 2
+            }
+        }
     }
 
     private func lockBadge(accent: Color) -> some View {
@@ -1329,6 +1500,8 @@ extension Notification.Name {
 
                 tunerDialWithLockDecorations(
                     centsShown: centsShown,
+                    rawCents: rawCents,
+                    liveHz: liveHz,
                     liveConf: liveConf,
                     stageAccent: stageAccent,
                     showFar: showFar,
@@ -1542,6 +1715,8 @@ extension Notification.Name {
                                     ZStack(alignment: .bottomLeading) {
                                         tunerDialWithLockDecorations(
                                             centsShown: centsShown,
+                                            rawCents: rawCents,
+                                            liveHz: liveHz,
                                             liveConf: liveConf,
                                             stageAccent: stageAccent,
                                             showFar: showFar,
