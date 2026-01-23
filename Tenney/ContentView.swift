@@ -866,13 +866,14 @@ extension Notification.Name {
     @ViewBuilder
     private func ratioReadoutRow(label: String, hejiLabel: String?) -> some View {
         let primes = label.split(separator: "/").flatMap { Int($0) }.flatMap { factors($0) }.filter { $0 > 2 }
+        let showRatioText = store.viewStyle != .posterFraction
         hejiAnnotatedRow(hejiLabel: hejiLabel) {
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 10) {
-                    if store.viewStyle != .posterFraction {
-                        Text(label)
-                            .font(.system(size: 34, weight: .semibold, design: .monospaced))
-                    }
+                    Text(label)
+                        .font(.system(size: 34, weight: .semibold, design: .monospaced))
+                        .hidden(!showRatioText)
+                        .accessibilityHidden(!showRatioText)
                     HStack(spacing: 6) {
                         ForEach(Array(Set(primes)).sorted(), id: \.self) { p in
                             if theme.accessibilityEncoding.enabled {
@@ -891,10 +892,10 @@ extension Notification.Name {
 
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 10) {
-                        if store.viewStyle != .posterFraction {
-                            Text(label)
-                                .font(.system(size: 34, weight: .semibold, design: .monospaced))
-                        }
+                        Text(label)
+                            .font(.system(size: 34, weight: .semibold, design: .monospaced))
+                            .hidden(!showRatioText)
+                            .accessibilityHidden(!showRatioText)
                         HStack(spacing: 6) {
                             ForEach(Array(Set(primes)).sorted(), id: \.self) { p in
                                 if theme.accessibilityEncoding.enabled {
@@ -1428,7 +1429,7 @@ extension Notification.Name {
      
          private var portraitBody: some View {
              let dialSlotMinHeight: CGFloat = 320
-            return VStack(spacing: 14) {
+             VStack(spacing: 14) {
 
                  // Header row: Mode glyph strip (left) • Style strip • Stage toggle (right)
                 ViewThatFits(in: .horizontal) {
