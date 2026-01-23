@@ -106,24 +106,17 @@ struct GlassWhiteCircleIconButton: View {
     var size: CGFloat = 44
     var font: Font = .system(size: 16, weight: .semibold)
 
-    @Environment(\.colorScheme) private var colorScheme
-
-    private var ink: Color {
-        colorScheme == .dark ? .black : .primary
-    }
-
     var body: some View {
         Button(action: action) {
             Image(systemName: systemName)
                 .symbolRenderingMode(.monochrome)
-                .foregroundStyle(ink)
+                .foregroundStyle(.primary)
                 .font(font)
                 .frame(width: size, height: size)
-                .modifier(GlassWhiteCircle())
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .tint(ink)
+        .tint(.primary)
         .accessibilityLabel(Text(accessibilityLabel))
     }
 }
