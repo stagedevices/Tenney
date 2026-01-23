@@ -98,16 +98,15 @@ enum LearnStepFactory {
                     gate: .init(allowedTargets: ["tuner_lock"], isActive: true),
                     validate: { if case .tunerLockToggled = $0 { return true } else { return false } }
                 ),
-          //      LearnStep(
-                //            title: "Prime limit chips",
-                //             bullets: [
-                //                 "Prime limit changes which ratios are eligible matches.",
-                //                   "Lower limit = simpler vocabulary; higher limit = more nuance (and more ambiguity)."
-                //               ],
-                //              tryIt: "Change prime limit and watch the suggested ratio set tighten/expand.",
-                //              gate: .init(allowedTargets: ["tuner_prime_limit"], isActive: true),
-                //              validate: { if case .tunerPrimeLimitChanged = $0 { return true } else { return false } }
-                //           ),
+                LearnStep(
+                            title: "Prime limit chips",
+                             bullets: [
+                                 "Prime limit changes which ratios are eligible matches.",
+                               ],
+                              tryIt: "Change prime limit, watch the suggested ratio set change.",
+                              gate: .init(allowedTargets: ["tuner_prime_limit"], isActive: true),
+                              validate: { if case .tunerPrimeLimitChanged = $0 { return true } else { return false } }
+                           ),
                 //        LearnStep(
                 //              title: "ET vs JI readouts",
                 //              bullets: [
@@ -156,7 +155,7 @@ enum LearnStepFactory {
                 LearnStep(
                     title: "Oscilloscope",
                     instruction: "Use pads and observe the scope.",
-                    tryIt: "Trigger at least two different pads, then keep playing/observing for 5 seconds.",
+                    tryIt: "Trigger at least two different pads and observe the scope change for a couple seconds. Do this at least twice.",
                     gate: .init(allowedTargets: ["builder_pad", "builder_scope"], isActive: true),
                     validate: { $0 == .builderScopeTimedSatisfied }
                 )
