@@ -50,7 +50,12 @@ enum LearnReferenceTopic: String, CaseIterable, Identifiable, Sendable {
 
 struct LearnTenneyReferenceTopicView: View {
     let topic: LearnReferenceTopic
-    let module: LearnTenneyModule? = nil
+    var module: LearnTenneyModule? = nil
+
+    init(topic: LearnReferenceTopic, module: LearnTenneyModule? = nil) {
+            self.topic = topic
+            self.module = module
+        }
 
     var body: some View {
         ScrollView {
