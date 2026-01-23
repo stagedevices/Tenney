@@ -36,6 +36,8 @@ final class TenneyThemeCache {
         let mixBasis: String
         let mixMode: String
         let scopeMode: String
+        let a11yEnabled: Bool
+        let a11yPatternsEnabled: Bool
     }
 
     struct RatioKey: Hashable {
