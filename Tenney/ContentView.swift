@@ -2423,6 +2423,11 @@ private struct NextChip: View {
 // MARK: Control Cards
 // MARK: Control Cards (compact root)
 private struct RootCardCompact: View {
+    @AppStorage(SettingsKeys.staffA4Hz)  private var concertA4Hz: Double = 440
+    @AppStorage(SettingsKeys.noteNameA4Hz) private var noteNameA4Hz: Double = 440
+    @AppStorage(SettingsKeys.tonicNameMode) private var tonicNameModeRaw: String = TonicNameMode.auto.rawValue
+    @AppStorage(SettingsKeys.tonicE3) private var tonicE3: Int = 0
+    @AppStorage(SettingsKeys.accidentalPreference) private var accidentalPreferenceRaw: String = AccidentalPreference.auto.rawValue
     @EnvironmentObject private var model: AppModel
     let ns: Namespace.ID
     @Binding var showSheet: Bool
