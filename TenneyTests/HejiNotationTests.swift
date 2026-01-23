@@ -9,13 +9,15 @@ import Testing
 struct HejiNotationTests {
 
     private let context = HejiContext(
-        referenceA4Hz: 440,
+        concertA4Hz: 440,
+        noteNameA4Hz: 440,
         rootHz: 440,
         rootRatio: nil,
         preferred: .auto,
         maxPrime: 13,
         allowApproximation: false,
-        scaleDegreeHint: nil
+        scaleDegreeHint: nil,
+        tonicE3: nil
     )
 
     @Test func threeLimitLetters() async throws {
@@ -46,4 +48,3 @@ struct HejiNotationTests {
         #expect(tridecimal.accidental.microtonalComponents.contains(.tridecimal(up: false)))
     }
 }
-

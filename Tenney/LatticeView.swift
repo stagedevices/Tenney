@@ -1624,7 +1624,10 @@ struct LatticeView: View {
     @AppStorage(SettingsKeys.nodeSize)     private var nodeSize = "m"
     @AppStorage(SettingsKeys.labelDensity) private var labelDensity: Double = 0.65
     @AppStorage(SettingsKeys.accidentalPreference) private var accidentalPreferenceRaw: String = AccidentalPreference.auto.rawValue
-    @AppStorage(SettingsKeys.staffA4Hz) private var staffA4Hz: Double = 440
+    @AppStorage(SettingsKeys.staffA4Hz) private var concertA4Hz: Double = 440
+    @AppStorage(SettingsKeys.noteNameA4Hz) private var noteNameA4Hz: Double = 440
+    @AppStorage(SettingsKeys.tonicNameMode) private var tonicNameModeRaw: String = TonicNameMode.auto.rawValue
+    @AppStorage(SettingsKeys.tonicE3) private var tonicE3: Int = 0
     
     @Environment(\.latticePreviewHideDistance) private var latticePreviewHideDistance
     @Environment(\.displayScale) private var displayScale
@@ -4687,10 +4690,18 @@ struct LatticeView: View {
             let baseHz = foldToAudible(app.rootHz * (Double(f.num) / Double(f.den)), minHz: 20, maxHz: 5000)
             let hzAdj = baseHz * pow(2.0, Double(infoOctaveOffset))
             let pref = AccidentalPreference(rawValue: accidentalPreferenceRaw) ?? .auto
+            let mode = TonicNameMode(rawValue: tonicNameModeRaw) ?? .auto
+            let resolvedTonicE3 = TonicSpelling.resolvedTonicE3(
+                mode: mode,
+                manualE3: tonicE3,
+                rootHz: app.rootHz,
+                noteNameA4Hz: noteNameA4Hz,
+                preference: pref
+            )
             let helmholtzPref = helmholtzPreference(from: pref)
             let noteLabel = NotationFormatter.closestHelmholtzLabel(
                 freqHz: hzAdj,
-                a4Hz: staffA4Hz,
+                a4Hz: noteNameA4Hz,
                 preference: helmholtzPref
             )
             // Adjusted ratio string (NO FOLD to 1–2; preserves +/- octaves in ratio)
@@ -4700,13 +4711,15 @@ struct LatticeView: View {
             : hejiTextLabel(p: f.num, q: f.den, octave: infoOctaveOffset, rootHz: app.rootHz)
             let ratioRef = RatioRef(p: f.num, q: f.den, octave: infoOctaveOffset, monzo: [:])
             let hejiContext = HejiContext(
-                referenceA4Hz: staffA4Hz,
+                concertA4Hz: concertA4Hz,
+                noteNameA4Hz: noteNameA4Hz,
                 rootHz: app.rootHz,
                 rootRatio: nil,
                 preferred: pref,
                 maxPrime: max(3, app.primeLimit),
                 allowApproximation: false,
-                scaleDegreeHint: ratioRef
+                scaleDegreeHint: ratioRef,
+                tonicE3: resolvedTonicE3
             )
             
             // Octave step availability (audible range)
@@ -4965,9 +4978,9 @@ struct LatticeView: View {
 
     private func hejiTextLabel(p: Int, q: Int, octave: Int, rootHz: Double) -> String {
         let pref = AccidentalPreference(rawValue: accidentalPreferenceRaw) ?? .auto
-        let anchor = resolveRootAnchor(rootHz: rootHz, a4Hz: staffA4Hz, preference: pref)
+        let anchor = resolveRootAnchor(rootHz: rootHz, a4Hz: noteNameA4Hz, preference: pref)
         let context = PitchContext(
-            a4Hz: staffA4Hz,
+            a4Hz: noteNameA4Hz,
             rootHz: rootHz,
             rootAnchor: anchor,
             accidentalPreference: pref,

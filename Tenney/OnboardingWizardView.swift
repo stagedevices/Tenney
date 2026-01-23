@@ -31,7 +31,7 @@ struct OnboardingWizardView: View {
     @EnvironmentObject private var app: AppModel
     @AppStorage(SettingsKeys.setupWizardDone) private var setupWizardDone: Bool = false
     @AppStorage(SettingsKeys.defaultView)    private var defaultView: String = "tuner" // "lattice" | "tuner"
-    @AppStorage(SettingsKeys.staffA4Hz)      private var a4Staff: Double = 440
+    @AppStorage(SettingsKeys.noteNameA4Hz)      private var noteNameA4Hz: Double = 440
 
     // Steps: 0=Root, 1=A4, 2=Theme/Style, 3=Default Screen
     @State private var step: Int = 0
@@ -77,8 +77,8 @@ struct OnboardingWizardView: View {
                     rootPreset = m
                 } else { rootPreset = nil }
                 
-                a4CustomHz = a4Staff
-                if let m = a4Presets.first(where: { abs($0 - a4Staff) < 0.01 }) {
+                a4CustomHz = noteNameA4Hz
+                if let m = a4Presets.first(where: { abs($0 - noteNameA4Hz) < 0.01 }) {
                     a4Preset = m
                 } else { a4Preset = nil }
             }
@@ -211,14 +211,14 @@ struct OnboardingWizardView: View {
     }
     private var currentA4Hz: Double { a4Preset ?? max(200, min(1000, a4CustomHz)) }
     private func selectA4(_ hz: Double) {
-        withAnimation(.snappy) { a4Preset = hz; a4Staff = hz }
-        postSetting(SettingsKeys.staffA4Hz, hz)
+        withAnimation(.snappy) { a4Preset = hz; noteNameA4Hz = hz }
+        postSetting(SettingsKeys.noteNameA4Hz, hz)
         if previewA4On { setTone(hz) }
     }
     private func commitA4Custom() {
         let hz = currentA4Hz
-        a4Staff = hz
-        postSetting(SettingsKeys.staffA4Hz, hz)
+        noteNameA4Hz = hz
+        postSetting(SettingsKeys.noteNameA4Hz, hz)
         if previewA4On { setTone(hz) }
     }
 

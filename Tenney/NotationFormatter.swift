@@ -99,8 +99,7 @@ public enum NotationFormatter {
     /// HEJI-ish text label for ratio tiles / info cards.
     /// Keeps this robust/legible: `C♯4 +14¢` (or no cents if near ET).
     public static func hejiLabel(p: Int, q: Int, freqHz: Double, rootHz: Double) -> String {
-        let a4Hz = UserDefaults.standard.double(forKey: SettingsKeys.staffA4Hz)
-        let reference = a4Hz > 0 ? a4Hz : 440.0
+        let reference = TonicSpelling.resolvedNoteNameA4Hz()
         let anchor = resolveRootAnchor(rootHz: rootHz, a4Hz: reference, preference: .auto)
         let context = PitchContext(
             a4Hz: reference,

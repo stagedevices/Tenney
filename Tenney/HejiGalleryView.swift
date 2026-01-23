@@ -18,18 +18,31 @@ struct HejiGalleryView: View {
     ]
 
     @AppStorage(SettingsKeys.accidentalPreference) private var accidentalPreferenceRaw: String = AccidentalPreference.auto.rawValue
-    @AppStorage(SettingsKeys.staffA4Hz) private var staffA4Hz: Double = 440
+    @AppStorage(SettingsKeys.staffA4Hz) private var concertA4Hz: Double = 440
+    @AppStorage(SettingsKeys.noteNameA4Hz) private var noteNameA4Hz: Double = 440
+    @AppStorage(SettingsKeys.tonicNameMode) private var tonicNameModeRaw: String = TonicNameMode.auto.rawValue
+    @AppStorage(SettingsKeys.tonicE3) private var tonicE3: Int = 0
 
     var body: some View {
         let pref = AccidentalPreference(rawValue: accidentalPreferenceRaw) ?? .auto
+        let mode = TonicNameMode(rawValue: tonicNameModeRaw) ?? .auto
+        let resolvedTonicE3 = TonicSpelling.resolvedTonicE3(
+            mode: mode,
+            manualE3: tonicE3,
+            rootHz: 440,
+            noteNameA4Hz: noteNameA4Hz,
+            preference: pref
+        )
         let context = HejiContext(
-            referenceA4Hz: staffA4Hz,
+            concertA4Hz: concertA4Hz,
+            noteNameA4Hz: noteNameA4Hz,
             rootHz: 440,
             rootRatio: RatioRef(p: 1, q: 1, octave: 0, monzo: [:]),
             preferred: pref,
             maxPrime: 13,
             allowApproximation: false,
-            scaleDegreeHint: nil
+            scaleDegreeHint: nil,
+            tonicE3: resolvedTonicE3
         )
 
         ScrollView {
@@ -58,4 +71,3 @@ struct HejiGalleryView: View {
     }
 }
 #endif
-

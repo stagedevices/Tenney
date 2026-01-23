@@ -20,7 +20,10 @@ struct ScaleBuilderScreen: View {
     @AppStorage(SettingsKeys.lissaLiveSamples) private var lissaLiveSamples: Int = 768
     @AppStorage(SettingsKeys.lissaGlobalAlpha) private var lissaGlobalAlpha: Double = 1.0
     @AppStorage(SettingsKeys.accidentalPreference) private var accidentalPreferenceRaw: String = AccidentalPreference.auto.rawValue
-    @AppStorage(SettingsKeys.staffA4Hz) private var staffA4Hz: Double = 440
+    @AppStorage(SettingsKeys.staffA4Hz) private var concertA4Hz: Double = 440
+    @AppStorage(SettingsKeys.noteNameA4Hz) private var noteNameA4Hz: Double = 440
+    @AppStorage(SettingsKeys.tonicNameMode) private var tonicNameModeRaw: String = TonicNameMode.auto.rawValue
+    @AppStorage(SettingsKeys.tonicE3) private var tonicE3: Int = 0
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -791,7 +794,7 @@ struct ScaleBuilderScreen: View {
             let cents = 1200.0 * log2(Double(cn) / Double(cd))
                 let _ = cents
 
-                let (name, oct) = NotationFormatter.staffNoteName(freqHz: hz)
+                let (name, oct) = NotationFormatter.staffNoteName(freqHz: hz, a4Hz: noteNameA4Hz)
                 let _ = name
                 let _ = oct
             
@@ -998,7 +1001,7 @@ struct ScaleBuilderScreen: View {
         let desc = store.descriptionText.trimmingCharacters(in: .whitespacesAndNewlines)
         let a4Hz = exportA4Hz
         let rootHz = store.payload.rootHz
-        let (rootName, rootOct) = NotationFormatter.staffNoteName(freqHz: rootHz)
+        let (rootName, rootOct) = NotationFormatter.staffNoteName(freqHz: rootHz, a4Hz: noteNameA4Hz)
         
         let a4ModeLabel: String = {
             switch exportA4Mode {
@@ -1247,15 +1250,25 @@ struct ScaleBuilderScreen: View {
         let hz = store.payload.rootHz
         let hzInt = Int(round(hz))
         let pref = AccidentalPreference(rawValue: accidentalPreferenceRaw) ?? .auto
+        let mode = TonicNameMode(rawValue: tonicNameModeRaw) ?? .auto
+        let resolvedTonicE3 = TonicSpelling.resolvedTonicE3(
+            mode: mode,
+            manualE3: tonicE3,
+            rootHz: hz,
+            noteNameA4Hz: noteNameA4Hz,
+            preference: pref
+        )
         let ratioRef = RatioRef(p: 1, q: 1, octave: 0, monzo: [:])
         let context = HejiContext(
-            referenceA4Hz: staffA4Hz,
+            concertA4Hz: concertA4Hz,
+            noteNameA4Hz: noteNameA4Hz,
             rootHz: hz,
             rootRatio: ratioRef,
             preferred: pref,
             maxPrime: max(3, store.detectedPrimeLimit),
             allowApproximation: false,
-            scaleDegreeHint: ratioRef
+            scaleDegreeHint: ratioRef,
+            tonicE3: resolvedTonicE3
         )
         let spelling = HejiNotation.spelling(forRatio: ratioRef, context: context)
         let label = String(HejiNotation.textLabel(spelling, showCents: false).characters)

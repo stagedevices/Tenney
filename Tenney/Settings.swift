@@ -407,7 +407,7 @@ struct StudioConsoleView: View {
     // Tuning
     @AppStorage(SettingsKeys.a4Choice)   private var a4Choice = A4Choice._440.rawValue
     @AppStorage(SettingsKeys.a4CustomHz) private var a4Custom: Double = 440
-    @AppStorage(SettingsKeys.staffA4Hz)  private var a4Staff: Double = 440
+    @AppStorage(SettingsKeys.noteNameA4Hz)  private var noteNameA4Hz: Double = 440
 
     // Labels
     @AppStorage(SettingsKeys.labelDefault)       private var labelDefault = "ratio" // "ratio" | "heji"
@@ -2796,7 +2796,7 @@ struct StudioConsoleView: View {
             SettingsChangeSinks(
                 tunerNeedleHoldRaw: $tunerNeedleHoldRaw,
                 defaultView: $defaultView,
-                a4Staff: $a4Staff,
+                noteNameA4Hz: $noteNameA4Hz,
                 labelDefault: $labelDefault,
                 showRatioAlong: $showRatioAlong,
                 infoCardNotationModeRaw: $infoCardNotationModeRaw,
@@ -3350,7 +3350,7 @@ struct StudioConsoleView: View {
             let dimText = dimLocked ? "Dim: Locked" : "Dim: \(Int((stageDimLevel * 100).rounded()))%"
             let accent = stageAccent.capitalized
 
-            return "A4: \(Int(a4Staff.rounded())) Hz · Needle: \(needle) · \(dimText) · Accent: \(accent)"
+            return "A4: \(Int(noteNameA4Hz.rounded())) Hz · Needle: \(needle) · \(dimText) · Accent: \(accent)"
 
 
         case .general:
@@ -3739,7 +3739,7 @@ private struct GlassNavTile<Destination: View>: View {
         
         @Binding var tunerNeedleHoldRaw: String
         @Binding var defaultView: String
-        @Binding var a4Staff: Double
+        @Binding var noteNameA4Hz: Double
         @Binding var labelDefault: String
         @Binding var showRatioAlong: Bool
         @Binding var infoCardNotationModeRaw: String
@@ -3805,7 +3805,7 @@ private struct GlassNavTile<Destination: View>: View {
                     LearnEventBus.shared.send(.tunerConfidenceGateChanged(gateValue))
                 }
                 .onChange(of: defaultView)   { postSetting(SettingsKeys.defaultView, $0) }
-                .onChange(of: a4Staff)       { postSetting(SettingsKeys.staffA4Hz, $0) }
+                .onChange(of: noteNameA4Hz)  { postSetting(SettingsKeys.noteNameA4Hz, $0) }
                 .onChange(of: labelDefault)  { postSetting(SettingsKeys.labelDefault, $0) }
                 .onChange(of: showRatioAlong){ postSetting(SettingsKeys.showRatioAlongHeji, $0) }
                 .onChange(of: infoCardNotationModeRaw) { postSetting(SettingsKeys.infoCardNotationMode, $0) }
@@ -4646,7 +4646,7 @@ private struct GlassNavTile<Destination: View>: View {
         postSetting(SettingsKeys.overlay11, overlay11)
         postSetting(SettingsKeys.foldAudible, foldAudible)
         postSetting(SettingsKeys.safeAmp, safeAmp)
-        postSetting(SettingsKeys.staffA4Hz, a4Staff)
+        postSetting(SettingsKeys.noteNameA4Hz, noteNameA4Hz)
         postSetting(SettingsKeys.stageDimLevel, stageDimLevel)
         postSetting(SettingsKeys.stageAccent, stageAccent)
         postSetting(SettingsKeys.stageHideStatus, stageHideStatus)
