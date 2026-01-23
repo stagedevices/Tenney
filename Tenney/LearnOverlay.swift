@@ -295,6 +295,7 @@ private struct LearnCompletionView: View {
         case .lattice: return "Lattice is ready."
         case .tuner: return "Tuner is ready."
         case .builder: return "Builder is ready."
+        case .libraryPacks: return "Library & Packs is ready."
         case .rootPitchTuningConfig: return "Reference is ready."
         }
     }
@@ -307,6 +308,8 @@ private struct LearnCompletionView: View {
             return ["Switch views", "Use lock", "Use stage mode"]
         case .builder:
             return ["Play pads", "Add root", "Hear blends"]
+        case .libraryPacks:
+            return ["Open your library", "Browse packs", "Learn community packs"]
         case .rootPitchTuningConfig:
             return ["Review root vs tonic", "Check concert pitch", "Debug labels"]
         }

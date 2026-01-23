@@ -14,7 +14,7 @@ enum LearnTenneyEntryPoint: Sendable {
 }
 
 enum LearnTenneyModule: String, CaseIterable, Identifiable, Sendable {
-    case lattice, tuner, builder, rootPitchTuningConfig
+    case lattice, tuner, builder, libraryPacks, rootPitchTuningConfig
     var id: String { rawValue }
 
     var title: String {
@@ -22,6 +22,7 @@ enum LearnTenneyModule: String, CaseIterable, Identifiable, Sendable {
         case .lattice: return "Lattice"
         case .tuner:   return "Tuner"
         case .builder: return "Builder"
+        case .libraryPacks: return "Library & Packs"
         case .rootPitchTuningConfig: return "Root Pitch & Tuning Configuration"
         }
     }
@@ -31,6 +32,7 @@ enum LearnTenneyModule: String, CaseIterable, Identifiable, Sendable {
         case .lattice: return "Selection, limits, axis shift, and auditioning"
         case .tuner:   return "Views, locks, confidence, limits, and stage mode"
         case .builder: return "Pads, root, and the oscilloscope"
+        case .libraryPacks: return "Library basics, tags, favorites, and community packs"
         case .rootPitchTuningConfig: return "Root Hz, tonic naming, concert pitch, and troubleshooting"
         }
     }
@@ -40,12 +42,15 @@ enum LearnTenneyModule: String, CaseIterable, Identifiable, Sendable {
         case .lattice: return "dot.circle.and.hand.point.up.left.fill"
         case .tuner:   return "dial.high.fill"
         case .builder: return "pianokeys.inverse"
+        case .libraryPacks: return "tray.fill"
         case .rootPitchTuningConfig: return "tuningfork"
         }
     }
 
     var supportsPractice: Bool {
         switch self {
+        case .libraryPacks:
+            return false
         case .rootPitchTuningConfig:
             return false
         default:

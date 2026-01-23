@@ -180,6 +180,9 @@ private struct PracticeContent: View {
             case .builder:
                 BuilderPracticeHost()
 
+            case .libraryPacks:
+                EmptyView()
+
             case .rootPitchTuningConfig:
                 EmptyView()
             }
