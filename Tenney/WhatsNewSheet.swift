@@ -36,32 +36,133 @@ enum AppInfo {
 enum WhatsNewContent {
     // “Big three” are rendered as custom cards below. Keep the rest here.
     static let v0_3Items: [WhatsNewItem] = [
+
+        // MARK: - Tuner
+
         .init(
-            symbol: "textformat.size",
-            title: "Label Density Controls",
-            summary: "Tune label density from Off → Max for clean screenshots or full-detail editing."
+            symbol: "lock.fill",
+            title: "Lock Target: Set + Lock",
+            summary: "Choose a target ratio and either **Set** it (no lock) or **Lock** it for instrument-grade reference tuning."
         ),
         .init(
-            symbol: "gearshape.2",
-            title: "Settings, Tightened",
-            summary: "A tighter, clearer Settings layout with better visual hierarchy."
+            symbol: "clock.arrow.circlepath",
+            title: "Lock Target Recents",
+            summary: "Recent lock targets appear under Pick for fast reuse—fewer retypes, quicker retargeting."
         ),
         .init(
-            symbol: "paintpalette",
+            symbol: "chevron.down",
+            title: "Lock Control, Stabilized",
+            summary: "Lock control is clearer and more stable in layout—no surprise width/height jumps when toggling lock."
+        ),
+        .init(
+            symbol: "arrow.up.and.down.text.horizontal",
+            title: "Lower/Higher Suggestions Always Available",
+            summary: "Lower/Higher targets stay visible while locked so you can retarget quickly without leaving lock mode."
+        ),
+        .init(
+            symbol: "rectangle.expand.vertical",
+            title: "Dial Slot Height Consistency",
+            summary: "Switching tuner styles no longer shrinks the dial/card unexpectedly—layout stays steady across modes."
+        ),
+        .init(
+            symbol: "textformat",
+            title: "HEJI Note Labels (Tuner)",
+            summary: "HEJI-style note labels can be shown above the ratio readout without shrinking the dial."
+        ),
+        .init(
+            symbol: "tuningfork",
+            title: "Root: Frequency + Name",
+            summary: "Root editing now treats identity as both **Hz** and **note name** (auto/manual) to keep spellings predictable."
+        ),
+        .init(
+            symbol: "waveform.path.ecg",
+            title: "Lock Editor Feels Less Stubby",
+            summary: "Lock Target sheet is tighter and more usable: clearer actions, better structure, and faster picking."
+        ),
+
+        // MARK: - Lattice
+
+        .init(
+            symbol: "square.grid.3x3",
+            title: "Lattice View Polish",
+            summary: "Lattice interactions and presentation have been refined for smoother exploration and selection."
+        ),
+        .init(
+            symbol: "wand.and.stars",
+            title: "Lattice → Builder Flow",
+            summary: "Improved handoff into building/editing from lattice selections for a more direct workflow."
+        ),
+
+        // MARK: - Themes + Accessibility
+
+        .init(
+            symbol: "moon.stars.fill",
+            title: "Nocturne Theme",
+            summary: "A new darker, calmer theme option for low-light work and long sessions."
+        ),
+        .init(
+            symbol: "eye.trianglebadge.exclamationmark",
+            title: "Color-Blind Safe Toggle",
+            summary: "Optional color-blind safe palette adjustments for clearer distinction without relying on hue alone."
+        ),
+        .init(
+            symbol: "paintpalette.fill",
             title: "Theme Polish",
-            summary: "More consistent theming across screens, with a cleaner dark/light presentation."
+            summary: "More consistent theming across screens, with improved contrast and cleaner dark/light behavior."
         ),
         .init(
             symbol: "sparkles",
             title: "Motion & Feel",
-            summary: "Smoother transitions and a more responsive, tactile feel across the app."
+            summary: "Smoother, more tactile transitions and interaction polish across key flows."
         ),
         .init(
             symbol: "checkmark.shield.fill",
-            title: "Stability & Performance",
-            summary: "Crash fixes, fewer edge-case glitches, and faster interactions."
+            title: "Stability Pass",
+            summary: "Fixes and guardrails across edge cases encountered in real use, especially in the tuner workflow."
+        ),
+
+        // MARK: - Library / Packs / Community Packs
+
+        .init(
+            symbol: "books.vertical",
+            title: "Library Organization",
+            summary: "Better ways to browse and organize scales so your collection stays usable as it grows."
+        ),
+        .init(
+            symbol: "folder.fill",
+            title: "Packs as First-Class Organization",
+            summary: "Packs act as folders for scales—browse them from the Library and manage your collection more intentionally."
+        ),
+        .init(
+            symbol: "person.3.fill",
+            title: "Community Packs (Curated)",
+            summary: "Featured community packs are curated/verified, with a clearer path to install and explore them."
+        ),
+        .init(
+            symbol: "square.and.arrow.up",
+            title: "Scale Export Options",
+            summary: "Export scales to common formats (like .scl / .kbm) for sharing and external workflows."
+        ),
+        .init(
+            symbol: "plus.circle.fill",
+            title: "Add To… (Builder Workflow)",
+            summary: "Faster ways to add scales to your working set and move between discovery and building."
+        ),
+        .init(
+            symbol: "paperplane.fill",
+            title: "Submit a Community Pack",
+            summary: "Clearer guidance on how to contribute packs back to the community."
+        ),
+
+        // MARK: - Learn Tenney (single public-facing addition)
+
+        .init(
+            symbol: "graduationcap.fill",
+            title: "Learn Tenney: Reference (Library + Packs)",
+            summary: "A new reference-style learning module explains Library organization, Packs, Community Packs, and where files live."
         )
     ]
+
 }
 
 // MARK: - Sheet
