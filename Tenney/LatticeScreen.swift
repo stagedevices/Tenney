@@ -27,6 +27,7 @@ struct LatticeScreen: View {
     @StateObject private var store: LatticeStore
     @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var app: AppModel
+    @Environment(\.tenneyPracticeChrome) private var practiceChrome
     
     @AppStorage(SettingsKeys.latticeAlwaysRecenterOnQuit)
         private var latticeAlwaysRecenterOnQuit: Bool = false
@@ -85,7 +86,11 @@ struct LatticeScreen: View {
 #if !os(macOS)
             .navigationTitle("Lattice")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { toolbarContent }
+            .toolbar {
+                if !practiceChrome {
+                    toolbarContent
+                }
+            }
 #endif
     }
 

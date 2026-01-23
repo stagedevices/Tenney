@@ -206,6 +206,7 @@ private struct LatticePracticeHost: View {
             // ✅ Always keep the real sandbox mounted (this is where your UtilityBar comes from)
             ContentView()
                 .environment(\.tenneyPracticeActive, true)
+                .environment(\.tenneyPracticeChrome, true)
                 .toolbar(.hidden, for: .tabBar)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
