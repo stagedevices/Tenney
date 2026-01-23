@@ -84,6 +84,103 @@ struct LearnTenneyReferenceTopicView: View {
     }
 }
 
+struct LearnTenneyLibraryPacksReferenceView: View {
+    @EnvironmentObject private var app: AppModel
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                LearnReferenceCard(
+                    title: "What the Library is",
+                    bullets: [
+                        "Library = your scales collection.",
+                        "Packs are folders/collections that organize scales.",
+                        "Tags + Favorites help you retrieve fast."
+                    ],
+                    actions: [
+                        .init(title: "Open Library", isProminent: true, action: openLibrary)
+                    ]
+                )
+
+                LearnReferenceCard(
+                    title: "Packs (Folders)",
+                    bullets: [
+                        "Packs group scales by idea, tuning, or project.",
+                        "Installing a pack adds its scales to the Library.",
+                        "Access packs from the Library or the Community Packs page.",
+                        "Keep personal packs separate from curated Community Packs."
+                    ],
+                    actions: [
+                        .init(title: "Open Packs", isProminent: false, action: openLibrary)
+                    ]
+                )
+
+                LearnReferenceCard(
+                    title: "Tags & Favorites",
+                    bullets: [
+                        "Favorites = quick shortlist.",
+                        "Tags = cross-cutting organization (genre, limit, source).",
+                        "Combine tags + search to find scales fast."
+                    ],
+                    actions: []
+                )
+
+                LearnReferenceCard(
+                    title: "Import / Export",
+                    bullets: [
+                        "Import brings scale files or packs into your Library.",
+                        "Export shares scales/packs as .scl / .kbm (and more).",
+                        "Exports don’t delete your originals."
+                    ],
+                    actions: []
+                )
+
+                LearnReferenceCard(
+                    title: "Community Packs (Curated)",
+                    bullets: [
+                        "Curated/verified packs from Tenney devs + community contributors.",
+                        "Fetched from the internet (connection required).",
+                        "Installing adds a pack to your Library like any other pack."
+                    ],
+                    actions: [
+                        .init(title: "Browse Community Packs", isProminent: true, action: openCommunityPacks)
+                    ]
+                )
+
+                LearnReferenceCard(
+                    title: "Submit a Community Pack",
+                    bullets: [
+                        "Want to contribute? Follow the submission process.",
+                        "Every pack is curated/verified before listing."
+                    ],
+                    actions: [
+                        .init(title: "How to Submit", isProminent: false, action: openSubmission)
+                    ]
+                )
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+        }
+        .navigationTitle("Library & Packs")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func openLibrary() {
+        app.scaleLibraryLaunchMode = .recents
+        app.showScaleLibraryDetent = true
+    }
+
+    private func openCommunityPacks() {
+        app.scaleLibraryLaunchMode = .communityPacks
+        app.showScaleLibraryDetent = true
+    }
+
+    private func openSubmission() {
+        openURL(CommunityPacksEndpoints.issuesURL)
+    }
+}
+
 private struct RootTonicConcertReferenceView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -308,6 +405,43 @@ private struct LearnSummaryCard: View {
                 Text(title)
                     .font(.headline)
                 BulletList(items: bullets)
+            }
+        }
+    }
+}
+
+private struct LearnReferenceAction {
+    let title: String
+    let isProminent: Bool
+    let action: () -> Void
+}
+
+private struct LearnReferenceCard: View {
+    let title: String
+    let bullets: [String]
+    let actions: [LearnReferenceAction]
+
+    var body: some View {
+        LearnGlassCard {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(title)
+                    .font(.headline)
+                BulletList(items: bullets)
+
+                if !actions.isEmpty {
+                    HStack(spacing: 10) {
+                        ForEach(actions.indices, id: \.self) { idx in
+                            let action = actions[idx]
+                            Button {
+                                action.action()
+                            } label: {
+                                Text(action.title)
+                                    .frame(maxWidth: .infinity, minHeight: 36)
+                            }
+                            .buttonStyle(action.isProminent ? .borderedProminent : .bordered)
+                        }
+                    }
+                }
             }
         }
     }

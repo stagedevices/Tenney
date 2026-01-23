@@ -285,14 +285,18 @@ struct ScaleLibrarySheet: View {
             // consume it so it’s one-shot
             model.scaleLibraryLaunchMode = nil
 
-            libraryPage = 0
             library.sortKey = .recent
 
             switch mode {
             case .recents:
+                libraryPage = 0
                 libraryFavoritesOnly = false
             case .favorites:
+                libraryPage = 0
                 libraryFavoritesOnly = true
+            case .communityPacks:
+                libraryPage = 2
+                libraryFavoritesOnly = false
             }
         }
         .onChange(of: filters) { _ in
