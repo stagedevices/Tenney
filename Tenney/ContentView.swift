@@ -737,11 +737,15 @@ extension Notification.Name {
     }
 
     @StateObject private var hold = NeedleHoldState()
+    @Namespace private var lockFieldNS
     @State private var currentNearest: RatioResult? = nil
     @State private var showLockSheet: Bool = false
-    @State private var lockRatioText: String = ""
+    @State private var lockNumeratorText: String = ""
+    @State private var lockDenominatorText: String = ""
     @State private var lockOctave: Int = 0
     @State private var lockPulse: Bool = false
+    @State private var lockFieldDim: Bool = false
+    @State private var wasLocked: Bool = false
     @Binding var stageActive: Bool
 
     @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
@@ -758,23 +762,41 @@ extension Notification.Name {
         ratioResultFromText(lockRatioText, octave: lockOctave)
     }
 
+    private var lockRatioText: String {
+        guard !lockNumeratorText.isEmpty || !lockDenominatorText.isEmpty else { return "" }
+        return "\(lockNumeratorText)/\(lockDenominatorText)"
+    }
+
     private var lockLabelText: String {
         guard let locked = store.lockedTarget else { return "" }
         return "Locked to \(locked.num)/\(locked.den)"
     }
 
-    private var lockChip: some View {
+    private var lockFieldMatchedGeometry: LockFieldMatchedGeometry? {
+        guard !reduceMotion else { return nil }
+        return LockFieldMatchedGeometry(
+            namespace: lockFieldNS,
+            backgroundID: "lockFieldBackground",
+            ratioID: "lockFieldRatio"
+        )
+    }
+
+    private var lockField: some View {
         let isLocked = store.lockedTarget != nil
-        let title = isLocked ? "Locked" : "Lock…"
-        let system = isLocked ? "lock.fill" : "lock"
         let tint = theme.inTuneHighlightColor(activeLimit: store.primeLimit)
-        return Button {
+        let displayText = store.lockedTarget.map { tunerDisplayRatioString($0) }
+        return LockFieldPill(
+            size: .compact,
+            isLocked: isLocked,
+            displayText: displayText,
+            tint: tint,
+            matchedGeometry: lockFieldMatchedGeometry
+        ) {
             showLockSheet = true
-        } label: {
-            GlassChip(text: title, system: system, isOn: isLocked, tint: tint)
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(isLocked ? "Locked target" : "Lock target")
+        .opacity(lockFieldDim ? 0.6 : 1.0)
+        .layoutPriority(2)
+        .accessibilityLabel(isLocked ? "Locked target" : "Edit lock target")
     }
      
      @ViewBuilder
@@ -932,19 +954,21 @@ extension Notification.Name {
 
     private func prepareLockSheetDefaults() {
         if let locked = store.lockedTarget {
-            lockRatioText = "\(locked.num)/\(locked.den)"
+            lockNumeratorText = "\(locked.num)"
+            lockDenominatorText = "\(locked.den)"
             lockOctave = locked.octave
         } else if let nearest = (currentNearest ?? liveNearest) {
-            lockRatioText = "\(nearest.num)/\(nearest.den)"
+            lockNumeratorText = "\(nearest.num)"
+            lockDenominatorText = "\(nearest.den)"
             lockOctave = nearest.octave
         } else {
-            lockRatioText = ""
+            lockNumeratorText = ""
+            lockDenominatorText = ""
             lockOctave = 0
         }
     }
 
-    private func commitLockFromSheet() {
-        guard let target = lockPreview else { return }
+    private func commitLockFromSheet(_ target: RatioResult) {
         store.lockedTarget = target
         #if DEBUG
         let hunting = (currentNearest ?? liveNearest).map { tunerDisplayRatioString($0) } ?? "—"
@@ -1055,6 +1079,13 @@ extension Notification.Name {
                 if newValue != nil {
                     pulseLockRingIfNeeded()
                 }
+                if wasLocked, newValue == nil {
+                    withAnimation(.easeOut(duration: 0.18)) { lockFieldDim = true }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                        withAnimation(.easeOut(duration: 0.18)) { lockFieldDim = false }
+                    }
+                }
+                wasLocked = (newValue != nil)
             }
             .onChange(of: showLockSheet) { isPresented in
                 if isPresented {
@@ -1062,58 +1093,23 @@ extension Notification.Name {
                 }
             }
             .sheet(isPresented: $showLockSheet) {
-                let isLocked = store.lockedTarget != nil
-                let isValid = lockPreview != nil
-                NavigationStack {
-                    VStack(alignment: .leading, spacing: 16) {
-                        TextField("Ratio", text: $lockRatioText)
-                            .font(.system(.body, design: .monospaced))
-                            .textInputAutocapitalization(.never)
-                            .disableAutocorrection(true)
-                            .keyboardType(.numbersAndPunctuation)
-                            .submitLabel(.done)
-                            .onSubmit { commitLockFromSheet() }
-
-                        if !lockRatioText.isEmpty && !isValid {
-                            Text("Enter ratio like 5/4")
-                                .font(.footnote.weight(.semibold))
-                                .foregroundStyle(.red)
-                        } else if let preview = lockPreview {
-                            Text("Will lock to \(tunerDisplayRatioString(preview))")
-                                .font(.footnote.weight(.semibold).monospacedDigit())
-                                .foregroundStyle(.secondary)
-                        }
-
-                        Stepper(value: $lockOctave, in: -2...2) {
-                            HStack {
-                                Text("Octave")
-                                Spacer()
-                                Text(lockOctave >= 0 ? "+\(lockOctave)" : "\(lockOctave)")
-                                    .font(.body.monospacedDigit())
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-
-                        HStack(spacing: 12) {
-                            Button("Cancel") { showLockSheet = false }
-                                .buttonStyle(.bordered)
-
-                            if isLocked {
-                                Button("Unlock") { unlockFromSheet() }
-                                    .buttonStyle(.bordered)
-                            }
-
-                            Spacer()
-
-                            Button("Lock") { commitLockFromSheet() }
-                                .buttonStyle(.borderedProminent)
-                                .disabled(!isValid)
-                        }
-                    }
-                    .padding()
-                    .navigationTitle("Lock Target")
-                    .navigationBarTitleDisplayMode(.inline)
-                }
+                LockTargetSheet(
+                    numeratorText: $lockNumeratorText,
+                    denominatorText: $lockDenominatorText,
+                    octave: $lockOctave,
+                    lockedTarget: store.lockedTarget,
+                    currentNearest: currentNearest ?? liveNearest,
+                    lowerText: model.display.lowerText,
+                    higherText: model.display.higherText,
+                    recents: store.lockRecents,
+                    rootHz: model.effectiveRootHz,
+                    liveHz: liveHz,
+                    tint: theme.inTuneHighlightColor(activeLimit: store.primeLimit),
+                    matchedGeometry: lockFieldMatchedGeometry,
+                    onCancel: { showLockSheet = false },
+                    onUnlock: { unlockFromSheet() },
+                    onCommit: { target in commitLockFromSheet(target) }
+                )
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
             }
@@ -1215,29 +1211,58 @@ extension Notification.Name {
                 // Complications (12/3/6/9 o’clock grammar)
                 VStack(spacing: 8) {
                     // 12 o’clock: Ratio + prime badges
-                    HStack(spacing: 10) {
-                        let label = ratioDisplayText
-                        if store.viewStyle != .posterFraction {
-                            Text(label)
-                                .font(.system(size: 34, weight: .semibold, design: .monospaced))
-                        }
-                        // tiny prime badge guesses from label (fast path; you already have NotationFormatter if needed)
-                        let primes = label.split(separator: "/").flatMap { Int($0) }.flatMap { factors($0) }.filter { $0 > 2 }
-                        HStack(spacing: 6) {
-                            ForEach(Array(Set(primes)).sorted(), id: \.self) { p in
-                                if theme.accessibilityEncoding.enabled {
-                                    TenneyPrimeLimitBadge(
-                                        prime: p,
-                                        tint: theme.primeTint(p),
-                                        encoding: theme.accessibilityEncoding
-                                    )
-                                } else {
-                                    BadgeCapsule(text: "\(p)", style: AnyShapeStyle(theme.primeTint(p)))
+                    let label = ratioDisplayText
+                    let primes = label.split(separator: "/").flatMap { Int($0) }.flatMap { factors($0) }.filter { $0 > 2 }
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 10) {
+                            if store.viewStyle != .posterFraction {
+                                Text(label)
+                                    .font(.system(size: 34, weight: .semibold, design: .monospaced))
+                            }
+                            // tiny prime badge guesses from label (fast path; you already have NotationFormatter if needed)
+                            HStack(spacing: 6) {
+                                ForEach(Array(Set(primes)).sorted(), id: \.self) { p in
+                                    if theme.accessibilityEncoding.enabled {
+                                        TenneyPrimeLimitBadge(
+                                            prime: p,
+                                            tint: theme.primeTint(p),
+                                            encoding: theme.accessibilityEncoding
+                                        )
+                                    } else {
+                                        BadgeCapsule(text: "\(p)", style: AnyShapeStyle(theme.primeTint(p)))
+                                    }
                                 }
                             }
+                            Spacer()
+                            lockField
                         }
-                        Spacer()
-                        lockChip
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(spacing: 10) {
+                                if store.viewStyle != .posterFraction {
+                                    Text(label)
+                                        .font(.system(size: 34, weight: .semibold, design: .monospaced))
+                                }
+                                HStack(spacing: 6) {
+                                    ForEach(Array(Set(primes)).sorted(), id: \.self) { p in
+                                        if theme.accessibilityEncoding.enabled {
+                                            TenneyPrimeLimitBadge(
+                                                prime: p,
+                                                tint: theme.primeTint(p),
+                                                encoding: theme.accessibilityEncoding
+                                            )
+                                        } else {
+                                            BadgeCapsule(text: "\(p)", style: AnyShapeStyle(theme.primeTint(p)))
+                                        }
+                                    }
+                                }
+                                Spacer(minLength: 0)
+                            }
+                            HStack {
+                                Spacer()
+                                lockField
+                            }
+                        }
                     }
                     if store.lockedTarget != nil {
                         Text(lockLabelText)
@@ -1536,19 +1561,33 @@ extension Notification.Name {
                         let spelling = ratioRef.map { HejiNotation.spelling(forRatio: $0, context: context) }
                             ?? HejiNotation.spelling(forFrequency: liveHz, context: context)
                         let hejiLabel = String(HejiNotation.textLabel(spelling, showCents: true).characters)
-                        HStack(alignment: .firstTextBaseline, spacing: 12) {
-                            Text(hejiLabel)
-                                .font(.system(size: 58, weight: .semibold, design: .monospaced))
-                                .foregroundStyle(.primary)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.55)
-                            Spacer(minLength: 0)
-                            lockChip
+                        ViewThatFits(in: .horizontal) {
+                            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                                Text(hejiLabel)
+                                    .font(.system(size: 58, weight: .semibold, design: .monospaced))
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.55)
+                                Spacer(minLength: 0)
+                                lockField
+                            }
+
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text(hejiLabel)
+                                    .font(.system(size: 58, weight: .semibold, design: .monospaced))
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.55)
+                                HStack {
+                                    Spacer(minLength: 0)
+                                    lockField
+                                }
+                            }
                         }
                     } else {
                         HStack {
                             Spacer()
-                            lockChip
+                            lockField
                         }
                     }
 
