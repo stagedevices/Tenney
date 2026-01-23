@@ -2440,9 +2440,21 @@ private struct RootCardCompact: View {
                         HStack(spacing: 6) {
                             Image(systemName: "tuningfork")
                                 .imageScale(.medium)
-                            Text(String(format: "%.1f Hz", model.rootHz))
+                            Text(String(format: "%.1f", model.rootHz))
                                 .font(.headline.monospacedDigit())
                                 .matchedGeometryEffect(id: "rootValue", in: ns)  // ← hero
+                            Text(currentTonicDisplayName(
+                                modeRaw: tonicNameModeRaw,
+                                manualE3: tonicE3,
+                                rootHz: model.rootHz,
+                                noteNameA4Hz: noteNameA4Hz,
+                                accidentalPreferenceRaw: accidentalPreferenceRaw
+                            ))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 34, alignment: .center)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                         }
                         .padding(.horizontal, 10).padding(.vertical, 6)
                         .background(.thinMaterial, in: Capsule())
@@ -2871,33 +2883,27 @@ private struct RootStudioSheet: View {
                         Text("Current")
                         Spacer()
                         Text(autoSpelling.displayText)
-                            .font(.headline.monospaced())
+                            .font(.title3.monospaced().weight(.semibold))
                     }
                 }
 
                 if !suggestedSpellings.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Suggested").font(.caption).foregroundStyle(.secondary)
-                        ForEach(suggestedSpellings, id: \.self) { spelling in
-                            Button {
-                                tonicE3 = spelling.e3
-                                tonicNameModeRaw = TonicNameMode.manual.rawValue
-                                syncManualFromStored()
-                            } label: {
-                                HStack {
-                                    Text(spelling.displayText)
-                                    if spelling.displayText == autoSpelling?.displayText {
-                                        Spacer()
-                                        Text("Default")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
+                        HStack(spacing: 10) {
+                            ForEach(suggestedSpellings, id: \.self) { spelling in
+                                GlassSelectTile(title: spelling.displayText, isOn: tonicE3 == spelling.e3 && tonicMode == .manual) {
+                                    tonicE3 = spelling.e3
+                                    tonicNameModeRaw = TonicNameMode.manual.rawValue
+                                    syncManualFromStored()
                                 }
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                .accessibilityLabel("Name tonic as \(spelling.displayText)")
                             }
-                            .buttonStyle(.plain)
+                        }
+                        if let autoSpelling {
+                            Text("Default: \(autoSpelling.displayText)")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -2909,16 +2915,18 @@ private struct RootStudioSheet: View {
                             Text(letter).tag(letter)
                         }
                     }
+                    .pickerStyle(.menu)
                     Picker("Accidental", selection: $manualAccidental) {
                         ForEach(-2...2, id: \.self) { value in
                             Text(accidentalLabel(value)).tag(value)
                         }
                     }
+                    .pickerStyle(.menu)
                     HStack {
                         Text("Preview")
                         Spacer()
                         Text(manualSpelling.displayText)
-                            .font(.headline.monospaced())
+                            .font(.title2.monospaced().weight(.semibold))
                     }
                 }
                 .disabled(tonicMode != .manual)
