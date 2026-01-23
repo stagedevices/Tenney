@@ -113,6 +113,7 @@ struct GlassWhiteCircleIconButton: View {
                 .foregroundStyle(.primary)
                 .font(font)
                 .frame(width: size, height: size)
+                .modifier(GlassWhiteCircle())
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
