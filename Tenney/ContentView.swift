@@ -1428,7 +1428,7 @@ extension Notification.Name {
      
          private var portraitBody: some View {
              let dialSlotMinHeight: CGFloat = 320
-             VStack(spacing: 14) {
+            return VStack(spacing: 14) {
 
                  // Header row: Mode glyph strip (left) • Style strip • Stage toggle (right)
                 ViewThatFits(in: .horizontal) {
