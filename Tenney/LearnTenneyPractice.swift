@@ -97,7 +97,7 @@ struct LearnTenneyPracticeView: View {
     var body: some View {
         let idx = coordinator.currentStepIndex
 
-        ZStack(alignment: .top) {
+        let content = ZStack(alignment: .top) {
             PracticeContent(module: module, stepIndex: idx)
                 .id(practiceRestartID)
                 .environment(\.learnGate, coordinator.gate)
@@ -152,8 +152,15 @@ struct LearnTenneyPracticeView: View {
         }
         .environment(\.learnPracticeCompleted, coordinator.completed)
 
-        .navigationTitle("Practice")
-        .navigationBarTitleDisplayMode(.inline)
+        Group {
+            if module == .lattice {
+                content
+            } else {
+                content
+                    .navigationTitle("Practice")
+                    .navigationBarTitleDisplayMode(.inline)
+            }
+        }
     }
 }
 
@@ -199,8 +206,6 @@ private struct LatticePracticeHost: View {
             // ✅ Always keep the real sandbox mounted (this is where your UtilityBar comes from)
             ContentView()
                 .environment(\.tenneyPracticeActive, true)
-                .ignoresSafeArea()
-                .toolbar(.hidden, for: .navigationBar)
                 .toolbar(.hidden, for: .tabBar)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
