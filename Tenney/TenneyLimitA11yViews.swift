@@ -22,35 +22,39 @@ struct TenneyLimitGlyph: View {
             )
             .overlay(innerRingOverlay)
     }
-
     @ViewBuilder
     private var patternOverlay: some View {
-        guard showPattern, let kind = TenneyLimitPattern.kind(for: bucket) else { return }
-
-        switch kind {
-        case .stroke:
-            LimitPatternShape(bucket: bucket)
-                .stroke(stroke.opacity(0.65), lineWidth: max(0.8, strokeWidth * 0.6))
-                .clipShape(LimitShape(bucket: bucket))
-        case .dots:
-            LimitPatternShape(bucket: bucket)
-                .fill(stroke.opacity(0.65))
-                .clipShape(LimitShape(bucket: bucket))
+        if showPattern, let kind = TenneyLimitPattern.kind(for: bucket) {
+            switch kind {
+            case .stroke:
+                LimitPatternShape(bucket: bucket)
+                    .stroke(stroke.opacity(0.65), lineWidth: max(0.8, strokeWidth * 0.6))
+                    .clipShape(LimitShape(bucket: bucket))
+            case .dots:
+                LimitPatternShape(bucket: bucket)
+                    .fill(stroke.opacity(0.65))
+                    .clipShape(LimitShape(bucket: bucket))
+            }
+        } else {
+            EmptyView()
         }
     }
 
+
     @ViewBuilder
     private var innerRingOverlay: some View {
-        guard showPattern, bucket.rawValue >= TenneyLimitBucket.limit17.rawValue else { return }
-
-        LimitShape(bucket: bucket)
-            .stroke(stroke.opacity(0.75), lineWidth: max(1.2, strokeWidth))
-            .overlay(
-                LimitShape(bucket: bucket)
-                    .scaleEffect(0.62)
-                    .fill(fill.opacity(0.35))
-            )
-            .clipShape(LimitShape(bucket: bucket))
+        if showPattern, bucket.rawValue >= TenneyLimitBucket.limit17.rawValue {
+            LimitShape(bucket: bucket)
+                .stroke(stroke.opacity(0.75), lineWidth: max(1.2, strokeWidth))
+                .overlay(
+                    LimitShape(bucket: bucket)
+                        .fill(fill.opacity(0.35))
+                        .scaleEffect(0.62)
+                )
+                .clipShape(LimitShape(bucket: bucket))
+        } else {
+            EmptyView()
+        }
     }
 }
 
