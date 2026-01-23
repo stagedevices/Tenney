@@ -21,13 +21,13 @@ struct LockFieldPill: View {
         var maxWidth: CGFloat {
 #if os(macOS) || targetEnvironment(macCatalyst)
             switch self {
-            case .compact: return 220
-            case .large: return 320
+            case .compact: return 160
+            case .large: return 160
             }
 #else
             switch self {
-            case .compact: return 190
-            case .large: return 280
+            case .compact: return 120
+            case .large: return 120
             }
 #endif
         }
@@ -35,35 +35,35 @@ struct LockFieldPill: View {
         var font: Font {
             switch self {
             case .compact: return .footnote.weight(.semibold)
-            case .large: return .title3.weight(.semibold)
+            case .large: return .footnote.weight(.semibold)
             }
         }
 
         var iconFont: Font {
             switch self {
             case .compact: return .footnote.weight(.semibold)
-            case .large: return .title3.weight(.semibold)
+            case .large: return .footnote.weight(.semibold)
             }
         }
 
         var padding: EdgeInsets {
             switch self {
             case .compact: return EdgeInsets(top: 5, leading: 8, bottom: 5, trailing: 8)
-            case .large: return EdgeInsets(top: 10, leading: 14, bottom: 10, trailing: 14)
+            case .large: return EdgeInsets(top: 5, leading: 8, bottom: 5, trailing: 8)
             }
         }
 
         var minHeight: CGFloat {
             switch self {
             case .compact: return 34
-            case .large: return 52
+            case .large: return 34
             }
         }
 
         var caretHeight: CGFloat {
             switch self {
             case .compact: return 16
-            case .large: return 22
+            case .large: return 16
             }
         }
     }
@@ -87,8 +87,9 @@ struct LockFieldPill: View {
         isLocked: Bool,
         displayText: String?,
         tint: Color,
-        placeholderShort: String = "Lock ratio",
-        placeholderLong: String = "Ratio (e.g. 5/4)",
+        // lock target pill
+        placeholderShort: String = "",
+        placeholderLong: String = "",
         matchedGeometry: LockFieldMatchedGeometry? = nil,
         isExpanded: Bool = false,
         action: (() -> Void)? = nil
