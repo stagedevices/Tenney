@@ -2006,6 +2006,9 @@ private struct UtilityBar: View {
     private var rootValueText: some View {
         Text(String(format: "%.1f", app.rootHz))
             .font(.footnote.monospacedDigit().weight(.semibold))
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+            .allowsTightening(true)
             .contentTransition(.numericText())
     }
 
@@ -2078,10 +2081,17 @@ private struct UtilityBar: View {
                 }
             }
 
-            // Compact: value only
-            rootValueTextMaybeHero()
+            // Compact: value + tonic
+            HStack(spacing: 3) {
+                rootValueTextMaybeHero()
+                tonicNameLabel
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
         }
         .lineLimit(1)
+        .minimumScaleFactor(0.8)
+        .allowsTightening(true)
     }
 
     private var tonicNameLabel: some View {
@@ -2092,9 +2102,10 @@ private struct UtilityBar: View {
             noteNameA4Hz: noteNameA4Hz,
             accidentalPreferenceRaw: accidentalPreferenceRaw
         ))
-        .frame(width: 34, alignment: .center)
+        .frame(minWidth: 34, alignment: .center)
         .lineLimit(1)
         .minimumScaleFactor(0.7)
+        .allowsTightening(true)
     }
 
 
@@ -2442,24 +2453,29 @@ private struct RootCardCompact: View {
                     Button {
                         showSheet = true
                     } label: {
+                        let tonicDisplayName = currentTonicDisplayName(
+                            modeRaw: tonicNameModeRaw,
+                            manualE3: tonicE3,
+                            rootHz: model.rootHz,
+                            noteNameA4Hz: noteNameA4Hz,
+                            accidentalPreferenceRaw: accidentalPreferenceRaw
+                        )
                         HStack(spacing: 6) {
                             Image(systemName: "tuningfork")
                                 .imageScale(.medium)
                             Text(String(format: "%.1f", model.rootHz))
                                 .font(.headline.monospacedDigit())
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.75)
+                                .allowsTightening(true)
                                 .matchedGeometryEffect(id: "rootValue", in: ns)  // ← hero
-                            Text(currentTonicDisplayName(
-                                modeRaw: tonicNameModeRaw,
-                                manualE3: tonicE3,
-                                rootHz: model.rootHz,
-                                noteNameA4Hz: noteNameA4Hz,
-                                accidentalPreferenceRaw: accidentalPreferenceRaw
-                            ))
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 34, alignment: .center)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
+                            Text(tonicDisplayName)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .frame(minWidth: 34, alignment: .center)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                                .allowsTightening(true)
                         }
                         .padding(.horizontal, 10).padding(.vertical, 6)
                         .background(.thinMaterial, in: Capsule())
