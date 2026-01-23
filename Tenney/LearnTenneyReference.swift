@@ -155,12 +155,12 @@ struct LearnTenneyReferenceListView: View {
                     focus: .builderPads
                 ),
                 .init(
-                    name: "Octave stepping",
-                    location: "Pad inspector / octave controls",
+                    name: "Add root",
+                    location: "Builder toolbar",
                     gesture: "Tap",
-                    short: "Moves a pad up/down octaves without changing ratio identity.",
-                    long: "Octave stepping is register control. Use it to place a scale into a playable range without rebuilding the set.",
-                    focus: .builderOctaveStepping
+                    short: "Adds the 1/1 anchor for your scale.",
+                    long: "Root (1/1) defines the reference for your Builder ratios. Add it to complete the scale and make exports behave as expected.",
+                    focus: .builderAddRoot
                 ),
                 .init(
                     name: "Export",
@@ -228,4 +228,3 @@ private struct LearnTenneyReferenceDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 }
-
