@@ -139,18 +139,18 @@ enum LearnStepFactory {
                     validate: { if case .builderPadTriggered = $0 { return true } else { return false } }
                 ),
                 LearnStep(
-                    title: "Add root",
-                    instruction: "Builder needs a 1/1 root to anchor your scale.",
+                    title: "Add root (1/1)",
+                    instruction: "Root is content you add—once it’s in the set, it becomes 1/1 on the surface.",
                     tryIt: "Add the root (1/1) to your Builder content.",
                     gate: .init(allowedTargets: ["builder_add_root"], isActive: true),
                     validate: { $0 == .builderRootAdded }
                 ),
                 LearnStep(
-                    title: "Export",
-                    instruction: "Export produces shareable artifacts that reflect the scale you built.",
-                    tryIt: "Open Export.",
-                    gate: .init(allowedTargets: ["builder_export"], isActive: true),
-                    validate: { $0 == .builderExportOpened }
+                    title: "Play 1/1",
+                    instruction: "Tap the 1/1 pad to hear the root anchor you just added.",
+                    tryIt: "Play the 1/1 pad.",
+                    gate: .init(allowedTargets: ["builder_pad"], isActive: true),
+                    validate: { $0 == .builderRootPlayed }
                 ),
                 LearnStep(
                     title: "Oscilloscope",

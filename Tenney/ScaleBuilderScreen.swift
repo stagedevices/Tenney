@@ -25,6 +25,12 @@ struct ScaleBuilderScreen: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.tenneyTheme) private var theme
+    @Environment(\.tenneyPracticeActive) private var practiceActive
+    @Environment(\.learnPracticeCompleted) private var learnPracticeCompleted
+
+    private var learnPracticeLocked: Bool {
+        practiceActive && !learnPracticeCompleted
+    }
 
     private func finishBuilder() {
         persistBuilderDraftToSession(reason: "done")
@@ -532,6 +538,8 @@ struct ScaleBuilderScreen: View {
                 saveButton
                 doneButton
             }
+            .allowsHitTesting(!learnPracticeLocked)
+            .opacity(learnPracticeLocked ? 0.5 : 1.0)
             .padding(.horizontal, 20)
             .padding(.top, 20) // extra breathing room from the detent edge
 
@@ -738,6 +746,8 @@ struct ScaleBuilderScreen: View {
                 Spacer()
                 
                 Button("Cancel") { dismiss() }
+                    .disabled(learnPracticeLocked)
+                    .opacity(learnPracticeLocked ? 0.5 : 1.0)
             }
             .padding(.top, 4)
         }
@@ -784,9 +794,13 @@ struct ScaleBuilderScreen: View {
                 let _ = oct
             
             Button {
+                let isRootPlayed = !latched.contains(idx) && cn == 1 && cd == 1 && adjusted.octave == 0
                 toggleLatch(idx: idx, ratio: r)
                 selectedPad = idx
                 LearnEventBus.shared.send(.builderPadTriggered(idx))
+                if isRootPlayed {
+                    LearnEventBus.shared.send(.builderRootPlayed)
+                }
             } label: {
                 HStack(spacing: 6) {
                     Text("\(cn)/\(cd)")

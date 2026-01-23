@@ -12,9 +12,18 @@ private struct TenneyPracticeActiveKey: EnvironmentKey {
     static let defaultValue: Bool = false
 }
 
+private struct LearnPracticeCompletedKey: EnvironmentKey {
+    static let defaultValue: Bool = false
+}
+
 extension EnvironmentValues {
     var tenneyPracticeActive: Bool {
         get { self[TenneyPracticeActiveKey.self] }
         set { self[TenneyPracticeActiveKey.self] = newValue }
+    }
+
+    var learnPracticeCompleted: Bool {
+        get { self[LearnPracticeCompletedKey.self] }
+        set { self[LearnPracticeCompletedKey.self] = newValue }
     }
 }

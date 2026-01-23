@@ -29,7 +29,7 @@ enum LearnTenneyModule: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .lattice: return "Selection, limits, axis shift, and auditioning"
         case .tuner:   return "Views, locks, confidence, limits, and stage mode"
-        case .builder: return "Pads, exporting, and the oscilloscope"
+        case .builder: return "Pads, root, and the oscilloscope"
         }
     }
 
@@ -102,4 +102,3 @@ struct LearnTenneyHubView: View {
         }
     }
 }
-

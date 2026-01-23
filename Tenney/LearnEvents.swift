@@ -42,6 +42,7 @@ enum LearnEvent: Equatable, Sendable {
     case builderSelectionChanged(Int)
     case builderSelectionCleared
     case builderRootAdded
+    case builderRootPlayed
     case builderExportOpened
     case builderOscilloscopeObserved
 

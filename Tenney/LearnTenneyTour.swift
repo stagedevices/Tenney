@@ -229,12 +229,12 @@ struct LearnTenneyTourView: View {
                     title: "Builder = performance surface",
                     bullets: [
                         "Pads are playable triggers for your scale-in-progress.",
-                        "Builder is where you collect, order, and export a tuning vocabulary."
+                        "Builder is where you collect and order a tuning vocabulary."
                     ],
                     tryIt: "Tap a few pads to hear how the surface behaves as an instrument."
                 ),
                 .init(
-                    title: "Add root",
+                    title: "Add root (1/1)",
                     bullets: [
                         "Root (1/1) anchors the ratios you’ve collected.",
                         "Adding it makes the Builder content a complete scale."
@@ -242,12 +242,12 @@ struct LearnTenneyTourView: View {
                     tryIt: "Add the root so 1/1 is part of the set."
                 ),
                 .init(
-                    title: "Exporting",
+                    title: "Play 1/1",
                     bullets: [
-                        "Export produces shareable artifacts (formats depend on your export settings).",
-                        "Exports should reflect the scale as you built it—not a generic preset."
+                        "Once you add root, 1/1 is available as a pad.",
+                        "Play 1/1 to hear the anchor before exploring other ratios."
                     ],
-                    tryIt: "Open the export UI and inspect what will be included."
+                    tryIt: "Tap the 1/1 pad to hear the root anchor."
                 ),
                 .init(
                     title: "Oscilloscope (visual feedback)",

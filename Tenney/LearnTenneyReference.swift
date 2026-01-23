@@ -155,20 +155,12 @@ struct LearnTenneyReferenceListView: View {
                     focus: .builderPads
                 ),
                 .init(
-                    name: "Add root",
+                    name: "Add root (1/1)",
                     location: "Builder toolbar",
                     gesture: "Tap",
                     short: "Adds the 1/1 anchor for your scale.",
-                    long: "Root (1/1) defines the reference for your Builder ratios. Add it to complete the scale and make exports behave as expected.",
+                    long: "Root (1/1) defines the reference for your Builder ratios. Add it so 1/1 appears as a playable pad.",
                     focus: .builderAddRoot
-                ),
-                .init(
-                    name: "Export",
-                    location: "Builder toolbar",
-                    gesture: "Tap",
-                    short: "Creates shareable scale artifacts.",
-                    long: "Export reflects what you built: ordering, root context, and current settings. Use it to move a scale into other tools or workflows.",
-                    focus: .builderExport
                 ),
                 .init(
                     name: "Oscilloscope",
