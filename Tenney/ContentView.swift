@@ -2579,13 +2579,15 @@ private struct RootStudioSheet: View {
     @State private var highlight: RootStudioTab? = nil
     @State private var showReference = false
     @State private var referenceEmphasis = false
+    @State private var manualLetter: String = "C"
+    @State private var manualAccidental: Int = 0
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
             ScrollViewReader { proxy in
                     ScrollView {
                         VStack(spacing: 14) {
-                            // Sticky header: hero chip
+                            // Sticky header: tonic summary
                             HStack {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(currentTonicDisplayName(
@@ -2597,6 +2599,9 @@ private struct RootStudioSheet: View {
                                     ))
                                     .font(.title3.weight(.semibold))
                                     HStack(spacing: 4) {
+                                        Image(systemName: "tuningfork")
+                                            .imageScale(.small)
+                                            .foregroundStyle(.secondary)
                                         Text(String(format: "%.1f", model.rootHz))
                                             .font(.footnote.monospacedDigit().weight(.semibold))
                                             .matchedGeometryEffect(id: "rootValue", in: ns)
@@ -2644,6 +2649,7 @@ private struct RootStudioSheet: View {
         }
         .onAppear {
             input = String(format: "%.1f", model.rootHz)
+            syncManualFromStored()
         }
         .onReceive(NotificationCenter.default.publisher(for: .openRootStudioTab)) { note in
             if let raw = note.object as? String, let t = RootStudioTab(rawValue: raw) { tab = t }
@@ -2652,9 +2658,12 @@ private struct RootStudioSheet: View {
             guard let mode = TonicNameMode(rawValue: newValue) else { return }
             if mode == .manual, let auto = autoSpelling {
                 tonicE3 = auto.e3
+                syncManualFromStored()
             }
             pulseReferenceHelp()
         }
+        .onChange(of: manualLetter) { _, _ in updateManualE3IfNeeded() }
+        .onChange(of: manualAccidental) { _, _ in updateManualE3IfNeeded() }
         .sheet(isPresented: $showReference) {
             NavigationStack {
                 LearnTenneyReferenceTopicView(topic: .rootTonicConcert)
@@ -2782,7 +2791,11 @@ private struct RootStudioSheet: View {
         TonicSpelling.from(rootHz: model.rootHz, noteNameA4Hz: noteNameA4Hz, preference: preference)
     }
 
-    private var manualCandidates: [TonicSpelling] {
+    private var manualSpelling: TonicSpelling {
+        TonicSpelling.from(letter: manualLetter, accidental: manualAccidental)
+    }
+
+    private var suggestedSpellings: [TonicSpelling] {
         let sharp = TonicSpelling.from(rootHz: model.rootHz, noteNameA4Hz: noteNameA4Hz, preference: .preferSharps)
         let flat = TonicSpelling.from(rootHz: model.rootHz, noteNameA4Hz: noteNameA4Hz, preference: .preferFlats)
         return [sharp, flat].compactMap { $0 }.uniquedBy { $0.displayText }
@@ -2853,29 +2866,62 @@ private struct RootStudioSheet: View {
                 }
                 .pickerStyle(.segmented)
 
-                if tonicMode == .auto {
+                if let autoSpelling {
                     HStack {
-                        Text("Current").font(.caption).foregroundStyle(.secondary)
+                        Text("Current")
                         Spacer()
-                        Text(autoSpelling?.displayText ?? "—")
+                        Text(autoSpelling.displayText)
                             .font(.headline.monospaced())
                     }
-                    Text("Derived from Root Hz.")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                } else {
-                    let selections = manualCandidates.isEmpty
-                        ? [TonicSpelling(e3: tonicE3)]
-                        : manualCandidates
-                    HStack(spacing: 10) {
-                        ForEach(selections, id: \.self) { spelling in
-                            GlassSelectTile(title: spelling.displayText, isOn: tonicE3 == spelling.e3) {
+                }
+
+                if !suggestedSpellings.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Suggested").font(.caption).foregroundStyle(.secondary)
+                        ForEach(suggestedSpellings, id: \.self) { spelling in
+                            Button {
                                 tonicE3 = spelling.e3
+                                tonicNameModeRaw = TonicNameMode.manual.rawValue
+                                syncManualFromStored()
+                            } label: {
+                                HStack {
+                                    Text(spelling.displayText)
+                                    if spelling.displayText == autoSpelling?.displayText {
+                                        Spacer()
+                                        Text("Default")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                             }
-                            .accessibilityLabel("Name tonic as \(spelling.displayText)")
+                            .buttonStyle(.plain)
                         }
                     }
                 }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Manual").font(.caption).foregroundStyle(.secondary)
+                    Picker("Letter", selection: $manualLetter) {
+                        ForEach(["C", "D", "E", "F", "G", "A", "B"], id: \.self) { letter in
+                            Text(letter).tag(letter)
+                        }
+                    }
+                    Picker("Accidental", selection: $manualAccidental) {
+                        ForEach(-2...2, id: \.self) { value in
+                            Text(accidentalLabel(value)).tag(value)
+                        }
+                    }
+                    HStack {
+                        Text("Preview")
+                        Spacer()
+                        Text(manualSpelling.displayText)
+                            .font(.headline.monospaced())
+                    }
+                }
+                .disabled(tonicMode != .manual)
 
                 Text("Tonic is the name of 1/1 (used for spelling intervals).")
                     .font(.caption2)
@@ -2932,6 +2978,23 @@ private struct RootStudioSheet: View {
                 referenceEmphasis = false
             }
         }
+
+    private func syncManualFromStored() {
+        let spelling = TonicSpelling(e3: tonicE3)
+        manualLetter = spelling.letter
+        manualAccidental = spelling.accidentalCount
+    }
+
+    private func updateManualE3IfNeeded() {
+        guard tonicMode == .manual else { return }
+        tonicE3 = manualSpelling.e3
+    }
+
+    private func accidentalLabel(_ value: Int) -> String {
+        if value == 0 { return "♮" }
+        if value > 0 { return String(repeating: "♯", count: value) }
+        return String(repeating: "♭", count: abs(value))
+    }
 }
 
 // MARK: History / Favorites persistence (simple arrays)
