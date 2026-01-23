@@ -153,6 +153,20 @@ private struct PracticeContent: View {
 
 private struct LatticePracticeHost: View {
     let stepIndex: Int
+    @EnvironmentObject private var latticeStore: LatticeStore
+    @State private var practiceSnapshot: TenneyPracticeSnapshot? = nil
+    @State private var didSeed = false
+    @State private var baselineVisiblePrimes: Set<Int> = []
+
+    private var overlayPrimes: [Int] {
+        PrimeConfig.primes.filter { $0 != 2 && $0 != 3 && $0 != 5 }
+    }
+
+    private func applyOverlayPrimeState(_ visible: Set<Int>) {
+        for p in overlayPrimes {
+            latticeStore.setPrimeVisible(p, visible.contains(p), animated: false)
+        }
+    }
 
     var body: some View {
         ZStack {
@@ -168,6 +182,20 @@ private struct LatticePracticeHost: View {
             latticeStepOverlay
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .zIndex(10)
+        }
+        .onAppear {
+            guard !didSeed else { return }
+            didSeed = true
+            baselineVisiblePrimes = latticeStore.visiblePrimes
+            let baseline = TenneyPracticeSnapshot()
+            practiceSnapshot = baseline.trackingNewKeys(since: baseline)
+            UserDefaults.standard.set(false, forKey: SettingsKeys.latticeRememberLastView)
+            applyOverlayPrimeState(Set<Int>())
+        }
+        .onDisappear {
+            guard didSeed else { return }
+            applyOverlayPrimeState(baselineVisiblePrimes)
+            practiceSnapshot?.restore()
         }
     }
 
