@@ -306,7 +306,7 @@ struct LockPill: View {
         let trimmed = displayText?.trimmingCharacters(in: .whitespacesAndNewlines)
         let ratio = (trimmed?.isEmpty == false) ? trimmed : nil
         let text = ratio ?? "Lock ratio"
-        let color: Color = ratio == nil ? .secondary : .primary
+        let color: Color = isLocked ? .primary : .secondary
 
         return ScrollView(.horizontal, showsIndicators: false) {
             Text(text)

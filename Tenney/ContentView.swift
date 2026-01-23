@@ -768,11 +768,6 @@ extension Notification.Name {
         return "\(lockNumeratorText)/\(lockDenominatorText)"
     }
 
-    private var lockLabelText: String {
-        guard let locked = store.lockedTarget else { return "" }
-        return "Locked to \(locked.num)/\(locked.den)"
-    }
-
     private var lockPillText: String? {
         if let locked = store.lockedTarget {
             return tunerDisplayRatioString(locked)
@@ -1530,14 +1525,6 @@ extension Notification.Name {
                     // 12 o’clock: Ratio + prime badges
                     let label = ratioDisplayText
                     ratioReadoutRow(label: label, hejiLabel: hejiLabelText)
-                    if store.lockedTarget != nil {
-                        Text(lockLabelText)
-                            .font(.footnote.weight(.semibold).monospacedDigit())
-                            .foregroundStyle(theme.isDark ? Color.white.opacity(0.85) : Color.primary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .transition(.opacity)
-                    }
-
                     // 3 & 6 o’clock: ET cents and JI delta (mode-aware)
                     HStack(spacing: 12) {
                         HStack(spacing: 12) {
@@ -1743,15 +1730,6 @@ extension Notification.Name {
                     )
                     .onChange(of: model.display.ratioText) { txt in
                         currentNearest = ratioResultFromText(txt)
-                    }
-
-                    if store.lockedTarget != nil {
-                        Text(lockLabelText)
-                            .font(.footnote.weight(.semibold).monospacedDigit())
-                            .foregroundStyle(theme.isDark ? Color.white.opacity(0.85) : Color.primary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.leading, 8)
-                            .transition(.opacity)
                     }
 
 // Prime limit chips (still “under” the dial visually),
