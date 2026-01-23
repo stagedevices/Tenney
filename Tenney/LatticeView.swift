@@ -2199,6 +2199,7 @@ struct LatticeView: View {
                 .presentationDetents([.height(300), .large])
                 .presentationDragIndicator(.hidden) // we provide our own (matched-geometry) handle
                 .presentationBackground(.ultraThinMaterial)
+                .tenneySheetSizing()
             }
         }
         

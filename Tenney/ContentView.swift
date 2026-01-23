@@ -283,6 +283,7 @@ private let libraryStore = ScaleLibraryStore.shared
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
             .presentationBackground(.ultraThinMaterial)
+            .tenneySheetSizing()
         }
 
         .onReceive(NotificationCenter.default.publisher(for: .venueCalibrated)) { note in
@@ -548,6 +549,7 @@ private let libraryStore = ScaleLibraryStore.shared
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
                 .presentationBackground(.ultraThinMaterial)
+                .tenneySheetSizing()
         }
     }
 
@@ -601,6 +603,7 @@ private let libraryStore = ScaleLibraryStore.shared
             .onDisappear {
                 requestedSettingsCategory = nil
             }
+            .tenneySheetSizing()
     }
 
     private var scaleLibraryDetent: some View {
@@ -610,6 +613,7 @@ private let libraryStore = ScaleLibraryStore.shared
             .presentationDragIndicator(.visible)
             .presentationBackground(.ultraThinMaterial)
             .onAppear { app.setMicActive(false) }
+            .tenneySheetSizing()
     }
     private var rootStudioDetent: some View {
         RootStudioSheet(tab: $rootStudioTab, ns: rootNS)
@@ -617,6 +621,7 @@ private let libraryStore = ScaleLibraryStore.shared
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
             .presentationBackground(.ultraThinMaterial)
+            .tenneySheetSizing()
     }
 
 #if targetEnvironment(macCatalyst)

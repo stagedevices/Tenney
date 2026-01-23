@@ -247,6 +247,7 @@ struct ScaleLibrarySheet: View {
                 )
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
+                .tenneySheetSizing()
             }
             .sheet(isPresented: $showFilterSheet) {
                 LibraryFilterSheet(
@@ -256,6 +257,7 @@ struct ScaleLibrarySheet: View {
                     onDone: { showFilterSheet = false }
                 )
                 .presentationDetents([.medium, .large])
+                .tenneySheetSizing()
             }
         }
         .overlay(alignment: .topTrailing) {
@@ -1291,9 +1293,11 @@ struct ScaleActionsSheet: View {
                 .padding(.bottom, 24)
             }
             .presentationDetents([.medium, .large])
+            .tenneySheetSizing()
         }
         .sheet(isPresented: $isPresentingShareSheet) {
             ActivityView(activityItems: exportURLs)
+                .tenneySheetSizing()
         }
 
         .sheet(isPresented: $showTagsSheet) {
@@ -1315,6 +1319,7 @@ struct ScaleActionsSheet: View {
             .presentationDetents([.medium, .large], selection: $tagsDetent)
             .presentationDragIndicator(tagsEditorPresented ? .hidden : .hidden)
             .interactiveDismissDisabled(tagsEditorPresented)
+            .tenneySheetSizing()
         }
         .onChange(of: playbackMode) { newMode in
             if newMode == .drone {

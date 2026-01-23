@@ -822,6 +822,7 @@ struct StudioConsoleView: View {
                         }
                     }
                     .presentationDetents([.medium, .large])
+                    .tenneySheetSizing()
                 }
 
                 Text("Presets store enabled cards and order. Collapse state and rail width are per-window.")
@@ -2789,6 +2790,7 @@ struct StudioConsoleView: View {
                     markWhatsNewSeen()
                 }
             )
+            .tenneySheetSizing()
         }
         .background(
             SettingsChangeSinks(
@@ -2901,6 +2903,7 @@ struct StudioConsoleView: View {
                 NavigationStack {
                     HejiGalleryView()
                 }
+                .tenneySheetSizing()
             }
 #endif
 
