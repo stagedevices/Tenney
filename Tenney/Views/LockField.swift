@@ -78,7 +78,6 @@ struct LockFieldPill: View {
     let isExpanded: Bool
     let action: (() -> Void)?
 
-    @Environment(\.tenneyTheme) private var theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var caretPulse = false
 
