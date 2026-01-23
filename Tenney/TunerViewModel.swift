@@ -52,12 +52,15 @@ final class TunerViewModel: ObservableObject {
     @Published var lastHzValue: Double = 0
     @Published var nearestTarget: RatioResult? = nil
     @Published var nearestCentsValue: Double = 0
+    @Published var effectiveTarget: RatioResult? = nil
+    @Published var lockedLabel: String = ""
     @Published var confidenceValue: Double = 0
     @Published var isFarValue: Bool = false
 
     @Published var lockedTarget: RatioResult? = nil {
         didSet {
             LearnEventBus.shared.send(.tunerLockToggled(lockedTarget != nil))
+            lockedLabel = lockedTarget.map { "Locked to \(tunerDisplayRatioString($0))" } ?? ""
             let msg = lockedTarget == nil ? "unlock target" : "lock target"
             DiagnosticsCenter.shared.event(
                 category: "tuner",
@@ -183,14 +186,19 @@ final class TunerViewModel: ObservableObject {
             }
         }
 
-        nearestTarget = best.target
+        let huntingTarget = best.target
+        let currentEffectiveTarget = lockedTarget ?? huntingTarget
+        let centsForUI = signedCents(actualHz: hz, rootHz: rootHz, target: currentEffectiveTarget)
+
+        nearestTarget = huntingTarget
         nearestCentsValue = best.cents
+        effectiveTarget = currentEffectiveTarget
 
         // “too far” threshold (post-selection)
-        isFarValue = abs(best.cents) > 120
+        isFarValue = abs(centsForUI) > 120
 
-        displayRatio = tunerDisplayRatioString(best.target)
-        centsText = String(format: "%+0.1f cents", best.cents)
+        displayRatio = tunerDisplayRatioString(currentEffectiveTarget)
+        centsText = String(format: "%+0.1f cents", centsForUI)
         hzText = String(format: "%0.2f Hz", hz)
         altRatios = alts.map { tunerDisplayRatioString($0) }
 
@@ -203,9 +211,23 @@ final class TunerViewModel: ObservableObject {
                 mode: strictness.rawValue,
                 viewStyle: UserDefaults.standard.string(forKey: SettingsKeys.tunerViewStyle) ?? "unknown",
                 locked: lockedTarget != nil,
-                target: tunerDisplayRatioString(best.target)
+                target: tunerDisplayRatioString(huntingTarget)
             )
         }
+    }
+
+    func lockTarget(_ target: RatioResult) {
+        lockedTarget = target
+    }
+
+    func unlockTarget() {
+        lockedTarget = nil
+    }
+
+    func setLockedTargetFromText(_ s: String, octave: Int = 0) -> Bool {
+        guard let pq = parseRatioTextPQ(s) else { return false }
+        lockedTarget = RatioResult(num: pq.p, den: pq.q, octave: octave)
+        return true
     }
 
 }

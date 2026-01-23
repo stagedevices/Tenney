@@ -83,7 +83,6 @@ struct PhaseScopeTunerView: View {
     }
 
     var body: some View {
-        let target = store.lockedTarget ?? parseRatioText(model.display.ratioText)
         let rootHz = model.effectiveRootHz
         let conf = model.display.confidence
         let cents: Double = {
@@ -348,9 +347,4 @@ private struct InTuneJewel: View {
             )
             .accessibilityHidden(true)
         }
-    }
-fileprivate func parseRatioText(_ s: String) -> RatioResult? {
-    let parts = s.split(separator: "/")
-    guard parts.count == 2, let n = Int(parts[0]), let d = Int(parts[1]) else { return nil }
-    return RatioResult(num: n, den: d, octave: 0)
     }
