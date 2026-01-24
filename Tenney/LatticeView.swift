@@ -4691,13 +4691,14 @@ struct LatticeView: View {
             let hzAdj = baseHz * pow(2.0, Double(infoOctaveOffset))
             let pref = AccidentalPreference(rawValue: accidentalPreferenceRaw) ?? .auto
             let mode = TonicNameMode(rawValue: tonicNameModeRaw) ?? .auto
-            let resolvedTonicE3 = TonicSpelling.resolvedTonicE3(
-                mode: mode,
+            let tonic = effectiveTonicSpelling(
+                modeRaw: tonicNameModeRaw,
                 manualE3: tonicE3,
                 rootHz: app.rootHz,
                 noteNameA4Hz: noteNameA4Hz,
-                preference: pref
-            )
+                accidentalPreferenceRaw: accidentalPreferenceRaw
+            ) ?? TonicSpelling(e3: tonicE3)
+            let hejiPreference = (mode == .auto) ? pref : .auto
             let helmholtzPref = helmholtzPreference(from: pref)
             let noteLabel = NotationFormatter.closestHelmholtzLabel(
                 freqHz: hzAdj,
@@ -4715,11 +4716,11 @@ struct LatticeView: View {
                 noteNameA4Hz: noteNameA4Hz,
                 rootHz: app.rootHz,
                 rootRatio: nil,
-                preferred: pref,
+                preferred: hejiPreference,
                 maxPrime: max(3, app.primeLimit),
                 allowApproximation: false,
                 scaleDegreeHint: ratioRef,
-                tonicE3: resolvedTonicE3
+                tonicE3: tonic.e3
             )
             
             // Octave step availability (audible range)
@@ -4978,17 +4979,27 @@ struct LatticeView: View {
 
     private func hejiTextLabel(p: Int, q: Int, octave: Int, rootHz: Double) -> String {
         let pref = AccidentalPreference(rawValue: accidentalPreferenceRaw) ?? .auto
-        let anchor = resolveRootAnchor(rootHz: rootHz, a4Hz: noteNameA4Hz, preference: pref)
-        let context = PitchContext(
-            a4Hz: noteNameA4Hz,
+        let mode = TonicNameMode(rawValue: tonicNameModeRaw) ?? .auto
+        let tonic = effectiveTonicSpelling(
+            modeRaw: tonicNameModeRaw,
+            manualE3: tonicE3,
             rootHz: rootHz,
-            rootAnchor: anchor,
+            noteNameA4Hz: noteNameA4Hz,
+            accidentalPreferenceRaw: accidentalPreferenceRaw
+        ) ?? TonicSpelling(e3: tonicE3)
+        let ratioRef = RatioRef(p: p, q: q, octave: octave, monzo: [:])
+        return spellHejiRatioDisplay(
+            ratio: ratioRef,
+            tonic: tonic,
+            rootHz: rootHz,
+            noteNameA4Hz: noteNameA4Hz,
+            concertA4Hz: concertA4Hz,
             accidentalPreference: pref,
-            maxPrime: max(3, app.primeLimit)
+            maxPrime: max(3, app.primeLimit),
+            allowApproximation: false,
+            showCents: false,
+            applyAccidentalPreference: mode == .auto
         )
-        let (adjP, adjQ) = applyOctaveToPQ(p: p, q: q, octave: octave)
-        let spelling = spellRatio(p: adjP, q: adjQ, context: context)
-        return spelling.labelText
     }
 
 #if os(macOS) || targetEnvironment(macCatalyst)

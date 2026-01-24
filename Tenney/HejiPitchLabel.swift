@@ -47,6 +47,24 @@ struct HejiPitchLabel: View {
         return spellRatio(p: adjP, q: adjQ, context: ratioContext)
     }
 
+    private var ratioTextLabel: String? {
+        guard case .ratio(let ratio) = pitch else { return nil }
+        guard let tonicE3 = context.tonicE3 else { return ratioSpelling?.labelText }
+        let tonic = TonicSpelling(e3: tonicE3)
+        return spellHejiRatioDisplay(
+            ratio: ratio,
+            tonic: tonic,
+            rootHz: context.rootHz,
+            noteNameA4Hz: context.noteNameA4Hz,
+            concertA4Hz: context.concertA4Hz,
+            accidentalPreference: context.preferred,
+            maxPrime: context.maxPrime,
+            allowApproximation: context.allowApproximation,
+            showCents: showCentsWhenApproximate,
+            applyAccidentalPreference: true
+        )
+    }
+
     var body: some View {
         let unsupported = ratioSpelling?.unsupportedPrimes ?? spelling.unsupportedPrimes
         VStack(spacing: mode == .combined ? 4 : 0) {
@@ -57,8 +75,8 @@ struct HejiPitchLabel: View {
             }
 
             if mode == .text || mode == .combined {
-                if let ratioSpelling {
-                    Text(ratioSpelling.labelText)
+                if let ratioTextLabel {
+                    Text(ratioTextLabel)
                         .font(.headline.monospaced())
                 } else {
                     Text(HejiNotation.textLabel(spelling, showCents: showCentsWhenApproximate))
