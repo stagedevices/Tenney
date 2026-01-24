@@ -18,7 +18,7 @@ func spellHejiRatioDisplay(
     allowApproximation: Bool,
     showCents: Bool = false,
     applyAccidentalPreference: Bool
-) -> String {
+) -> AttributedString {
     let preference = applyAccidentalPreference ? accidentalPreference : .auto
     let context = HejiContext(
         concertA4Hz: concertA4Hz,
@@ -31,5 +31,12 @@ func spellHejiRatioDisplay(
         scaleDegreeHint: ratio,
         tonicE3: tonic.e3
     )
-    return HejiNotation.textLabelString(for: ratio, context: context, showCents: showCents)
+    return HejiNotation.textLabel(
+        for: ratio,
+        context: context,
+        showCents: showCents,
+        textStyle: .footnote,
+        weight: .semibold,
+        design: .default
+    )
 }

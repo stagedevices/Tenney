@@ -439,10 +439,8 @@ private struct TonicDegreeIntegrityReferenceView: View {
             ReferenceSection(title: "Worked example") {
                 LearnGlassCard {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Root Hz = 415 · Tonic = G♯ · Ratio = 15/8")
-                            .font(.subheadline.weight(.semibold))
-                        Text("15/8 is a **major 7th** above the tonic. The 7th degree above G♯ must be the letter **F**, so the correct label is **F𝄪**, not “G.”")
-                            .font(.body)
+                        Text(workedExampleHeader())
+                        Text(workedExampleBody())
                     }
                 }
             }
@@ -731,4 +729,38 @@ private struct DiagramArrow: View {
             .foregroundStyle(.secondary)
             .padding(.top, 18)
     }
+}
+
+private func workedExampleHeader() -> AttributedString {
+    let size = Heji2FontRegistry.preferredPointSize(for: .subheadline)
+    var prefix = AttributedString("Root Hz = 415 · Tonic = G")
+    prefix.font = .system(size: size, weight: .semibold, design: .default)
+    let sharpGlyph = Heji2Mapping.shared.glyphsForDiatonicAccidental(1).map(\.string).joined()
+    var sharp = AttributedString(sharpGlyph)
+    sharp.font = Heji2FontRegistry.hejiTextFont(size: size, relativeTo: .subheadline)
+    var suffix = AttributedString(" · Ratio = 15/8")
+    suffix.font = .system(size: size, weight: .semibold, design: .default)
+    return prefix + sharp + suffix
+}
+
+private func workedExampleBody() -> AttributedString {
+    let size = Heji2FontRegistry.preferredPointSize(for: .body)
+    var text = AttributedString("15/8 is a major 7th above the tonic. The 7th degree above G")
+    text.font = .system(size: size, weight: .regular, design: .default)
+
+    let sharpGlyph = Heji2Mapping.shared.glyphsForDiatonicAccidental(1).map(\.string).joined()
+    var sharp = AttributedString(sharpGlyph)
+    sharp.font = Heji2FontRegistry.hejiTextFont(size: size, relativeTo: .body)
+
+    var mid = AttributedString(" must be the letter F, so the correct label is F")
+    mid.font = .system(size: size, weight: .regular, design: .default)
+
+    let doubleSharpGlyph = Heji2Mapping.shared.glyphsForDiatonicAccidental(2).map(\.string).joined()
+    var doubleSharp = AttributedString(doubleSharpGlyph)
+    doubleSharp.font = Heji2FontRegistry.hejiTextFont(size: size, relativeTo: .body)
+
+    var tail = AttributedString(", not “G.”")
+    tail.font = .system(size: size, weight: .regular, design: .default)
+
+    return text + sharp + mid + doubleSharp + tail
 }

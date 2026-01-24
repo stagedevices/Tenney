@@ -36,7 +36,7 @@ struct HejiRatioDisplayTests {
             showCents: false,
             applyAccidentalPreference: false
         )
-        #expect(label == tonic.displayText)
+        #expect(String(label.characters) == tonic.displayText)
     }
 
     @Test func manualTonicSpellsIntervalRelativeToTonic() async throws {
@@ -55,7 +55,6 @@ struct HejiRatioDisplayTests {
         )
         let label = HejiNotation.textLabelString(for: ratio, context: context, showCents: false)
         #expect(label.localizedCaseInsensitiveContains("f"))
-        #expect(label.contains("\u{1D12A}"))
         #expect(!label.localizedCaseInsensitiveContains("g"))
     }
 
@@ -74,8 +73,10 @@ struct HejiRatioDisplayTests {
             tonicE3: tonic.e3
         )
         let label = HejiNotation.textLabelString(for: ratio, context: context, showCents: false)
+        let spelling = HejiNotation.spelling(forRatio: ratio, context: context)
+        let accidental = accidentalString(for: spelling.accidental)
         #expect(label.localizedCaseInsensitiveContains("d"))
-        #expect(label.contains("♯"))
+        #expect(label.hasSuffix(accidental))
     }
 
     @Test func tonicGSharpLabelsStayDistinct() async throws {
@@ -107,9 +108,9 @@ struct HejiRatioDisplayTests {
         #expect(baseLetters[3] != "g")
         #expect(labels[0] == tonic.displayText)
         #expect(labels[1].localizedCaseInsensitiveContains("d"))
-        #expect(labels[1].contains("♯"))
+        #expect(labels[1].hasSuffix(accidentalString(for: HejiNotation.spelling(forRatio: ratios[1], context: context).accidental)))
         #expect(labels[4].localizedCaseInsensitiveContains("f"))
-        #expect(labels[4].contains("\u{1D12A}"))
+        #expect(labels[4].hasSuffix(accidentalString(for: HejiNotation.spelling(forRatio: ratios[4], context: context).accidental)))
     }
 
     @Test func unsupportedPrimeDoesNotCollapseToTonic() async throws {
@@ -152,6 +153,81 @@ struct HejiRatioDisplayTests {
         #expect(label != tonic.displayText)
     }
 
+    @Test func textAccidentalsAppearAfterNoteAndOctave() async throws {
+        let tonic = TonicSpelling.from(letter: "G", accidental: 1)
+        let ratios: [RatioRef] = [
+            RatioRef(p: 3, q: 2, octave: 0, monzo: [:]),
+            RatioRef(p: 5, q: 4, octave: 0, monzo: [:]),
+            RatioRef(p: 7, q: 4, octave: 0, monzo: [:]),
+            RatioRef(p: 11, q: 8, octave: 0, monzo: [:]),
+            RatioRef(p: 13, q: 8, octave: 0, monzo: [:])
+        ]
+        let context = HejiContext(
+            concertA4Hz: 440,
+            noteNameA4Hz: 440,
+            rootHz: 440,
+            rootRatio: nil,
+            preferred: .preferSharps,
+            maxPrime: 13,
+            allowApproximation: false,
+            scaleDegreeHint: nil,
+            tonicE3: tonic.e3
+        )
+        for ratio in ratios {
+            let spelling = HejiNotation.spelling(forRatio: ratio, context: context)
+            let label = HejiNotation.textLabelString(spelling, showCents: false)
+            let accidental = accidentalString(for: spelling.accidental)
+            #expect(!accidental.isEmpty)
+            #expect(label.hasSuffix(accidental))
+        }
+    }
+
+    @Test func textLabelsAvoidForbiddenSymbols() async throws {
+        let context = HejiContext(
+            concertA4Hz: 440,
+            noteNameA4Hz: 440,
+            rootHz: 440,
+            rootRatio: nil,
+            preferred: .auto,
+            maxPrime: 13,
+            allowApproximation: true,
+            scaleDegreeHint: nil,
+            tonicE3: nil
+        )
+        let ratios: [RatioRef] = [
+            RatioRef(p: 1, q: 1, octave: 0, monzo: [:]),
+            RatioRef(p: 3, q: 2, octave: 0, monzo: [:]),
+            RatioRef(p: 5, q: 4, octave: 0, monzo: [:]),
+            RatioRef(p: 7, q: 4, octave: 0, monzo: [:]),
+            RatioRef(p: 11, q: 8, octave: 0, monzo: [:]),
+            RatioRef(p: 13, q: 8, octave: 0, monzo: [:])
+        ]
+        let labels = ratios.map { HejiNotation.textLabelString(for: $0, context: context, showCents: true) }
+        let forbidden: [Character] = ["↑", "↓", "⇑", "⇓", "⤒", "⤓", "♯", "♭", "♮", "≈"]
+        for label in labels {
+            for ch in forbidden {
+                #expect(!label.contains(ch))
+            }
+        }
+    }
+
+    @Test func supportedPrimesIncludeHejiDefaults() async throws {
+        let context = HejiContext(
+            concertA4Hz: 440,
+            noteNameA4Hz: 440,
+            rootHz: 440,
+            rootRatio: nil,
+            preferred: .auto,
+            maxPrime: 13,
+            allowApproximation: false,
+            scaleDegreeHint: nil,
+            tonicE3: nil
+        )
+        let ratio = RatioRef(p: 13, q: 8, octave: 0, monzo: [:])
+        let spelling = HejiNotation.spelling(forRatio: ratio, context: context)
+        #expect(spelling.unsupportedPrimes.isEmpty)
+    }
+
     private func baseLetter(from label: String) -> String? {
         for ch in label.lowercased() {
             if "abcdefg".contains(ch) {
@@ -159,5 +235,12 @@ struct HejiRatioDisplayTests {
             }
         }
         return nil
+    }
+
+    private func accidentalString(for accidental: HejiAccidental) -> String {
+        let mapping = Heji2Mapping.shared
+        let diatonic = mapping.glyphsForDiatonicAccidental(accidental.diatonicAccidental)
+        let microtonal = mapping.glyphsForPrimeComponents(accidental.microtonalComponents)
+        return (diatonic + microtonal).map(\.string).joined()
     }
 }

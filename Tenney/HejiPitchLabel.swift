@@ -57,9 +57,14 @@ struct HejiPitchLabel: View {
             }
 
             if mode == .text || mode == .combined {
-                let label = HejiNotation.textLabelString(spelling, showCents: showCentsWhenApproximate)
-                Text(verbatim: label)
-                    .font(.headline.monospaced())
+                let label = HejiNotation.textLabel(
+                    spelling,
+                    showCents: showCentsWhenApproximate,
+                    textStyle: .headline,
+                    weight: .semibold,
+                    design: .monospaced
+                )
+                Text(label)
             }
 
             if !unsupported.isEmpty {

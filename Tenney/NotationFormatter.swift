@@ -29,21 +29,21 @@ public enum NotationFormatter {
     // MIDI 69 = A4
     private static let a4MIDINote: Double = 69.0
 
-    // Chromatic spelling (letter + accidental). Use ♯ to match typical iOS typography.
-    private static let chromatic: [SpelledETNote] = [
-        ("C", "", 0), ("C", "♯", 0), ("D", "", 0), ("D", "♯", 0),
-        ("E", "", 0), ("F", "", 0), ("F", "♯", 0), ("G", "", 0),
-        ("G", "♯", 0), ("A", "", 0), ("A", "♯", 0), ("B", "", 0)
+    // Chromatic spelling (letter + accidental count).
+    private static let chromatic: [(letter: String, accidentalCount: Int)] = [
+        ("C", 0), ("C", 1), ("D", 0), ("D", 1),
+        ("E", 0), ("F", 0), ("F", 1), ("G", 0),
+        ("G", 1), ("A", 0), ("A", 1), ("B", 0)
     ]
-    private static let chromaticSharps: [SpelledETNote] = [
-        ("C", "", 0), ("C", "♯", 0), ("D", "", 0), ("D", "♯", 0),
-        ("E", "", 0), ("F", "", 0), ("F", "♯", 0), ("G", "", 0),
-        ("G", "♯", 0), ("A", "", 0), ("A", "♯", 0), ("B", "", 0)
+    private static let chromaticSharps: [(letter: String, accidentalCount: Int)] = [
+        ("C", 0), ("C", 1), ("D", 0), ("D", 1),
+        ("E", 0), ("F", 0), ("F", 1), ("G", 0),
+        ("G", 1), ("A", 0), ("A", 1), ("B", 0)
     ]
-    private static let chromaticFlats: [SpelledETNote] = [
-        ("C", "", 0), ("D", "♭", 0), ("D", "", 0), ("E", "♭", 0),
-        ("E", "", 0), ("F", "", 0), ("G", "♭", 0), ("G", "", 0),
-        ("A", "♭", 0), ("A", "", 0), ("B", "♭", 0), ("B", "", 0)
+    private static let chromaticFlats: [(letter: String, accidentalCount: Int)] = [
+        ("C", 0), ("D", -1), ("D", 0), ("E", -1),
+        ("E", 0), ("F", 0), ("G", -1), ("G", 0),
+        ("A", -1), ("A", 0), ("B", -1), ("B", 0)
     ]
 
     // MARK: - Public API
@@ -68,7 +68,7 @@ public enum NotationFormatter {
         let idx = mod12(midi)
         let octave = midi / 12 - 1
         let base = chromatic[idx]
-        return (base.letter, base.accidental, octave)
+        return (base.letter, accidentalGlyph(base.accidentalCount), octave)
     }
 
     /// Cent deviation from the nearest equal-tempered semitone (relative to A4 = a4Hz).
@@ -93,7 +93,7 @@ public enum NotationFormatter {
         let octave = midi / 12 - 1
         let spelling = spelledChromatic(for: idx, preference: preference)
         let helmholtz = helmholtzOctaveMarks(scientificOctave: octave, letter: spelling.letter)
-        return "\(helmholtz.caseAdjustedLetter)\(spelling.accidental)\(helmholtz.marks)"
+        return "\(helmholtz.caseAdjustedLetter)\(helmholtz.marks)\(spelling.accidental)"
     }
 
     /// HEJI-ish text label for ratio tiles / info cards.
@@ -142,10 +142,10 @@ public enum NotationFormatter {
         switch preference {
         case .preferFlats:
             let note = chromaticFlats[idx]
-            return (note.letter, note.accidental)
+            return (note.letter, accidentalGlyph(note.accidentalCount))
         case .preferSharps, .auto:
             let note = chromaticSharps[idx]
-            return (note.letter, note.accidental)
+            return (note.letter, accidentalGlyph(note.accidentalCount))
         }
     }
 

@@ -1140,7 +1140,7 @@ struct ScaleActionsSheet: View {
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
-    private var headerSummary: String {
+    private var headerSummary: AttributedString {
         let pref = AccidentalPreference(rawValue: accidentalPreferenceRaw) ?? .auto
         let mode = TonicNameMode(rawValue: tonicNameModeRaw) ?? .auto
         let resolvedTonicE3 = TonicSpelling.resolvedTonicE3(
@@ -1163,9 +1163,20 @@ struct ScaleActionsSheet: View {
             tonicE3: resolvedTonicE3
         )
         let spelling = HejiNotation.spelling(forRatio: ratioRef, context: context)
-        let rootLabel = String(HejiNotation.textLabel(spelling, showCents: false).characters)
+        let rootLabel = HejiNotation.textLabel(
+            spelling,
+            showCents: false,
+            textStyle: .callout,
+            weight: .regular,
+            design: .default
+        )
         let hzInt = Int(round(currentScale.referenceHz))
-        return "\(currentScale.size) notes · \(currentScale.detectedLimit)-limit · Root: \(rootLabel) (\(hzInt) Hz)"
+        let baseSize = Heji2FontRegistry.preferredPointSize(for: .callout)
+        var prefix = AttributedString("\(currentScale.size) notes · \(currentScale.detectedLimit)-limit · Root: ")
+        prefix.font = .system(size: baseSize, weight: .regular, design: .default)
+        var suffix = AttributedString(" (\(hzInt) Hz)")
+        suffix.font = .system(size: baseSize, weight: .regular, design: .default)
+        return prefix + rootLabel + suffix
     }
 
     private var referenceSummary: String {
@@ -2278,7 +2289,7 @@ private struct OverviewPage: View {
     @FocusState private var titleFocused: Bool
 
     let title: String
-    let headerSummary: String
+    let headerSummary: AttributedString
     let referenceSummary: String
     let tags: [TagRef]
     let onOpen: () -> Void
@@ -2353,7 +2364,6 @@ private struct OverviewPage: View {
                     }
 
                     Text(headerSummary)
-                        .font(.callout)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                     Text(referenceSummary)
@@ -2948,7 +2958,13 @@ private struct DegreeRow: View {
             tonicE3: resolvedTonicE3
         )
         let spelling = HejiNotation.spelling(forRatio: ratioRef, context: context)
-        let hejiLabel = String(HejiNotation.textLabel(spelling, showCents: false).characters)
+        let hejiLabel = HejiNotation.textLabel(
+            spelling,
+            showCents: false,
+            textStyle: .caption,
+            weight: .regular,
+            design: .default
+        )
 
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
@@ -2963,8 +2979,7 @@ private struct DegreeRow: View {
                             .background(.thinMaterial, in: Capsule())
                     }
                 }
-                Text(verbatim: hejiLabel)
-                    .font(.caption)
+                Text(hejiLabel)
                     .foregroundStyle(.secondary)
             }
 

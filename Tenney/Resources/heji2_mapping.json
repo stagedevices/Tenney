@@ -1,0 +1,32 @@
+{
+  "fonts": {
+    "text": "HEJI2Text",
+    "music": "HEJI2Music"
+  },
+  "diatonicAccidentals": {
+    "1": [
+      { "glyph": "\uE262" }
+    ],
+    "-1": [
+      { "glyph": "\uE260" }
+    ]
+  },
+  "primeComponents": {
+    "5": {
+      "up": [{ "glyph": "\uE2C7" }],
+      "down": [{ "glyph": "\uE2C2" }]
+    },
+    "7": {
+      "up": [{ "glyph": "\uE2DF" }],
+      "down": [{ "glyph": "\uE2DE" }]
+    },
+    "11": {
+      "up": [{ "glyph": "\uE2E3" }],
+      "down": [{ "glyph": "\uE2E2" }]
+    },
+    "13": {
+      "up": [{ "glyph": "\uE2E7" }],
+      "down": [{ "glyph": "\uE2E6" }]
+    }
+  }
+}

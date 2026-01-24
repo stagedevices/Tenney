@@ -55,6 +55,7 @@ struct TenneyApp: App {
 
     init() {
         BravuraFontRegistrar.registerIfNeeded()
+        Heji2FontRegistry.registerIfNeeded()
         seedLatticeSoundDefaultIfNeeded()
         configureAudioSessionFromDefaults()
         let crashInfo = SessionCrashMarker.shared.onLaunch()
