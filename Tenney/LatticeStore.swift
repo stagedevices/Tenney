@@ -127,6 +127,7 @@ final class LatticeStore: ObservableObject {
     func setPrimeVisible(_ p: Int, _ on: Bool, animated: Bool) {
         // Always update the logical (target) set immediately so UI chips reflect the new state.
         if on { visiblePrimes.insert(p) } else { visiblePrimes.remove(p) }
+        persistOverlaySettingIfNeeded(prime: p, on: on)
 
         guard animated else {
             primeInkWork[p]?.cancel(); primeInkWork[p] = nil
@@ -162,6 +163,21 @@ final class LatticeStore: ObservableObject {
 
     private func clamp01(_ x: Double) -> Double { max(0, min(1, x)) }
     private func lerp(_ a: Double, _ b: Double, _ t: Double) -> Double { a + (b - a) * t }
+
+    private func persistOverlaySettingIfNeeded(prime: Int, on: Bool) {
+        let key: String
+        switch prime {
+        case 7:
+            key = SettingsKeys.overlay7
+        case 11:
+            key = SettingsKeys.overlay11
+        default:
+            return
+        }
+        let defaults = UserDefaults.standard
+        if defaults.object(forKey: key) as? Bool == on { return }
+        defaults.set(on, forKey: key)
+    }
 
     private func inkDuration(targetOn: Bool) -> Double {
         // camera.scale: smaller = zoomed out, larger = zoomed in
