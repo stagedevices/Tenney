@@ -606,6 +606,37 @@ struct LatticeView: View {
         }
     }
 
+    private func allowedStepDeltas(
+        gridMode: LatticeGridMode,
+        majorEnabled: Bool,
+        majorEvery: Int,
+        axesEnabled: Bool
+    ) -> [LatticeCoord] {
+        var deltas: [LatticeCoord] = []
+        deltas.append(contentsOf: gridNeighborDeltas(for: gridMode))
+
+        if axesEnabled {
+            deltas.append(contentsOf: [
+                .init(e3: +1, e5:  0),
+                .init(e3: -1, e5:  0),
+                .init(e3:  0, e5: +1),
+                .init(e3:  0, e5: -1)
+            ])
+        }
+
+        var unique: [LatticeCoord] = []
+        var seen: Set<LatticeCoord> = []
+        unique.reserveCapacity(deltas.count)
+        for d in deltas where !seen.contains(d) {
+            seen.insert(d)
+            unique.append(d)
+        }
+
+        _ = majorEnabled
+        _ = majorEvery
+        return unique
+    }
+
     private func isDrawablePlaneCoord(_ c: LatticeCoord, radius: Int) -> Bool {
         // Deterministic, stable, and matches the lattice plane sampling domain.
         abs(c.e3) <= radius && abs(c.e5) <= radius
@@ -774,6 +805,142 @@ struct LatticeView: View {
 
         // Fallback to your existing “hex line” if A* bails (keeps behavior robust).
         return shortestGridPath(from: start, to: goal, gridMode: gridMode, radius: 0)
+    }
+
+    private func routedGridPolylineCoords(
+        from start: LatticeCoord,
+        to goal: LatticeCoord,
+        gridMode: LatticeGridMode,
+        majorEnabled: Bool,
+        majorEvery: Int,
+        axesEnabled: Bool
+    ) -> [LatticeCoord]? {
+        guard gridMode != .off else { return nil }
+        if start == goal { return [start] }
+
+        let deltas = allowedStepDeltas(
+            gridMode: gridMode,
+            majorEnabled: majorEnabled,
+            majorEvery: majorEvery,
+            axesEnabled: axesEnabled
+        )
+        guard !deltas.isEmpty else { return nil }
+
+        let estimatedDistance = hexDistance(start, goal)
+        let maxDistance = 320
+        guard estimatedDistance <= maxDistance else { return nil }
+
+        let pad = max(4, estimatedDistance)
+        let minE3 = min(start.e3, goal.e3) - pad
+        let maxE3 = max(start.e3, goal.e3) + pad
+        let minE5 = min(start.e5, goal.e5) - pad
+        let maxE5 = max(start.e5, goal.e5) + pad
+
+        @inline(__always)
+        func inBounds(_ c: LatticeCoord) -> Bool {
+            c.e3 >= minE3 && c.e3 <= maxE3 && c.e5 >= minE5 && c.e5 <= maxE5
+        }
+
+        struct State: Hashable {
+            let coord: LatticeCoord
+            let dir: Int
+        }
+
+        let startState = State(coord: start, dir: -1)
+        var open: [State] = [startState]
+        var openSet: Set<State> = [startState]
+        var cameFrom: [State: State] = [:]
+        var stepScore: [State: Int] = [startState: 0]
+        var turnScore: [State: Int] = [startState: 0]
+
+        let maxVisited = 8000
+        var visited = 0
+
+        @inline(__always)
+        func heuristic(_ c: LatticeCoord) -> Int {
+            hexDistance(c, goal)
+        }
+
+        while !open.isEmpty {
+            var bestIdx = 0
+            var bestF = (stepScore[open[0]] ?? .max) + heuristic(open[0].coord)
+            var bestTurns = turnScore[open[0]] ?? .max
+
+            if open.count > 1 {
+                for i in 1..<open.count {
+                    let s = open[i]
+                    let f = (stepScore[s] ?? .max) + heuristic(s.coord)
+                    let t = turnScore[s] ?? .max
+                    if f < bestF || (f == bestF && t < bestTurns) {
+                        bestF = f
+                        bestTurns = t
+                        bestIdx = i
+                    }
+                }
+            }
+
+            let current = open.remove(at: bestIdx)
+            openSet.remove(current)
+
+            if current.coord == goal {
+                var path: [LatticeCoord] = [current.coord]
+                var cur = current
+                var guardN = 0
+                while cur.coord != start {
+                    guard let prev = cameFrom[cur] else { break }
+                    path.append(prev.coord)
+                    cur = prev
+                    guardN += 1
+                    if guardN > maxVisited { break }
+                }
+                let finalPath = path.reversed()
+#if DEBUG
+                if finalPath.count >= 2 {
+                    let allowed = Set(deltas)
+                    for i in 0..<(finalPath.count - 1) {
+                        let a = finalPath[i]
+                        let b = finalPath[i + 1]
+                        let d = LatticeCoord(e3: b.e3 - a.e3, e5: b.e5 - a.e5)
+                        assert(allowed.contains(d), "Grid path step not allowed: \(d)")
+                    }
+                }
+#endif
+                return finalPath
+            }
+
+            visited += 1
+            if visited > maxVisited { break }
+
+            let curSteps = stepScore[current] ?? .max
+            let curTurns = turnScore[current] ?? .max
+
+            for (idx, d) in deltas.enumerated() {
+                let nextCoord = LatticeCoord(e3: current.coord.e3 + d.e3, e5: current.coord.e5 + d.e5)
+                guard inBounds(nextCoord) else { continue }
+
+                let nextState = State(coord: nextCoord, dir: idx)
+                let nextSteps = curSteps + 1
+                let nextTurns = curTurns + ((current.dir >= 0 && current.dir != idx) ? 1 : 0)
+
+                let prevSteps = stepScore[nextState]
+                let prevTurns = turnScore[nextState]
+                let isBetter = prevSteps == nil
+                || nextSteps < (prevSteps ?? .max)
+                || (nextSteps == prevSteps && nextTurns < (prevTurns ?? .max))
+
+                if isBetter {
+                    cameFrom[nextState] = current
+                    stepScore[nextState] = nextSteps
+                    turnScore[nextState] = nextTurns
+                    if !openSet.contains(nextState) {
+                        open.append(nextState)
+                        openSet.insert(nextState)
+                    }
+                }
+            }
+        }
+
+        return nil
     }
 
     private func shortestGridPath(
@@ -1242,141 +1409,32 @@ struct LatticeView: View {
         camera: LatticeCamera,
         zoom: CGFloat,
         majorEnabled: Bool,
-        majorEvery: Int
+        majorEvery: Int,
+        axesEnabled: Bool
     ) -> [CGPoint]? {
         guard gridMode != .off else { return nil }
         guard zoom >= gridMinZoom else { return nil } // no visible grid to follow
 
-        let step = gridStride(for: zoom)
-        let turnPenalty = 0.42
+        guard let coords = routedGridPolylineCoords(
+            from: aRel,
+            to: bRel,
+            gridMode: gridMode,
+            majorEnabled: majorEnabled,
+            majorEvery: majorEvery,
+            axesEnabled: axesEnabled
+        ) else { return nil }
 
-        // Node world positions (include axisShift like your node geometry does)
-        let aAbs = LatticeCoord(
-            e3: pivot.e3 + aRel.e3 + (shift[3] ?? 0),
-            e5: pivot.e5 + aRel.e5 + (shift[5] ?? 0)
-        )
-        let bAbs = LatticeCoord(
-            e3: pivot.e3 + bRel.e3 + (shift[3] ?? 0),
-            e5: pivot.e5 + bRel.e5 + (shift[5] ?? 0)
-        )
-
-        let aWorld = layout.position(for: aAbs)
-        let bWorld = layout.position(for: bAbs)
-        let aScreen = camera.worldToScreen(aWorld)
-        let bScreen = camera.worldToScreen(bWorld)
-
-        switch gridMode {
-        case .triMesh:
-            guard
-                let entry = snapToVisibleTriMeshEdge(pointWorld: aWorld, nearRel: aRel, pivot: pivot, step: step),
-                let exit  = snapToVisibleTriMeshEdge(pointWorld: bWorld, nearRel: bRel, pivot: pivot, step: step)
-            else { return nil }
-
-            let entryG0_A = Double(entry.t)
-            let entryG0_B = Double(1.0 - entry.t)
-
-            let goals: Set<LatticeCoord> = [exit.a, exit.b]
-
-            // try both possible start vertices on the entry edge
-            var best: (pts: [CGPoint], cost: Double)? = nil
-
-            for (sV, g0) in [(entry.a, entryG0_A), (entry.b, entryG0_B)] {
-                guard let r = aStarTriMesh(
-                    start: sV,
-                    goals: goals,
-                    step: step,
-                    majorEnabled: majorEnabled,
-                    majorEvery: majorEvery,
-                    turnPenalty: turnPenalty
-                ) else { continue }
-
-                let end = r.end
-                let exitCost: Double = (end == exit.a) ? Double(exit.t) : Double(1.0 - exit.t)
-                let total = g0 + r.cost + exitCost
-
-                // build screen polyline
-                var pts: [CGPoint] = []
-                pts.reserveCapacity(r.path.count + 4)
-
-                pts.append(aScreen)
-                pts.append(camera.worldToScreen(entry.pointWorld))
-
-                for v in r.path {
-                    let vAbs = LatticeCoord(e3: pivot.e3 + v.e3, e5: pivot.e5 + v.e5)
-                    pts.append(camera.worldToScreen(layout.position(for: vAbs)))
-                }
-
-                pts.append(camera.worldToScreen(exit.pointWorld))
-                pts.append(bScreen)
-
-                if best == nil || total < best!.cost { best = (pts, total) }
-            }
-
-            return best?.pts
-
-        case .outlines, .cells:
-            guard
-                let entry = snapToVisibleHexEdge(pointWorld: aWorld, nearRel: aRel, pivot: pivot, step: step),
-                let exit  = snapToVisibleHexEdge(pointWorld: bWorld, nearRel: bRel, pivot: pivot, step: step)
-            else { return nil }
-
-            let entryG0_A = Double(entry.t)
-            let entryG0_B = Double(1.0 - entry.t)
-
-            let goals: Set<Corner3> = [exit.a, exit.b]
-
-            var best: (pts: [CGPoint], cost: Double)? = nil
-
-            for (sC, g0) in [(entry.a, entryG0_A), (entry.b, entryG0_B)] {
-                guard let r = aStarCorners(
-                    start: sC,
-                    goals: goals,
-                    step: step,
-                    majorEnabled: majorEnabled,
-                    majorEvery: majorEvery,
-                    turnPenalty: turnPenalty
-                ) else { continue }
-
-                let end = r.end
-                let exitCost: Double = (end == exit.a) ? Double(exit.t) : Double(1.0 - exit.t)
-                let total = g0 + r.cost + exitCost
-
-                // convert corner “thirds” -> world using (pivot + thirds/3) in basis
-                let (u0, v0) = gridBasisUV()
-                func cornerWorld(_ c: Corner3) -> CGPoint {
-                    // absolute thirds = 3*pivot + relThirds
-                    let i3Abs = 3 * pivot.e3 + c.i3
-                    let j3Abs = 3 * pivot.e5 + c.j3
-                    let di = CGFloat(i3Abs) / 3.0
-                    let dj = CGFloat(j3Abs) / 3.0
-                    let o = layout.position(for: .init(e3: 0, e5: 0))
-                    return pAdd(o, pAdd(pMul(u0, di), pMul(v0, dj)))
-                }
-
-                var pts: [CGPoint] = []
-                pts.reserveCapacity(r.path.count + 4)
-
-                pts.append(aScreen)
-                pts.append(camera.worldToScreen(entry.pointWorld))
-
-                for c in r.path {
-                    pts.append(camera.worldToScreen(cornerWorld(c)))
-                }
-
-                pts.append(camera.worldToScreen(exit.pointWorld))
-                pts.append(bScreen)
-
-                if best == nil || total < best!.cost { best = (pts, total) }
-            }
-
-            return best?.pts
-
-        case .off:
-            return nil
-
-        @unknown default:
-            return nil
+        var points: [CGPoint] = []
+        points.reserveCapacity(coords.count)
+        for coord in coords {
+            let abs = LatticeCoord(
+                e3: pivot.e3 + coord.e3 + (shift[3] ?? 0),
+                e5: pivot.e5 + coord.e5 + (shift[5] ?? 0)
+            )
+            let world = layout.position(for: abs)
+            points.append(camera.worldToScreen(world))
         }
+        return points
     }
 
     private func drawSelectionPath(
@@ -1457,7 +1515,8 @@ struct LatticeView: View {
                    camera: camera,
                    zoom: zoom,
                    majorEnabled: gridMajorEnabled,
-                   majorEvery: gridMajorEveryClamped
+                   majorEvery: gridMajorEveryClamped,
+                   axesEnabled: true
                ),
                poly.count >= 2 {
 
