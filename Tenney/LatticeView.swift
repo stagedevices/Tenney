@@ -4724,9 +4724,6 @@ struct LatticeView: View {
                     return HejiNotation.textLabelString(for: ratioRef, context: hejiContext, showCents: false)
                 }
             }()
-#if DEBUG
-            print("[LatticeInfoCard] labelMode=\(store.labelMode) noteLabelText=\(noteLabelText) ratio=\(ratioRef.p)/\(ratioRef.q) octave=\(ratioRef.octave)")
-#endif
             
             // Octave step availability (audible range)
             let nextUpHz   = baseHz * pow(2.0, Double(infoOctaveOffset + 1))
