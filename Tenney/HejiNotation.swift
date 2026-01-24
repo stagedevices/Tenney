@@ -120,7 +120,17 @@ enum HejiMicrotonalComponent: Hashable {
 enum HejiNotation {
     static func spelling(forRatio ratioRef: RatioRef, context: HejiContext) -> HejiSpelling {
         let ratio = Ratio(ratioRef.p, ratioRef.q)
-        return spelling(forRatio: ratio, octave: ratioRef.octave, context: context)
+        let spelling = spelling(forRatio: ratio, octave: ratioRef.octave, context: context)
+        if shouldLogHejiLabel(for: ratioRef) {
+            let e3Interval = pythagoreanBaseE3Interval(for: ratio, octave: ratioRef.octave, maxPrime: context.maxPrime)
+            let e3Total = context.tonicE3.map { $0 + e3Interval } ?? e3Interval
+            let base = letter(for: e3Total)
+            let tonicDisplay = context.tonicE3.map { TonicSpelling(e3: $0).displayText } ?? "nil"
+            let tonicE3Text = context.tonicE3.map(String.init) ?? "nil"
+            let label = textLabelString(spelling, showCents: false)
+            print("[HEJI] ratio=\(ratioRef.p)/\(ratioRef.q) oct=\(ratioRef.octave) tonicE3=\(tonicE3Text) tonic=\(tonicDisplay) e3Interval=\(e3Interval) e3Total=\(e3Total) base=\(base.letter) acc=\(base.accidentalCount) label=\"\(label)\"")
+        }
+        return spelling
     }
 
     static func spelling(forRatio ratio: Ratio, octave: Int = 0, context: HejiContext) -> HejiSpelling {
@@ -200,6 +210,9 @@ enum HejiNotation {
     }
 
     static func textLabelString(for ratioRef: RatioRef, context: HejiContext, showCents: Bool = false) -> String {
+        if ratioRef.p == 1, ratioRef.q == 1, ratioRef.octave == 0, let tonicE3 = context.tonicE3 {
+            return TonicSpelling(e3: tonicE3).displayText
+        }
         let spelling = spelling(forRatio: ratioRef, context: context)
         return textLabelString(spelling, showCents: showCents)
     }
@@ -241,6 +254,15 @@ enum HejiNotation {
     private static func letter(for e3: Int) -> (letter: String, accidentalCount: Int) {
         let spelling = TonicSpelling(e3: e3)
         return (spelling.letter, spelling.accidentalCount)
+    }
+
+    private static func shouldLogHejiLabel(for ratioRef: RatioRef) -> Bool {
+        guard ProcessInfo.processInfo.environment["HEJI_DEBUG_LABELS"] == "1" else { return false }
+        guard ratioRef.octave == 0 else { return false }
+        let reduced = Ratio(ratioRef.p, ratioRef.q)
+        let key = "\(reduced.n)/\(reduced.d)"
+        let whitelist: Set<String> = ["1/1", "3/2", "4/3", "5/4", "6/5", "9/8", "15/8"]
+        return whitelist.contains(key)
     }
 
     // MARK: - Microtonal components
