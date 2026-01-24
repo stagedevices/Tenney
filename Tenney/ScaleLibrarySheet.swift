@@ -2963,7 +2963,7 @@ private struct DegreeRow: View {
                             .background(.thinMaterial, in: Capsule())
                     }
                 }
-                Text(hejiLabel)
+                Text(verbatim: hejiLabel)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

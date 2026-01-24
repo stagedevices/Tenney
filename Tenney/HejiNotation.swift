@@ -118,17 +118,6 @@ enum HejiMicrotonalComponent: Hashable {
 }
 
 enum HejiNotation {
-    private struct Candidate {
-        let e3: Int
-        let e2: Int
-        let cents: Double
-        let accidentalCount: Int
-    }
-
-    private static let fifthLetters = ["C", "G", "D", "A", "E", "B", "F"]
-    private static let baseFifth = [0, 1, 2, 3, 4, 5, -1]
-
-    private static let hejiSearchRange = -14...14
     static func spelling(forRatio ratioRef: RatioRef, context: HejiContext) -> HejiSpelling {
         let ratio = Ratio(ratioRef.p, ratioRef.q)
         return spelling(forRatio: ratio, octave: ratioRef.octave, context: context)
@@ -240,57 +229,13 @@ enum HejiNotation {
 
     // MARK: - 3-limit base
 
-    private static func bestThreeLimitCandidate(for ratio: Double) -> Candidate {
-        guard ratio.isFinite, ratio > 0 else {
-            return Candidate(e3: 0, e2: 0, cents: 0, accidentalCount: 0)
-        }
-        var best: Candidate?
-        for e3 in hejiSearchRange {
-            let base = pow(3.0, Double(e3))
-            let target = ratio / base
-            let e2 = Int(round(log2(target)))
-            let candidate = base * pow(2.0, Double(e2))
-            let cents = abs(1200.0 * log2(ratio / candidate))
-            let letterInfo = letter(for: e3)
-            let acc = letterInfo.accidentalCount
-            let candidateScore = Candidate(e3: e3, e2: e2, cents: cents, accidentalCount: acc)
-            best = chooseBestCandidate(current: best, candidate: candidateScore)
-        }
-        return best ?? Candidate(e3: 0, e2: 0, cents: 0, accidentalCount: 0)
-    }
-
     private static func best3LimitE3(for ratio: Ratio, octave: Int = 0) -> Int {
-        let value = ratio.value * pow(2.0, Double(octave))
-        return bestThreeLimitCandidate(for: value).e3
+        best3LimitE3Interval(p: ratio.n, q: ratio.d, octave: octave)
     }
 
     private static func letter(for e3: Int) -> (letter: String, accidentalCount: Int) {
-        let idx = ((e3 % 7) + 7) % 7
-        let base = baseFifth[idx]
-        let accidental = (e3 - base) / 7
-        return (fifthLetters[idx], accidental)
-    }
-
-    private static func chooseBestCandidate(current: Candidate?, candidate: Candidate) -> Candidate {
-        guard let current else { return candidate }
-        if candidate.cents < current.cents - 1e-6 {
-            return candidate
-        } else if abs(candidate.cents - current.cents) <= 1e-6 {
-            let absE3 = abs(candidate.e3)
-            let currentAbsE3 = abs(current.e3)
-            if absE3 < currentAbsE3 {
-                return candidate
-            } else if absE3 == currentAbsE3 {
-                if abs(candidate.cents - current.cents) > 1e-6, candidate.cents < current.cents {
-                    return candidate
-                } else if abs(candidate.cents - current.cents) <= 1e-6 {
-                    if abs(candidate.e2) < abs(current.e2) {
-                        return candidate
-                    }
-                }
-            }
-        }
-        return current
+        let spelling = TonicSpelling(e3: e3)
+        return (spelling.letter, spelling.accidentalCount)
     }
 
     // MARK: - Microtonal components
