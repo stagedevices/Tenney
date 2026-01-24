@@ -64,7 +64,7 @@ func pythagoreanBaseE3Interval(for ratio: Ratio, octave: Int = 0, maxPrime: Int 
         e5 = maxPrime >= 5 ? monzo.e5 : 0
         e7 = maxPrime >= 7 ? monzo.e7 : 0
         e11 = maxPrime >= 11 ? monzo.e11 : 0
-        e13 = maxPrime >= 13 ? monzo.e13 : 0
+        e13 = monzo.e13
     } else {
         e3 = vFactor(3, baseRatio.n) - vFactor(3, baseRatio.d)
         e5 = maxPrime >= 5 ? (vFactor(5, baseRatio.n) - vFactor(5, baseRatio.d)) : 0

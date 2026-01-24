@@ -18,6 +18,7 @@ struct HejiRatioDisplayTests {
         #expect(pythagoreanBaseE3Interval(p: 5, q: 4, octave: 0) == 4)
         #expect(pythagoreanBaseE3Interval(p: 6, q: 5, octave: 0) == -3)
         #expect(pythagoreanBaseE3Interval(p: 9, q: 8, octave: 0) == 2)
+        #expect(pythagoreanBaseE3Interval(p: 13, q: 8, octave: 0) == 3)
     }
 
     @Test func manualTonicUnisonUsesTonicDisplay() async throws {
@@ -114,6 +115,26 @@ struct HejiRatioDisplayTests {
     @Test func unsupportedPrimeDoesNotCollapseToTonic() async throws {
         let tonic = TonicSpelling.from(letter: "G", accidental: 1)
         let ratio = RatioRef(p: 17, q: 16, octave: 0, monzo: [:])
+        let context = HejiContext(
+            concertA4Hz: 440,
+            noteNameA4Hz: 440,
+            rootHz: 440,
+            rootRatio: nil,
+            preferred: .preferSharps,
+            maxPrime: 13,
+            allowApproximation: false,
+            scaleDegreeHint: ratio,
+            tonicE3: tonic.e3
+        )
+        let label = HejiNotation.textLabelString(for: ratio, context: context, showCents: false)
+        let base = baseLetter(from: label)
+        #expect(base != "g")
+        #expect(label != tonic.displayText)
+    }
+
+    @Test func thirteenLimitDoesNotCollapseToTonic() async throws {
+        let tonic = TonicSpelling.from(letter: "G", accidental: 1)
+        let ratio = RatioRef(p: 13, q: 8, octave: 0, monzo: [:])
         let context = HejiContext(
             concertA4Hz: 440,
             noteNameA4Hz: 440,
