@@ -2852,7 +2852,7 @@ private struct RootStudioSheet: View {
         TonicSpelling.from(rootHz: model.rootHz, noteNameA4Hz: noteNameA4Hz, preference: preference)
     }
 
-    private var effectiveTonicSpelling: TonicSpelling? {
+    private var effectiveTonicSpellingValue: TonicSpelling? {
         effectiveTonicSpelling(
             modeRaw: tonicNameModeRaw,
             manualE3: tonicE3,
@@ -2863,7 +2863,7 @@ private struct RootStudioSheet: View {
     }
 
     private var effectiveTonicDisplayText: String {
-        effectiveTonicSpelling?.displayText ?? "—"
+        effectiveTonicSpellingValue?.displayText ?? "—"
     }
 
     private var manualLetterBinding: Binding<String> {
