@@ -1,6 +1,6 @@
 import SwiftUI
 import UIKit
-#if canImport(AppKit)
+#if os(macOS)
 import AppKit
 #endif
 import Combine
@@ -2055,7 +2055,7 @@ private struct VerifiedSFSymbol: View {
                 .blendMode(.normal)
                 .compositingGroup()
         }
-        #elseif canImport(AppKit)
+        #elseif os(macOS)
         if let image = configuredNSImage {
             Image(nsImage: image)
                 .renderingMode(.original)
@@ -2077,7 +2077,7 @@ private struct VerifiedSFSymbol: View {
         if UIImage(systemName: symbolName) != nil {
             return symbolName
         }
-        #elseif canImport(AppKit)
+        #elseif os(macOS)
         if NSImage(systemSymbolName: symbolName, accessibilityDescription: nil) != nil {
             return symbolName
         }
@@ -2099,7 +2099,7 @@ private struct VerifiedSFSymbol: View {
     }
     #endif
 
-    #if canImport(AppKit)
+    #if os(macOS)
     private var configuredNSImage: NSImage? {
         let base = NSImage.SymbolConfiguration(pointSize: pointSize, weight: .semibold)
         guard let symbol = NSImage(systemSymbolName: resolvedSymbolName, accessibilityDescription: nil) else {
