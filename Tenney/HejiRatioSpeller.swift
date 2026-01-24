@@ -47,19 +47,30 @@ func pythagoreanBaseE3Interval(for ratio: Ratio, octave: Int = 0, maxPrime: Int 
     // spellings (e.g., 15/8 -> 4096/2187) that are close in cents but wrong diatonically.
     // We project into the Pythagorean base using comma mappings so letter choice is stable.
 
+    let baseRatio: Ratio
+    if ratio.toMonzoIfWithin13() == nil {
+        let primeLimit = resolvePrimeLimit(maxPrime)
+        baseRatio = RatioApproximator.approximate(
+            ratio.value,
+            options: .init(primeLimit: primeLimit, maxDenominator: 4096, maxCentsError: 120)
+        )
+    } else {
+        baseRatio = ratio
+    }
+
     let (e3, e5, e7, e11, e13): (Int, Int, Int, Int, Int)
-    if let monzo = ratio.toMonzoIfWithin13() {
+    if let monzo = baseRatio.toMonzoIfWithin13() {
         e3 = monzo.e3
         e5 = maxPrime >= 5 ? monzo.e5 : 0
         e7 = maxPrime >= 7 ? monzo.e7 : 0
         e11 = maxPrime >= 11 ? monzo.e11 : 0
         e13 = maxPrime >= 13 ? monzo.e13 : 0
     } else {
-        e3 = vFactor(3, ratio.n) - vFactor(3, ratio.d)
-        e5 = maxPrime >= 5 ? (vFactor(5, ratio.n) - vFactor(5, ratio.d)) : 0
-        e7 = maxPrime >= 7 ? (vFactor(7, ratio.n) - vFactor(7, ratio.d)) : 0
-        e11 = maxPrime >= 11 ? (vFactor(11, ratio.n) - vFactor(11, ratio.d)) : 0
-        e13 = maxPrime >= 13 ? (vFactor(13, ratio.n) - vFactor(13, ratio.d)) : 0
+        e3 = vFactor(3, baseRatio.n) - vFactor(3, baseRatio.d)
+        e5 = maxPrime >= 5 ? (vFactor(5, baseRatio.n) - vFactor(5, baseRatio.d)) : 0
+        e7 = maxPrime >= 7 ? (vFactor(7, baseRatio.n) - vFactor(7, baseRatio.d)) : 0
+        e11 = maxPrime >= 11 ? (vFactor(11, baseRatio.n) - vFactor(11, baseRatio.d)) : 0
+        e13 = maxPrime >= 13 ? (vFactor(13, baseRatio.n) - vFactor(13, baseRatio.d)) : 0
     }
 
     // Syntonic comma projection (81/80 = 2^-4 * 3^4 * 5^-1):
@@ -70,6 +81,16 @@ func pythagoreanBaseE3Interval(for ratio: Ratio, octave: Int = 0, maxPrime: Int 
     let e3Pyth = e3 + (4 * e5) + (-2 * e7) + (-1 * e11) + (3 * e13)
     _ = octave // octave shifts are 2-limit only and do not affect fifth count.
     return e3Pyth
+}
+
+private func resolvePrimeLimit(_ maxPrime: Int) -> PrimeLimit {
+    switch maxPrime {
+    case ..<5: return .three
+    case 5: return .five
+    case 6...7: return .seven
+    case 8...11: return .eleven
+    default: return .thirteen
+    }
 }
 
 func applyOctaveToPQ(p: Int, q: Int, octave: Int) -> (Int, Int) {

@@ -111,6 +111,26 @@ struct HejiRatioDisplayTests {
         #expect(labels[4].contains("\u{1D12A}"))
     }
 
+    @Test func unsupportedPrimeDoesNotCollapseToTonic() async throws {
+        let tonic = TonicSpelling.from(letter: "G", accidental: 1)
+        let ratio = RatioRef(p: 17, q: 16, octave: 0, monzo: [:])
+        let context = HejiContext(
+            concertA4Hz: 440,
+            noteNameA4Hz: 440,
+            rootHz: 440,
+            rootRatio: nil,
+            preferred: .preferSharps,
+            maxPrime: 13,
+            allowApproximation: false,
+            scaleDegreeHint: ratio,
+            tonicE3: tonic.e3
+        )
+        let label = HejiNotation.textLabelString(for: ratio, context: context, showCents: false)
+        let base = baseLetter(from: label)
+        #expect(base != "g")
+        #expect(label != tonic.displayText)
+    }
+
     private func baseLetter(from label: String) -> String? {
         for ch in label.lowercased() {
             if "abcdefg".contains(ch) {
