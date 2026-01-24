@@ -37,37 +37,31 @@ struct PitchContext {
     var maxPrime: Int
 }
 
-func best3LimitE3Interval(p: Int, q: Int, octave: Int) -> Int {
-    guard p != 0, q != 0 else { return 0 }
-    let value = (Double(p) / Double(q)) * pow(2.0, Double(octave))
-    guard value.isFinite, value > 0 else { return 0 }
+func pythagoreanBaseE3Interval(p: Int, q: Int, octave: Int, maxPrime: Int = 13) -> Int {
+    pythagoreanBaseE3Interval(for: Ratio(p, q), octave: octave, maxPrime: maxPrime)
+}
 
-    var bestE3 = 0
-    var bestE2 = 0
-    var bestCents = Double.greatestFiniteMagnitude
+func pythagoreanBaseE3Interval(for ratio: Ratio, octave: Int = 0, maxPrime: Int = 13) -> Int {
+    guard ratio.n != 0, ratio.d != 0 else { return 0 }
+    // NOTE: Do not use cents-minimizing search over arbitrary e3. That picks enharmonic
+    // spellings (e.g., 15/8 -> 4096/2187) that are close in cents but wrong diatonically.
+    // We project into the Pythagorean base using comma mappings so letter choice is stable.
 
-    for e3 in -14...14 {
-        let base = pow(3.0, Double(e3))
-        let e2 = Int(round(log2(value / base)))
-        let candidate = base * pow(2.0, Double(e2))
-        let cents = abs(1200.0 * log2(value / candidate))
-
-        if cents < bestCents - 1e-6 {
-            bestCents = cents
-            bestE3 = e3
-            bestE2 = e2
-        } else if abs(cents - bestCents) <= 1e-6 {
-            if abs(e3) < abs(bestE3) {
-                bestE3 = e3
-                bestE2 = e2
-            } else if abs(e3) == abs(bestE3), abs(e2) < abs(bestE2) {
-                bestE3 = e3
-                bestE2 = e2
-            }
-        }
+    let (e3, e5): (Int, Int)
+    if let monzo = ratio.toMonzoIfWithin13() {
+        e3 = monzo.e3
+        e5 = maxPrime >= 5 ? monzo.e5 : 0
+    } else {
+        e3 = vFactor(3, ratio.n) - vFactor(3, ratio.d)
+        e5 = maxPrime >= 5 ? (vFactor(5, ratio.n) - vFactor(5, ratio.d)) : 0
     }
 
-    return bestE3
+    // Syntonic comma projection (81/80 = 2^-4 * 3^4 * 5^-1):
+    // add +4 fifths per 5-prime to get the Pythagorean diatonic base.
+    let e3Pyth = e3 + (4 * e5)
+    // TODO: Apply additional comma projections for primes 7/11/13 if/when vectors are defined.
+    _ = octave // octave shifts are 2-limit only and do not affect fifth count.
+    return e3Pyth
 }
 
 func applyOctaveToPQ(p: Int, q: Int, octave: Int) -> (Int, Int) {
