@@ -841,28 +841,42 @@ extension Notification.Name {
         guard store.viewStyle != .posterFraction else { return nil }
         let pref = AccidentalPreference(rawValue: accidentalPreferenceRaw) ?? .auto
         let mode = TonicNameMode(rawValue: tonicNameModeRaw) ?? .auto
-        let resolvedTonicE3 = TonicSpelling.resolvedTonicE3(
-            mode: mode,
+        let tonic = effectiveTonicSpelling(
+            modeRaw: tonicNameModeRaw,
             manualE3: tonicE3,
             rootHz: model.effectiveRootHz,
             noteNameA4Hz: noteNameA4Hz,
-            preference: pref
-        )
+            accidentalPreferenceRaw: accidentalPreferenceRaw
+        ) ?? TonicSpelling(e3: tonicE3)
+        let hejiPreference = (mode == .auto) ? pref : .auto
         let ratioHint = store.lockedTarget ?? liveNearest
-        let ratioRef = ratioHint.map { RatioRef(p: $0.num, q: $0.den, octave: $0.octave, monzo: [:]) }
+        if let ratioHint {
+            let ratioRef = RatioRef(p: ratioHint.num, q: ratioHint.den, octave: ratioHint.octave, monzo: [:])
+            return spellHejiRatioDisplay(
+                ratio: ratioRef,
+                tonic: tonic,
+                rootHz: model.effectiveRootHz,
+                noteNameA4Hz: noteNameA4Hz,
+                concertA4Hz: concertA4Hz,
+                accidentalPreference: pref,
+                maxPrime: max(3, store.primeLimit),
+                allowApproximation: true,
+                showCents: true,
+                applyAccidentalPreference: mode == .auto
+            )
+        }
         let context = HejiContext(
             concertA4Hz: concertA4Hz,
             noteNameA4Hz: noteNameA4Hz,
             rootHz: model.effectiveRootHz,
             rootRatio: nil,
-            preferred: pref,
+            preferred: hejiPreference,
             maxPrime: max(3, store.primeLimit),
             allowApproximation: true,
-            scaleDegreeHint: ratioRef,
-            tonicE3: resolvedTonicE3
+            scaleDegreeHint: nil,
+            tonicE3: tonic.e3
         )
-        let spelling = ratioRef.map { HejiNotation.spelling(forRatio: $0, context: context) }
-            ?? HejiNotation.spelling(forFrequency: liveHz, context: context)
+        let spelling = HejiNotation.spelling(forFrequency: liveHz, context: context)
         return String(HejiNotation.textLabel(spelling, showCents: true).characters)
     }
 
@@ -1936,15 +1950,13 @@ private func currentTonicSpelling(
     noteNameA4Hz: Double,
     accidentalPreferenceRaw: String
 ) -> TonicSpelling {
-    let mode = TonicNameMode(rawValue: modeRaw) ?? .auto
-    let preference = AccidentalPreference(rawValue: accidentalPreferenceRaw) ?? .auto
-    switch mode {
-    case .manual:
-        return TonicSpelling(e3: manualE3)
-    case .auto:
-        return TonicSpelling.from(rootHz: rootHz, noteNameA4Hz: noteNameA4Hz, preference: preference)
-            ?? TonicSpelling(e3: manualE3)
-    }
+    effectiveTonicSpelling(
+        modeRaw: modeRaw,
+        manualE3: manualE3,
+        rootHz: rootHz,
+        noteNameA4Hz: noteNameA4Hz,
+        accidentalPreferenceRaw: accidentalPreferenceRaw
+    ) ?? TonicSpelling(e3: manualE3)
 }
 
 private func currentTonicDisplayName(
@@ -2841,12 +2853,13 @@ private struct RootStudioSheet: View {
     }
 
     private var effectiveTonicSpelling: TonicSpelling? {
-        switch tonicMode {
-        case .auto:
-            return autoSpelling
-        case .manual:
-            return TonicSpelling(e3: tonicE3)
-        }
+        effectiveTonicSpelling(
+            modeRaw: tonicNameModeRaw,
+            manualE3: tonicE3,
+            rootHz: model.rootHz,
+            noteNameA4Hz: noteNameA4Hz,
+            accidentalPreferenceRaw: accidentalPreferenceRaw
+        )
     }
 
     private var effectiveTonicDisplayText: String {

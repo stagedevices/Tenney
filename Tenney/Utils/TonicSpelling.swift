@@ -110,3 +110,20 @@ struct TonicSpelling: Hashable {
         return ""
     }
 }
+
+func effectiveTonicSpelling(
+    modeRaw: String,
+    manualE3: Int,
+    rootHz: Double,
+    noteNameA4Hz: Double,
+    accidentalPreferenceRaw: String
+) -> TonicSpelling? {
+    let mode = TonicNameMode(rawValue: modeRaw) ?? .auto
+    let preference = AccidentalPreference(rawValue: accidentalPreferenceRaw) ?? .auto
+    switch mode {
+    case .auto:
+        return TonicSpelling.from(rootHz: rootHz, noteNameA4Hz: noteNameA4Hz, preference: preference)
+    case .manual:
+        return TonicSpelling(e3: manualE3)
+    }
+}
