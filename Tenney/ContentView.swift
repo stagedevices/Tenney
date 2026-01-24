@@ -1702,6 +1702,17 @@ extension Notification.Name {
             let spacing: CGFloat = 12
             let innerW = max(0, w - padH*2)
             let innerH = max(0, h - padV*2)
+            let stoplightTopThreshold: CGFloat = 40
+            let stoplightLeadingThreshold: CGFloat = 24
+            let stoplightPrimeChipNudgeX: CGFloat = 24
+            let primeChipNudgeX: CGFloat
+            #if os(iOS) && !targetEnvironment(macCatalyst)
+            let hasWindowControls = UIDevice.current.userInterfaceIdiom == .pad
+                && (geo.safeAreaInsets.top >= stoplightTopThreshold || geo.safeAreaInsets.leading >= stoplightLeadingThreshold)
+            primeChipNudgeX = hasWindowControls ? stoplightPrimeChipNudgeX : 0
+            #else
+            primeChipNudgeX = 0
+            #endif
 
             let minDial: CGFloat = 290
                         let rightW: CGFloat = max(180, min(300, innerW - minDial - spacing))
@@ -1825,6 +1836,7 @@ extension Notification.Name {
                             .learnTarget(id: "tuner_prime_limit")
                             .gated("tuner_prime_limit", gate: learnGate)
                         }
+                        .padding(.leading, primeChipNudgeX)
                         .padding(8)
                         .onChange(of: store.primeLimit) { model.tunerPrimeLimit = $0 }
                         .onAppear { store.primeLimit = model.tunerPrimeLimit }
