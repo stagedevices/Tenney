@@ -4705,6 +4705,9 @@ struct LatticeView: View {
                 a4Hz: noteNameA4Hz,
                 preference: helmholtzPref
             )
+            let noteLabelText = (f.num == 1 && f.den == 1 && infoOctaveOffset == 0)
+            ? tonic.displayText
+            : noteLabel
             // Adjusted ratio string (NO FOLD to 1–2; preserves +/- octaves in ratio)
             let (adjP, adjQ) = ratioWithOctaveOffsetNoFold(num: f.num, den: f.den, offset: infoOctaveOffset)
             let jiText: String = (store.labelMode == .ratio)
@@ -4736,7 +4739,7 @@ struct LatticeView: View {
                         if store.labelMode == .heji {
                             HejiPitchLabel(context: hejiContext, pitch: .ratio(ratioRef))
                         } else {
-                            Text(noteLabel)
+                            Text(noteLabelText)
                                 .font(.title2.weight(.semibold))
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.9)
