@@ -80,8 +80,8 @@ struct HejiStaffSnippetView: View {
                 let x = m.accX + run.offset.x + CGFloat(index) * 0
                 ctx.draw(accText, at: CGPoint(x: x, y: y + run.offset.y), anchor: .center)
             }
-
-            let headText = Text(layout.noteheadGlyph).font(.custom("Bravura", size: m.headSize * 1.8))
+// notehead
+            let headText = Text(layout.noteheadGlyph).font(.custom("Bravura", size: m.headSize * 2.1))
             ctx.draw(headText, at: CGPoint(x: m.noteX, y: y), anchor: .center)
 
             drawLedgerLines(step: layout.staffStepFromMiddle, metrics: m, y: y, topY: topY, bottomY: bottomLineY, ctx: &ctx)

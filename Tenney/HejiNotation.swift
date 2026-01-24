@@ -181,13 +181,17 @@ enum HejiNotation {
     }
 
     static func textLabel(_ spelling: HejiSpelling, showCents: Bool = false) -> AttributedString {
-        var out = AttributedString(helmholtzLabel(letter: spelling.baseLetter, octave: spelling.helmholtzOctave))
+        let (core, marks) = helmholtzParts(letter: spelling.baseLetter, octave: spelling.helmholtzOctave)
+        var out = AttributedString(core)
+
         let accidentalText = textAccidental(spelling.accidental)
         if !accidentalText.isEmpty {
             var acc = AttributedString(accidentalText)
             acc.font = .system(size: 16, weight: .regular)
-            out = acc + out
+            out += acc
         }
+
+        out += AttributedString(marks)
 
         if spelling.isApproximate {
             var approx = AttributedString(" ≈")
@@ -381,16 +385,21 @@ enum HejiNotation {
     }
 
     private static func helmholtzLabel(letter: String, octave: Int) -> String {
+        let p = helmholtzParts(letter: letter, octave: octave)
+        return p.core + p.marks
+    }
+    private static func helmholtzParts(letter: String, octave: Int) -> (core: String, marks: String) {
         let lower = letter.lowercased()
         let upper = letter.uppercased()
         if octave >= 4 {
             let primes = String(repeating: "′", count: max(1, octave - 3))
-            return "\(lower)\(primes)"
+            return (lower, primes)
         } else {
             let commas = String(repeating: ",", count: max(0, 3 - octave))
-            return "\(upper)\(commas)"
+            return (upper, commas)
         }
     }
+
 }
 
 private extension HejiAccidental {
