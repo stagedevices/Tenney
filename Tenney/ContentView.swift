@@ -842,11 +842,11 @@ extension Notification.Name {
         let pref = AccidentalPreference(rawValue: accidentalPreferenceRaw) ?? .auto
         let mode = TonicNameMode(rawValue: tonicNameModeRaw) ?? .auto
         let tonic = effectiveTonicSpelling(
-            modeRaw: tonicNameModeRaw,
-            manualE3: tonicE3,
             rootHz: model.effectiveRootHz,
             noteNameA4Hz: noteNameA4Hz,
-            accidentalPreferenceRaw: accidentalPreferenceRaw
+            tonicNameModeRaw: tonicNameModeRaw,
+            tonicE3: tonicE3,
+            accidentalPreference: pref
         ) ?? TonicSpelling(e3: tonicE3)
         let hejiPreference = (mode == .auto) ? pref : .auto
         let ratioHint = store.lockedTarget ?? liveNearest
@@ -885,7 +885,7 @@ extension Notification.Name {
     }
 
     private func hejiLabelView(_ label: String) -> some View {
-        Text(label)
+        Text(verbatim: label)
             .font(.footnote.weight(.semibold))
             .monospacedDigit()
             .foregroundStyle(.secondary)
@@ -1950,12 +1950,13 @@ private func currentTonicSpelling(
     noteNameA4Hz: Double,
     accidentalPreferenceRaw: String
 ) -> TonicSpelling {
-    effectiveTonicSpelling(
-        modeRaw: modeRaw,
-        manualE3: manualE3,
+    let preference = AccidentalPreference(rawValue: accidentalPreferenceRaw) ?? .auto
+    return effectiveTonicSpelling(
         rootHz: rootHz,
         noteNameA4Hz: noteNameA4Hz,
-        accidentalPreferenceRaw: accidentalPreferenceRaw
+        tonicNameModeRaw: modeRaw,
+        tonicE3: manualE3,
+        accidentalPreference: preference
     ) ?? TonicSpelling(e3: manualE3)
 }
 
@@ -2854,11 +2855,11 @@ private struct RootStudioSheet: View {
 
     private var effectiveTonicSpellingValue: TonicSpelling? {
         effectiveTonicSpelling(
-            modeRaw: tonicNameModeRaw,
-            manualE3: tonicE3,
             rootHz: model.rootHz,
             noteNameA4Hz: noteNameA4Hz,
-            accidentalPreferenceRaw: accidentalPreferenceRaw
+            tonicNameModeRaw: tonicNameModeRaw,
+            tonicE3: tonicE3,
+            accidentalPreference: preference
         )
     }
 

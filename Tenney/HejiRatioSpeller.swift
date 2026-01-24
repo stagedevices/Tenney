@@ -171,16 +171,7 @@ private func naturalFifths(_ letter: String) -> Int {
 }
 
 private func renderAccidentalText(_ count: Int) -> String {
-    switch count {
-    case 0: return ""
-    case 1: return "♯"
-    case 2: return "x"
-    case -1: return "♭"
-    case -2: return "𝄫"
-    default:
-        if count > 0 { return String(repeating: "♯", count: count) }
-        return String(repeating: "♭", count: abs(count))
-    }
+    accidentalGlyph(count)
 }
 
 private func helmholtzLabel(letter: String, octave: Int) -> String {

@@ -4347,7 +4347,7 @@ struct LatticeView: View {
             let zoomT = clamp01((store.camera.appliedScale - 42) / 70)
             let a: CGFloat = 0.85 * zoomT * CGFloat(labelDensity)
             if a > 0.02 {
-                let text = Text(label)
+                let text = Text(verbatim: label)
                     .font(.system(size: 9, weight: .semibold, design: .monospaced))
                     .foregroundStyle(Color.primary.opacity(Double(a)))
 
@@ -4520,7 +4520,7 @@ struct LatticeView: View {
                 let labelA: CGFloat = isAnimating ? (a * local) : a
 
                 if labelA > 0.02 {
-                    let text = Text(label)
+                    let text = Text(verbatim: label)
                         .font(.system(size: 9, weight: .semibold, design: .monospaced))
                         .foregroundStyle(Color.primary.opacity(Double(labelA)))
 
@@ -4691,11 +4691,11 @@ struct LatticeView: View {
             let pref = AccidentalPreference(rawValue: accidentalPreferenceRaw) ?? .auto
             let mode = TonicNameMode(rawValue: tonicNameModeRaw) ?? .auto
             let tonic = effectiveTonicSpelling(
-                modeRaw: tonicNameModeRaw,
-                manualE3: tonicE3,
                 rootHz: app.rootHz,
                 noteNameA4Hz: noteNameA4Hz,
-                accidentalPreferenceRaw: accidentalPreferenceRaw
+                tonicNameModeRaw: tonicNameModeRaw,
+                tonicE3: tonicE3,
+                accidentalPreference: pref
             ) ?? TonicSpelling(e3: tonicE3)
             let hejiPreference = (mode == .auto) ? pref : .auto
             // Adjusted ratio string (NO FOLD to 1–2; preserves +/- octaves in ratio)
@@ -4741,7 +4741,7 @@ struct LatticeView: View {
                         if store.labelMode == .heji {
                             HejiPitchLabel(context: hejiContext, pitch: .ratio(ratioRef))
                         } else {
-                            Text(noteLabelText)
+                            Text(verbatim: noteLabelText)
                                 .font(.title2.weight(.semibold))
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.9)
@@ -4986,11 +4986,11 @@ struct LatticeView: View {
         let pref = AccidentalPreference(rawValue: accidentalPreferenceRaw) ?? .auto
         let mode = TonicNameMode(rawValue: tonicNameModeRaw) ?? .auto
         let tonic = effectiveTonicSpelling(
-            modeRaw: tonicNameModeRaw,
-            manualE3: tonicE3,
             rootHz: rootHz,
             noteNameA4Hz: noteNameA4Hz,
-            accidentalPreferenceRaw: accidentalPreferenceRaw
+            tonicNameModeRaw: tonicNameModeRaw,
+            tonicE3: tonicE3,
+            accidentalPreference: pref
         ) ?? TonicSpelling(e3: tonicE3)
         let ratioRef = RatioRef(p: p, q: q, octave: octave, monzo: [:])
         return spellHejiRatioDisplay(

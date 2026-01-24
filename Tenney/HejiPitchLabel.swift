@@ -76,7 +76,7 @@ struct HejiPitchLabel: View {
 
             if mode == .text || mode == .combined {
                 if let ratioTextLabel {
-                    Text(ratioTextLabel)
+                    Text(verbatim: ratioTextLabel)
                         .font(.headline.monospaced())
                 } else {
                     Text(HejiNotation.textLabel(spelling, showCents: showCentsWhenApproximate))
