@@ -4688,6 +4688,7 @@ struct LatticeView: View {
         VStack(alignment: .leading, spacing: 6) {
             // Adjusted frequency for staff + metrics (unfolded for display)
             let baseHz = foldToAudible(app.rootHz * (Double(f.num) / Double(f.den)), minHz: 20, maxHz: 5000)
+            let hzAdj = baseHz * pow(2.0, Double(infoOctaveOffset))
             let pref = AccidentalPreference(rawValue: accidentalPreferenceRaw) ?? .auto
             let mode = TonicNameMode(rawValue: tonicNameModeRaw) ?? .auto
             let tonic = effectiveTonicSpelling(
