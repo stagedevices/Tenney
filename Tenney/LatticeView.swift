@@ -4022,23 +4022,40 @@ struct LatticeView: View {
     }
     
     private var chipsOverlayLayer: some View {
-        VStack {
-            HStack {
-                if !latticePreviewMode && !latticePreviewHideChips {
-                    VStack(alignment: .leading, spacing: 8) {
-                        overlayChips
-                    }
-                    .padding(8)
-#if os(macOS) || targetEnvironment(macCatalyst)
-                    .padding(.top, 20)
-                    .padding(.leading, 164)
+        GeometryReader { geo in
+            let stoplightTopThreshold: CGFloat = 40
+            let stoplightLeadingThreshold: CGFloat = 24
+            let stoplightPrimeChipNudgeX: CGFloat = 24
+            let primeChipNudgeX: CGFloat = {
+#if os(iOS) && !targetEnvironment(macCatalyst)
+                let hasWindowControls = UIDevice.current.userInterfaceIdiom == .pad
+                    && (geo.safeAreaInsets.top >= stoplightTopThreshold || geo.safeAreaInsets.leading >= stoplightLeadingThreshold)
+                return hasWindowControls ? stoplightPrimeChipNudgeX : 0
+#else
+                return 0
 #endif
-                    .allowsHitTesting(true)
+            }()
+
+            VStack {
+                HStack {
+                    if !latticePreviewMode && !latticePreviewHideChips {
+                        VStack(alignment: .leading, spacing: 8) {
+                            overlayChips
+                        }
+                        .padding(.leading, primeChipNudgeX)
+                        .padding(8)
+#if os(macOS) || targetEnvironment(macCatalyst)
+                        .padding(.top, 20)
+                        .padding(.leading, 164)
+#endif
+                        .allowsHitTesting(true)
+                    }
+                    
+                    Spacer()
                 }
-                
                 Spacer()
             }
-            Spacer()
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
     }
     
