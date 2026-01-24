@@ -4705,18 +4705,6 @@ struct LatticeView: View {
             ? "\(adjP)/\(adjQ)"
             : hejiTextLabel(p: f.num, q: f.den, octave: infoOctaveOffset, rootHz: app.rootHz)
             let ratioRef = RatioRef(p: f.num, q: f.den, octave: infoOctaveOffset, monzo: [:])
-            let noteLabelText = spellHejiRatioDisplay(
-                ratio: ratioRef,
-                tonic: tonic,
-                rootHz: app.rootHz,
-                noteNameA4Hz: noteNameA4Hz,
-                concertA4Hz: concertA4Hz,
-                accidentalPreference: hejiPreference,
-                maxPrime: max(3, app.primeLimit),
-                allowApproximation: false,
-                showCents: false,
-                applyAccidentalPreference: mode == .auto
-            )
             let hejiContext = HejiContext(
                 concertA4Hz: concertA4Hz,
                 noteNameA4Hz: noteNameA4Hz,
@@ -4728,6 +4716,28 @@ struct LatticeView: View {
                 scaleDegreeHint: ratioRef,
                 tonicE3: tonic.e3
             )
+            let noteLabelText: String = {
+                switch store.labelMode {
+                case .ratio:
+                    return HejiNotation.textLabelString(for: ratioRef, context: hejiContext, showCents: false)
+                case .heji:
+                    return spellHejiRatioDisplay(
+                        ratio: ratioRef,
+                        tonic: tonic,
+                        rootHz: app.rootHz,
+                        noteNameA4Hz: noteNameA4Hz,
+                        concertA4Hz: concertA4Hz,
+                        accidentalPreference: hejiPreference,
+                        maxPrime: max(3, app.primeLimit),
+                        allowApproximation: false,
+                        showCents: false,
+                        applyAccidentalPreference: mode == .auto
+                    )
+                }
+            }()
+#if DEBUG
+            print("[LatticeInfoCard] labelMode=\(store.labelMode) noteLabelText=\(noteLabelText) ratio=\(ratioRef.p)/\(ratioRef.q) octave=\(ratioRef.octave)")
+#endif
             
             // Octave step availability (audible range)
             let nextUpHz   = baseHz * pow(2.0, Double(infoOctaveOffset + 1))
@@ -4994,18 +5004,19 @@ struct LatticeView: View {
             accidentalPreference: pref
         ) ?? TonicSpelling(e3: tonicE3)
         let ratioRef = RatioRef(p: p, q: q, octave: octave, monzo: [:])
-        return spellHejiRatioDisplay(
-            ratio: ratioRef,
-            tonic: tonic,
-            rootHz: rootHz,
-            noteNameA4Hz: noteNameA4Hz,
+        let hejiPreference = (mode == .auto) ? pref : .auto
+        let hejiContext = HejiContext(
             concertA4Hz: concertA4Hz,
-            accidentalPreference: pref,
+            noteNameA4Hz: noteNameA4Hz,
+            rootHz: rootHz,
+            rootRatio: nil,
+            preferred: hejiPreference,
             maxPrime: max(3, app.primeLimit),
             allowApproximation: false,
-            showCents: false,
-            applyAccidentalPreference: mode == .auto
+            scaleDegreeHint: ratioRef,
+            tonicE3: tonic.e3
         )
+        return HejiNotation.textLabelString(for: ratioRef, context: hejiContext, showCents: false)
     }
 
 #if os(macOS) || targetEnvironment(macCatalyst)

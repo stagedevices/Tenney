@@ -44,10 +44,7 @@ struct HejiRatioDisplayTests {
             scaleDegreeHint: ratio,
             tonicE3: tonic.e3
         )
-<<<<<<< ours
-=======
         let label = HejiNotation.textLabelString(for: ratio, context: context, showCents: false)
->>>>>>> theirs
         #expect(label.localizedCaseInsensitiveContains("f"))
         #expect(label.contains("\u{1D12A}"))
         #expect(!label.localizedCaseInsensitiveContains("g"))
@@ -56,20 +53,6 @@ struct HejiRatioDisplayTests {
     @Test func manualTonicPerfectFifthUsesDSharp() async throws {
         let tonic = TonicSpelling.from(letter: "G", accidental: 1)
         let ratio = RatioRef(p: 3, q: 2, octave: 0, monzo: [:])
-<<<<<<< ours
-        let label = spellHejiRatioDisplay(
-            ratio: ratio,
-            tonic: tonic,
-            rootHz: 440,
-            noteNameA4Hz: 440,
-            concertA4Hz: 440,
-            accidentalPreference: .preferSharps,
-            maxPrime: 13,
-            allowApproximation: false,
-            showCents: false,
-            applyAccidentalPreference: false
-        )
-=======
         let context = HejiContext(
             concertA4Hz: 440,
             noteNameA4Hz: 440,
@@ -82,7 +65,6 @@ struct HejiRatioDisplayTests {
             tonicE3: tonic.e3
         )
         let label = HejiNotation.textLabelString(for: ratio, context: context, showCents: false)
->>>>>>> theirs
         #expect(label.localizedCaseInsensitiveContains("d"))
         #expect(label.contains("♯"))
     }
