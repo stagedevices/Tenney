@@ -4688,7 +4688,6 @@ struct LatticeView: View {
         VStack(alignment: .leading, spacing: 6) {
             // Adjusted frequency for staff + metrics (unfolded for display)
             let baseHz = foldToAudible(app.rootHz * (Double(f.num) / Double(f.den)), minHz: 20, maxHz: 5000)
-            let hzAdj = baseHz * pow(2.0, Double(infoOctaveOffset))
             let pref = AccidentalPreference(rawValue: accidentalPreferenceRaw) ?? .auto
             let mode = TonicNameMode(rawValue: tonicNameModeRaw) ?? .auto
             let tonic = effectiveTonicSpelling(
@@ -4699,21 +4698,24 @@ struct LatticeView: View {
                 accidentalPreferenceRaw: accidentalPreferenceRaw
             ) ?? TonicSpelling(e3: tonicE3)
             let hejiPreference = (mode == .auto) ? pref : .auto
-            let helmholtzPref = helmholtzPreference(from: pref)
-            let noteLabel = NotationFormatter.closestHelmholtzLabel(
-                freqHz: hzAdj,
-                a4Hz: noteNameA4Hz,
-                preference: helmholtzPref
-            )
-            let noteLabelText = (f.num == 1 && f.den == 1 && infoOctaveOffset == 0)
-            ? tonic.displayText
-            : noteLabel
             // Adjusted ratio string (NO FOLD to 1–2; preserves +/- octaves in ratio)
             let (adjP, adjQ) = ratioWithOctaveOffsetNoFold(num: f.num, den: f.den, offset: infoOctaveOffset)
             let jiText: String = (store.labelMode == .ratio)
             ? "\(adjP)/\(adjQ)"
             : hejiTextLabel(p: f.num, q: f.den, octave: infoOctaveOffset, rootHz: app.rootHz)
             let ratioRef = RatioRef(p: f.num, q: f.den, octave: infoOctaveOffset, monzo: [:])
+            let noteLabelText = spellHejiRatioDisplay(
+                ratio: ratioRef,
+                tonic: tonic,
+                rootHz: app.rootHz,
+                noteNameA4Hz: noteNameA4Hz,
+                concertA4Hz: concertA4Hz,
+                accidentalPreference: hejiPreference,
+                maxPrime: max(3, app.primeLimit),
+                allowApproximation: false,
+                showCents: false,
+                applyAccidentalPreference: mode == .auto
+            )
             let hejiContext = HejiContext(
                 concertA4Hz: concertA4Hz,
                 noteNameA4Hz: noteNameA4Hz,
