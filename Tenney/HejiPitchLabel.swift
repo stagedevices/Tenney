@@ -48,7 +48,7 @@ struct HejiPitchLabel: View {
     }
 
     var body: some View {
-        let unsupported = ratioSpelling?.unsupportedPrimes ?? spelling.unsupportedPrimes
+        let unsupported = spelling.unsupportedPrimes
         VStack(spacing: mode == .combined ? 4 : 0) {
             if mode == .staff || mode == .combined {
                 let layout = HejiNotation.staffLayout(spelling, context: context)

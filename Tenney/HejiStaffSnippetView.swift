@@ -22,31 +22,37 @@ struct HejiStaffSnippetView: View {
         let clefSize: CGFloat
         let headSize: CGFloat
         let accSize: CGFloat
-        let topInset: CGFloat
+        let vInset: CGFloat
     }
 
     private func metrics(for height: CGFloat) -> Metrics {
         let gap = height / 4
         let thickness = snap(1 / displayScale)
+
+        let headScale: CGFloat = 1.2
+        let headDrawSize = height * 0.42 * headScale
+        let vInset = snap(max(6 / displayScale, headDrawSize * 0.75))
+
         return Metrics(
             gap: gap,
             thickness: thickness,
             width: height * 2.5,
-            height: height + 12,
+            height: height + vInset * 2,
             noteX: height * 1.8,
             accX: height * 1.5,
             clefX: height * 0.35,
             clefSize: height * 0.6,
             headSize: height * 0.42,
             accSize: height * 0.38,
-            topInset: snap(4 / displayScale)
+            vInset: vInset
         )
     }
+
 
     var body: some View {
         let m = metrics(for: staffHeight)
         Canvas { ctx, _ in
-            let topY = m.topInset
+            let topY = m.vInset
             for i in 0..<5 {
                 let y = snap(topY + CGFloat(i) * m.gap)
                 var line = Path()
@@ -56,12 +62,14 @@ struct HejiStaffSnippetView: View {
             }
 
             let bottomLineY = topY + 4 * m.gap
-            let y = snap(bottomLineY - CGFloat(layout.staffStepFromMiddle) * (m.gap / 2))
+            let middleLineY = bottomLineY - 2 * m.gap
+            let y = snap(middleLineY - CGFloat(layout.staffStepFromMiddle) * (m.gap / 2))
 
             let clefGlyph = layout.clef == .treble ? HejiGlyphs.gClef : HejiGlyphs.fClef
             if HejiGlyphs.glyphAvailable(clefGlyph, fontName: "Bravura") {
                 let clefText = Text(clefGlyph).font(.custom("Bravura", size: m.clefSize))
-                let clefY = snap(layout.clef == .treble ? bottomLineY - 2 * m.gap : bottomLineY - 3 * m.gap)
+                var clefY = snap(layout.clef == .treble ? bottomLineY - 2 * m.gap : bottomLineY - 3 * m.gap)
+                if layout.clef == .treble { clefY = snap(clefY + m.gap) }
                 ctx.draw(clefText, at: CGPoint(x: m.clefX, y: clefY), anchor: .center)
             }
 
@@ -73,17 +81,18 @@ struct HejiStaffSnippetView: View {
                 ctx.draw(accText, at: CGPoint(x: x, y: y + run.offset.y), anchor: .center)
             }
 
-            let headText = Text(layout.noteheadGlyph).font(.custom("Bravura", size: m.headSize))
+            let headText = Text(layout.noteheadGlyph).font(.custom("Bravura", size: m.headSize * 1.8))
             ctx.draw(headText, at: CGPoint(x: m.noteX, y: y), anchor: .center)
 
             drawLedgerLines(step: layout.staffStepFromMiddle, metrics: m, y: y, topY: topY, bottomY: bottomLineY, ctx: &ctx)
 
             if let approx = layout.approxMarkerGlyph {
                 let approxText = Text(approx).font(.system(size: m.accSize * 0.8, weight: .regular))
-                ctx.draw(approxText, at: CGPoint(x: m.width - 8, y: topY - 4), anchor: .trailing)
+                ctx.draw(approxText, at: CGPoint(x: m.width - 8, y: topY - snap(2 / displayScale)), anchor: .trailing)
             }
         }
-        .frame(width: metrics(for: staffHeight).width, height: metrics(for: staffHeight).height)
+        .frame(width: m.width, height: m.height)
+
     }
 
     private func drawLedgerLines(step: Int, metrics: Metrics, y: CGFloat, topY: CGFloat, bottomY: CGFloat, ctx: inout GraphicsContext) {

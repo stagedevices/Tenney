@@ -3378,7 +3378,7 @@ struct StudioConsoleView: View {
         case .general:
             VStack(spacing: 14) {
                 quickSetupCard
-                // labelingSection
+                 labelingSection
                 defaultViewSection
                // selectionTrayClearBehaviorSection /// HACK / Uncomment when you're ready to fix the selection tray Xmark
                 whatsNewSection
