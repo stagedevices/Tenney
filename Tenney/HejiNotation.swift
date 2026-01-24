@@ -128,7 +128,7 @@ enum HejiNotation {
     private static let fifthLetters = ["C", "G", "D", "A", "E", "B", "F"]
     private static let baseFifth = [0, 1, 2, 3, 4, 5, -1]
 
-    private static let hejiSearchRange = -16...16
+    private static let hejiSearchRange = -14...14
     static func spelling(forRatio ratioRef: RatioRef, context: HejiContext) -> HejiSpelling {
         let ratio = Ratio(ratioRef.p, ratioRef.q)
         return spelling(forRatio: ratio, octave: ratioRef.octave, context: context)
@@ -136,9 +136,8 @@ enum HejiNotation {
 
     static func spelling(forRatio ratio: Ratio, octave: Int = 0, context: HejiContext) -> HejiSpelling {
         let value = ratio.value * pow(2.0, Double(octave))
-        let folded = foldToUnit(value)
-        let best = bestThreeLimitCandidate(for: folded, preference: context.preferred)
-        let e3Total = context.tonicE3.map { $0 + best.e3 } ?? best.e3
+        let e3Interval = best3LimitE3(for: ratio, octave: octave)
+        let e3Total = context.tonicE3.map { $0 + e3Interval } ?? e3Interval
         let base = letter(for: e3Total)
         let accidental = HejiAccidental(
             diatonicAccidental: base.accidentalCount,
@@ -241,19 +240,28 @@ enum HejiNotation {
 
     // MARK: - 3-limit base
 
-    private static func bestThreeLimitCandidate(for ratio: Double, preference: AccidentalPreference) -> Candidate {
+    private static func bestThreeLimitCandidate(for ratio: Double) -> Candidate {
+        guard ratio.isFinite, ratio > 0 else {
+            return Candidate(e3: 0, e2: 0, cents: 0, accidentalCount: 0)
+        }
         var best: Candidate?
         for e3 in hejiSearchRange {
             let base = pow(3.0, Double(e3))
-            let e2 = -Int(floor(log2(base)))
+            let target = ratio / base
+            let e2 = Int(round(log2(target)))
             let candidate = base * pow(2.0, Double(e2))
             let cents = abs(1200.0 * log2(ratio / candidate))
             let letterInfo = letter(for: e3)
             let acc = letterInfo.accidentalCount
             let candidateScore = Candidate(e3: e3, e2: e2, cents: cents, accidentalCount: acc)
-            best = chooseBestCandidate(current: best, candidate: candidateScore, preference: preference)
+            best = chooseBestCandidate(current: best, candidate: candidateScore)
         }
         return best ?? Candidate(e3: 0, e2: 0, cents: 0, accidentalCount: 0)
+    }
+
+    private static func best3LimitE3(for ratio: Ratio, octave: Int = 0) -> Int {
+        let value = ratio.value * pow(2.0, Double(octave))
+        return bestThreeLimitCandidate(for: value).e3
     }
 
     private static func letter(for e3: Int) -> (letter: String, accidentalCount: Int) {
@@ -263,23 +271,22 @@ enum HejiNotation {
         return (fifthLetters[idx], accidental)
     }
 
-    private static func chooseBestCandidate(current: Candidate?, candidate: Candidate, preference: AccidentalPreference) -> Candidate {
+    private static func chooseBestCandidate(current: Candidate?, candidate: Candidate) -> Candidate {
         guard let current else { return candidate }
         if candidate.cents < current.cents - 1e-6 {
             return candidate
         } else if abs(candidate.cents - current.cents) <= 1e-6 {
-            let complexity = abs(candidate.accidentalCount)
-            let currentComplexity = abs(current.accidentalCount)
-            if complexity < currentComplexity {
+            let absE3 = abs(candidate.e3)
+            let currentAbsE3 = abs(current.e3)
+            if absE3 < currentAbsE3 {
                 return candidate
-            } else if complexity == currentComplexity {
-                switch preference {
-                case .preferSharps:
-                    if candidate.accidentalCount > current.accidentalCount { return candidate }
-                case .preferFlats:
-                    if candidate.accidentalCount < current.accidentalCount { return candidate }
-                case .auto:
-                    break
+            } else if absE3 == currentAbsE3 {
+                if abs(candidate.cents - current.cents) > 1e-6, candidate.cents < current.cents {
+                    return candidate
+                } else if abs(candidate.cents - current.cents) <= 1e-6 {
+                    if abs(candidate.e2) < abs(current.e2) {
+                        return candidate
+                    }
                 }
             }
         }
@@ -379,11 +386,7 @@ enum HejiNotation {
 
     private static func textAccidental(_ accidental: HejiAccidental) -> String {
         var text = ""
-        if accidental.diatonicAccidental > 0 {
-            text += String(repeating: "♯", count: accidental.diatonicAccidental)
-        } else if accidental.diatonicAccidental < 0 {
-            text += String(repeating: "♭", count: abs(accidental.diatonicAccidental))
-        }
+        text += accidentalGlyph(accidental.diatonicAccidental)
         for component in accidental.microtonalComponents {
             switch component {
             case .syntonic(let up): text += up ? "↑" : "↓"
@@ -393,14 +396,6 @@ enum HejiNotation {
             }
         }
         return text
-    }
-
-    private static func foldToUnit(_ ratio: Double) -> Double {
-        guard ratio.isFinite, ratio > 0 else { return 1.0 }
-        var value = ratio
-        while value < 1 { value *= 2 }
-        while value >= 2 { value /= 2 }
-        return value
     }
 
     private static func resolvePrimeLimit(_ maxPrime: Int) -> PrimeLimit {

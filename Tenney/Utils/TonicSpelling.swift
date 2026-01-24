@@ -21,7 +21,7 @@ struct TonicSpelling: Hashable {
     var accidentalCount: Int { letterInfo.accidentalCount }
 
     var displayText: String {
-        letter + accidentalText(for: accidentalCount)
+        letter + accidentalGlyph(accidentalCount)
     }
 
     private var letterInfo: (letter: String, accidentalCount: Int) {
@@ -104,26 +104,33 @@ struct TonicSpelling: Hashable {
         }
     }
 
-    private func accidentalText(for count: Int) -> String {
-        if count > 0 { return String(repeating: "♯", count: count) }
-        if count < 0 { return String(repeating: "♭", count: abs(count)) }
-        return ""
-    }
 }
 
 func effectiveTonicSpelling(
-    modeRaw: String,
-    manualE3: Int,
     rootHz: Double,
     noteNameA4Hz: Double,
-    accidentalPreferenceRaw: String
+    tonicNameModeRaw: String,
+    tonicE3: Int,
+    accidentalPreference: AccidentalPreference
 ) -> TonicSpelling? {
-    let mode = TonicNameMode(rawValue: modeRaw) ?? .auto
-    let preference = AccidentalPreference(rawValue: accidentalPreferenceRaw) ?? .auto
+    let mode = TonicNameMode(rawValue: tonicNameModeRaw) ?? .auto
     switch mode {
     case .auto:
-        return TonicSpelling.from(rootHz: rootHz, noteNameA4Hz: noteNameA4Hz, preference: preference)
+        return TonicSpelling.from(rootHz: rootHz, noteNameA4Hz: noteNameA4Hz, preference: accidentalPreference)
     case .manual:
-        return TonicSpelling(e3: manualE3)
+        return TonicSpelling(e3: tonicE3)
+    }
+}
+
+func accidentalGlyph(_ count: Int, showNatural: Bool = false) -> String {
+    switch count {
+    case 0: return showNatural ? "♮" : ""
+    case 1: return "♯"
+    case 2: return "𝄪"
+    case -1: return "♭"
+    case -2: return "𝄫"
+    default:
+        if count > 0 { return String(repeating: "♯", count: count) }
+        return String(repeating: "♭", count: abs(count))
     }
 }

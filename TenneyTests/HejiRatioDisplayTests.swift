@@ -41,6 +41,7 @@ struct HejiRatioDisplayTests {
             showCents: false,
             applyAccidentalPreference: false
         )
-        #expect(label == "♯♯f′′")
+        #expect(label == "𝄪f′′")
+        #expect(label.contains("\u{1D12A}"))
     }
 }
