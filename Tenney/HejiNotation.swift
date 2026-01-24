@@ -195,6 +195,15 @@ enum HejiNotation {
         return out
     }
 
+    static func textLabelString(_ spelling: HejiSpelling, showCents: Bool = false) -> String {
+        String(textLabel(spelling, showCents: showCents).characters)
+    }
+
+    static func textLabelString(for ratioRef: RatioRef, context: HejiContext, showCents: Bool = false) -> String {
+        let spelling = spelling(forRatio: ratioRef, context: context)
+        return textLabelString(spelling, showCents: showCents)
+    }
+
     static func accessibilityLabel(_ spelling: HejiSpelling) -> String {
         var parts: [String] = []
         parts.append(spelling.baseLetter)
