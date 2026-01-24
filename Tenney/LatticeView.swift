@@ -4721,18 +4721,7 @@ struct LatticeView: View {
                 case .ratio:
                     return HejiNotation.textLabelString(for: ratioRef, context: hejiContext, showCents: false)
                 case .heji:
-                    return spellHejiRatioDisplay(
-                        ratio: ratioRef,
-                        tonic: tonic,
-                        rootHz: app.rootHz,
-                        noteNameA4Hz: noteNameA4Hz,
-                        concertA4Hz: concertA4Hz,
-                        accidentalPreference: hejiPreference,
-                        maxPrime: max(3, app.primeLimit),
-                        allowApproximation: false,
-                        showCents: false,
-                        applyAccidentalPreference: mode == .auto
-                    )
+                    return HejiNotation.textLabelString(for: ratioRef, context: hejiContext, showCents: false)
                 }
             }()
 #if DEBUG
