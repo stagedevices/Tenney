@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import SwiftUI
 
 enum TonicNameMode: String, CaseIterable, Identifiable {
     case auto
@@ -22,6 +23,25 @@ struct TonicSpelling: Hashable {
 
     var displayText: String {
         letter + accidentalGlyph(accidentalCount)
+    }
+
+    func attributedDisplayText(
+        textStyle: Font.TextStyle = .body,
+        weight: Font.Weight = .regular,
+        design: Font.Design = .default,
+        basePointSize: CGFloat? = nil
+    ) -> AttributedString {
+        let baseSize = basePointSize ?? Heji2FontRegistry.preferredPointSize(for: textStyle)
+        let baseFont = Font.system(size: baseSize, weight: weight, design: design)
+        var out = AttributedString(letter)
+        out.font = baseFont
+        let accidental = accidentalGlyph(accidentalCount)
+        if !accidental.isEmpty {
+            var acc = AttributedString(accidental)
+            acc.font = Heji2FontRegistry.hejiTextFont(size: baseSize, relativeTo: textStyle)
+            out += acc
+        }
+        return out
     }
 
     private var letterInfo: (letter: String, accidentalCount: Int) {
@@ -123,14 +143,10 @@ func effectiveTonicSpelling(
 }
 
 func accidentalGlyph(_ count: Int, showNatural: Bool = false) -> String {
-    switch count {
-    case 0: return showNatural ? "♮" : ""
-    case 1: return "♯"
-    case 2: return "𝄪"
-    case -1: return "♭"
-    case -2: return "𝄫"
-    default:
-        if count > 0 { return String(repeating: "♯", count: count) }
-        return String(repeating: "♭", count: abs(count))
+    guard count != 0 else { return "" }
+    let glyphs = Heji2Mapping.shared.glyphsForDiatonicAccidental(count)
+    if !glyphs.isEmpty {
+        return glyphs.map(\.string).joined()
     }
+    return ""
 }

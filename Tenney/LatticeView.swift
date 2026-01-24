@@ -242,13 +242,15 @@ struct LatticeView: View {
         return (num / g, den / g)
     }
 
-    private func overlayLabelText(num: Int, den: Int) -> String? {
+    private func overlayLabelText(num: Int, den: Int) -> AttributedString? {
         let (cp, cq) = canonicalPQ(num, den)
 
         if store.labelMode == .ratio {
-            return "\(cp)/\(cq)"
+            var label = AttributedString("\(cp)/\(cq)")
+            label.font = .system(size: 9, weight: .semibold, design: .monospaced)
+            return label
         } else {
-            return hejiTextLabel(p: cp, q: cq, octave: 0, rootHz: app.rootHz)
+            return hejiTextLabel(p: cp, q: cq, octave: 0, rootHz: app.rootHz, basePointSize: 9)
         }
     }
 
@@ -1516,7 +1518,7 @@ struct LatticeView: View {
         return (num / g, den / g)
     }
 
-    private func planeLabelText(for coord: LatticeCoord) -> String? {
+    private func planeLabelText(for coord: LatticeCoord) -> AttributedString? {
         // axis-shift affects meaning (labels), but NOT geometry
         let e3 = coord.e3 + (store.axisShift[3] ?? 0)
         let e5 = coord.e5 + (store.axisShift[5] ?? 0)
@@ -1525,9 +1527,11 @@ struct LatticeView: View {
         let (cp, cq) = canonicalPQ(p, q)
 
         if store.labelMode == .ratio {
-            return "\(cp)/\(cq)"
+            var label = AttributedString("\(cp)/\(cq)")
+            label.font = .system(size: 11, weight: .semibold, design: .monospaced)
+            return label
         } else {
-            return hejiTextLabel(p: cp, q: cq, octave: 0, rootHz: app.rootHz)
+            return hejiTextLabel(p: cp, q: cq, octave: 0, rootHz: app.rootHz, basePointSize: 11)
         }
     }
 
@@ -4347,8 +4351,7 @@ struct LatticeView: View {
             let zoomT = clamp01((store.camera.appliedScale - 42) / 70)
             let a: CGFloat = 0.85 * zoomT * CGFloat(labelDensity)
             if a > 0.02 {
-                let text = Text(verbatim: label)
-                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                let text = Text(label)
                     .foregroundStyle(Color.primary.opacity(Double(a)))
 
                 ctx.draw(
@@ -4520,8 +4523,7 @@ struct LatticeView: View {
                 let labelA: CGFloat = isAnimating ? (a * local) : a
 
                 if labelA > 0.02 {
-                    let text = Text(verbatim: label)
-                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    let text = Text(label)
                         .foregroundStyle(Color.primary.opacity(Double(labelA)))
 
                     ctx.draw(
@@ -4701,9 +4703,7 @@ struct LatticeView: View {
             let hejiPreference = (mode == .auto) ? pref : .auto
             // Adjusted ratio string (NO FOLD to 1–2; preserves +/- octaves in ratio)
             let (adjP, adjQ) = ratioWithOctaveOffsetNoFold(num: f.num, den: f.den, offset: infoOctaveOffset)
-            let jiText: String = (store.labelMode == .ratio)
-            ? "\(adjP)/\(adjQ)"
-            : hejiTextLabel(p: f.num, q: f.den, octave: infoOctaveOffset, rootHz: app.rootHz)
+            let jiText: String = "\(adjP)/\(adjQ)"
             let ratioRef = RatioRef(p: f.num, q: f.den, octave: infoOctaveOffset, monzo: [:])
             let hejiContext = HejiContext(
                 concertA4Hz: concertA4Hz,
@@ -4716,12 +4716,17 @@ struct LatticeView: View {
                 scaleDegreeHint: ratioRef,
                 tonicE3: tonic.e3
             )
-            let noteLabelText: String = {
+            let noteLabelText: AttributedString = {
                 switch store.labelMode {
-                case .ratio:
-                    return HejiNotation.textLabelString(for: ratioRef, context: hejiContext, showCents: false)
-                case .heji:
-                    return HejiNotation.textLabelString(for: ratioRef, context: hejiContext, showCents: false)
+                case .ratio, .heji:
+                    return HejiNotation.textLabel(
+                        for: ratioRef,
+                        context: hejiContext,
+                        showCents: false,
+                        textStyle: .title2,
+                        weight: .semibold,
+                        design: .default
+                    )
                 }
             }()
             
@@ -4738,8 +4743,7 @@ struct LatticeView: View {
                         if store.labelMode == .heji {
                             HejiPitchLabel(context: hejiContext, pitch: .ratio(ratioRef))
                         } else {
-                            Text(verbatim: noteLabelText)
-                                .font(.title2.weight(.semibold))
+                            Text(noteLabelText)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.9)
                             Text(jiText)
@@ -4906,7 +4910,7 @@ struct LatticeView: View {
                 
                 // Accidental (if any), centered to notehead Y
                 if let acc = NotationFormatter.hejiAccidentalGlyph(forCents: etCents) {
-                    let accTxt = Text(acc).font(.custom("Bravura Text", size: M.accSize))
+                    let accTxt = Text(acc).font(.custom(Heji2FontRegistry.hejiMusicFontName, size: M.accSize))
                     ctx.draw(accTxt, at: CGPoint(x: M.accX, y: y), anchor: .center)
                 }
                 
@@ -4979,7 +4983,7 @@ struct LatticeView: View {
         return "<" + vec.map(String.init).joined(separator: ", ") + ">"
     }
 
-    private func hejiTextLabel(p: Int, q: Int, octave: Int, rootHz: Double) -> String {
+    private func hejiTextLabel(p: Int, q: Int, octave: Int, rootHz: Double, basePointSize: CGFloat? = nil) -> AttributedString {
         let pref = AccidentalPreference(rawValue: accidentalPreferenceRaw) ?? .auto
         let mode = TonicNameMode(rawValue: tonicNameModeRaw) ?? .auto
         let tonic = effectiveTonicSpelling(
@@ -5002,7 +5006,15 @@ struct LatticeView: View {
             scaleDegreeHint: ratioRef,
             tonicE3: tonic.e3
         )
-        return HejiNotation.textLabelString(for: ratioRef, context: hejiContext, showCents: false)
+        return HejiNotation.textLabel(
+            for: ratioRef,
+            context: hejiContext,
+            showCents: false,
+            textStyle: .caption2,
+            weight: .semibold,
+            design: .monospaced,
+            basePointSize: basePointSize
+        )
     }
 
 #if os(macOS) || targetEnvironment(macCatalyst)
@@ -5358,24 +5370,22 @@ struct LatticeView: View {
 }
 // MARK: - HEJI accidental mapping (SMuFL Extended Helmholtz–Ellis)
 extension NotationFormatter {
-    /// Returns a Bravura/SMuFL glyph string for a HEJI accidental near the given ET deviation (in cents).
-    /// Uses Extended Helmholtz–Ellis codepoints U+E2C0–U+E2FF.
-    ///  - 1 syntonic comma (~21.51¢):   accidentalNaturalOneArrowUp/Down (U+E2C7 / U+E2C2)
-    ///  - 2 syntonic commas (~43.02¢):  accidentalNaturalTwoArrowsUp/Down (U+E2D1 / U+E2CC)
-    ///  - 1 septimal comma (~27.26¢):   accidentalRaise/LowerOneSeptimalComma (U+E2DF / U+E2DE)
-    ///  - 1 undecimal quartertone (~48.77¢): accidentalRaise/LowerOneUndecimalQuartertone (U+E2E3 / U+E2E2)
+    /// Returns a HEJI2 glyph string for a HEJI accidental near the given ET deviation (in cents).
     static func hejiAccidentalGlyph(forCents cents: Double) -> String? {
-        let a = abs(cents); let up = cents >= 0
+        let a = abs(cents)
+        let up = cents >= 0
         if a < 6 { return nil } // treat <6¢ as “no microtonal accidental”
-        struct Step { let cents: Double; let up: String; let down: String }
+        struct Step { let cents: Double; let prime: Int }
         let table: [Step] = [
-            .init(cents: 21.51, up: "\u{E2C7}", down: "\u{E2C2}"), // NaturalOneArrowUp/Down
-            .init(cents: 27.26, up: "\u{E2DF}", down: "\u{E2DE}"), // Raise/LowerOneSeptimalComma
-            .init(cents: 43.02, up: "\u{E2D1}", down: "\u{E2CC}"), // NaturalTwoArrowsUp/Down
-            .init(cents: 48.77, up: "\u{E2E3}", down: "\u{E2E2}")  // Raise/LowerOneUndecimalQuartertone
+            .init(cents: 21.51, prime: 5),
+            .init(cents: 27.26, prime: 7),
+            .init(cents: 43.02, prime: 5),
+            .init(cents: 48.77, prime: 11)
         ]
-        let nearest = table.min(by: { abs($0.cents - a) < abs($1.cents - a) })!
-        return up ? nearest.up : nearest.down
+        guard let nearest = table.min(by: { abs($0.cents - a) < abs($1.cents - a) }) else { return nil }
+        let component = HejiMicrotonalComponent(prime: nearest.prime, up: up)
+        let glyphs = Heji2Mapping.shared.glyphsForPrimeComponents([component])
+        return glyphs.first?.string
     }
 }
 

@@ -837,7 +837,7 @@ extension Notification.Name {
         .accessibilityLabel(isLocked ? "Locked target" : "Edit lock target")
     }
 
-    private var hejiLabelText: String? {
+    private var hejiLabelText: AttributedString? {
         guard store.viewStyle != .posterFraction else { return nil }
         let pref = AccidentalPreference(rawValue: accidentalPreferenceRaw) ?? .auto
         let mode = TonicNameMode(rawValue: tonicNameModeRaw) ?? .auto
@@ -877,16 +877,21 @@ extension Notification.Name {
             tonicE3: tonic.e3
         )
         let spelling = HejiNotation.spelling(forFrequency: liveHz, context: context)
-        return String(HejiNotation.textLabel(spelling, showCents: true).characters)
+        return HejiNotation.textLabel(
+            spelling,
+            showCents: true,
+            textStyle: .footnote,
+            weight: .semibold,
+            design: .default
+        )
     }
 
     private var prefersStackedHejiLabel: Bool {
         dynamicTypeSize.isAccessibilitySize && !isPhoneLandscapeCompact
     }
 
-    private func hejiLabelView(_ label: String) -> some View {
-        Text(verbatim: label)
-            .font(.footnote.weight(.semibold))
+    private func hejiLabelView(_ label: AttributedString) -> some View {
+        Text(label)
             .monospacedDigit()
             .foregroundStyle(.secondary)
             .lineLimit(1)
@@ -897,7 +902,7 @@ extension Notification.Name {
 
     @ViewBuilder
     private func hejiAnnotatedRow<Content: View>(
-        hejiLabel: String?,
+        hejiLabel: AttributedString?,
         @ViewBuilder content: () -> Content
     ) -> some View {
         if let hejiLabel {
@@ -919,7 +924,7 @@ extension Notification.Name {
     }
 
     @ViewBuilder
-    private func ratioReadoutRow(label: String, hejiLabel: String?) -> some View {
+    private func ratioReadoutRow(label: String, hejiLabel: AttributedString?) -> some View {
         let primes = label.split(separator: "/").flatMap { Int($0) }.flatMap { factors($0) }.filter { $0 > 2 }
         let showRatioText = store.viewStyle != .posterFraction
         hejiAnnotatedRow(hejiLabel: hejiLabel) {
@@ -1965,15 +1970,17 @@ private func currentTonicDisplayName(
     manualE3: Int,
     rootHz: Double,
     noteNameA4Hz: Double,
-    accidentalPreferenceRaw: String
-) -> String {
+    accidentalPreferenceRaw: String,
+    textStyle: Font.TextStyle = .caption2,
+    weight: Font.Weight = .semibold
+) -> AttributedString {
     currentTonicSpelling(
         modeRaw: modeRaw,
         manualE3: manualE3,
         rootHz: rootHz,
         noteNameA4Hz: noteNameA4Hz,
         accidentalPreferenceRaw: accidentalPreferenceRaw
-    ).displayText
+    ).attributedDisplayText(textStyle: textStyle, weight: weight, design: .default)
 }
 
 private struct RailView: View {
@@ -2098,7 +2105,6 @@ private struct UtilityBar: View {
                 HStack(spacing: 3) {
                     rootValueTextMaybeHero()
                     tonicNameLabel
-                        .font(.caption2.weight(.semibold))
                         .foregroundStyle(.secondary)
                 }
 
@@ -2117,7 +2123,6 @@ private struct UtilityBar: View {
                 HStack(spacing: 3) {
                     rootValueTextMaybeHero()
                     tonicNameLabel
-                        .font(.caption2.weight(.semibold))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -2126,7 +2131,6 @@ private struct UtilityBar: View {
             HStack(spacing: 3) {
                 rootValueTextMaybeHero()
                 tonicNameLabel
-                    .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
         }
@@ -2141,7 +2145,9 @@ private struct UtilityBar: View {
             manualE3: tonicE3,
             rootHz: app.rootHz,
             noteNameA4Hz: noteNameA4Hz,
-            accidentalPreferenceRaw: accidentalPreferenceRaw
+            accidentalPreferenceRaw: accidentalPreferenceRaw,
+            textStyle: .caption2,
+            weight: .semibold
         ))
         .frame(minWidth: 34, alignment: .center)
         .lineLimit(1)
@@ -2499,7 +2505,9 @@ private struct RootCardCompact: View {
                             manualE3: tonicE3,
                             rootHz: model.rootHz,
                             noteNameA4Hz: noteNameA4Hz,
-                            accidentalPreferenceRaw: accidentalPreferenceRaw
+                            accidentalPreferenceRaw: accidentalPreferenceRaw,
+                            textStyle: .caption,
+                            weight: .semibold
                         )
                         HStack(spacing: 6) {
                             Image(systemName: "tuningfork")
@@ -2511,7 +2519,6 @@ private struct RootCardCompact: View {
                                 .allowsTightening(true)
                                 .matchedGeometryEffect(id: "rootValue", in: ns)  // ← hero
                             Text(tonicDisplayName)
-                                .font(.caption.weight(.semibold))
                                 .foregroundStyle(.secondary)
                                 .frame(minWidth: 34, alignment: .center)
                                 .lineLimit(1)
@@ -2662,8 +2669,7 @@ private struct RootStudioSheet: View {
                             // Sticky header: tonic summary
                             HStack {
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text(effectiveTonicDisplayText)
-                                    .font(.title3.weight(.semibold))
+                                    Text(effectiveTonicDisplayText(textStyle: .title3, weight: .semibold))
                                     HStack(spacing: 4) {
                                         Image(systemName: "tuningfork")
                                             .imageScale(.small)
@@ -2863,8 +2869,17 @@ private struct RootStudioSheet: View {
         )
     }
 
-    private var effectiveTonicDisplayText: String {
-        effectiveTonicSpellingValue?.displayText ?? "—"
+    private func effectiveTonicDisplayText(
+        textStyle: Font.TextStyle,
+        weight: Font.Weight,
+        design: Font.Design = .default
+    ) -> AttributedString {
+        guard let spelling = effectiveTonicSpellingValue else {
+            var fallback = AttributedString("—")
+            fallback.font = .system(size: Heji2FontRegistry.preferredPointSize(for: textStyle), weight: weight, design: design)
+            return fallback
+        }
+        return spelling.attributedDisplayText(textStyle: textStyle, weight: weight, design: design)
     }
 
     private var manualLetterBinding: Binding<String> {
@@ -2971,8 +2986,7 @@ private struct RootStudioSheet: View {
                 HStack {
                     Text("Current")
                     Spacer()
-                    Text(effectiveTonicDisplayText)
-                        .font(.title3.monospaced().weight(.semibold))
+                    Text(effectiveTonicDisplayText(textStyle: .title3, weight: .semibold, design: .monospaced))
                 }
 
                 Text(tonicMode == .auto ? "Auto (derived)" : "Manual (saved)")
@@ -2988,7 +3002,12 @@ private struct RootStudioSheet: View {
                             Text("Suggested").font(.caption).foregroundStyle(.secondary)
                             HStack(spacing: 10) {
                                 ForEach(suggestedSpellings, id: \.self) { spelling in
-                                    GlassSelectTile(title: spelling.displayText, isOn: false) {
+                                    let title = spelling.attributedDisplayText(
+                                        textStyle: .title3,
+                                        weight: .semibold,
+                                        design: .default
+                                    )
+                                    GlassSelectTile(title: title, isOn: false) {
                                         tonicE3 = spelling.e3
                                         tonicNameModeRaw = TonicNameMode.manual.rawValue
                                     }
@@ -3008,7 +3027,12 @@ private struct RootStudioSheet: View {
                             Text("Suggested").font(.caption).foregroundStyle(.secondary)
                             HStack(spacing: 10) {
                                 ForEach(suggestedSpellings, id: \.self) { spelling in
-                                    GlassSelectTile(title: spelling.displayText, isOn: tonicE3 == spelling.e3) {
+                                    let title = spelling.attributedDisplayText(
+                                        textStyle: .title3,
+                                        weight: .semibold,
+                                        design: .default
+                                    )
+                                    GlassSelectTile(title: title, isOn: tonicE3 == spelling.e3) {
                                         tonicE3 = spelling.e3
                                         tonicNameModeRaw = TonicNameMode.manual.rawValue
                                     }
@@ -3094,10 +3118,17 @@ private struct RootStudioSheet: View {
             }
         }
 
-    private func accidentalLabel(_ value: Int) -> String {
-        if value == 0 { return "♮" }
-        if value > 0 { return String(repeating: "♯", count: value) }
-        return String(repeating: "♭", count: abs(value))
+    private func accidentalLabel(_ value: Int) -> AttributedString {
+        if value == 0 {
+            var label = AttributedString("Natural")
+            label.font = .system(size: Heji2FontRegistry.preferredPointSize(for: .body), weight: .regular, design: .default)
+            return label
+        }
+        let glyphs = Heji2Mapping.shared.glyphsForDiatonicAccidental(value).map(\.string).joined()
+        var label = AttributedString(glyphs)
+        let baseSize = Heji2FontRegistry.preferredPointSize(for: .body)
+        label.font = Heji2FontRegistry.hejiTextFont(size: baseSize, relativeTo: .body)
+        return label
     }
 }
 
@@ -3223,9 +3254,23 @@ private struct TestToneCard: View {
 }
 // === Reusables for Root Studio =================================================
 struct GlassSelectTile: View {
-    let title: String
+    let title: AttributedString
     let isOn: Bool
     let action: () -> Void
+
+    init(title: String, isOn: Bool, action: @escaping () -> Void) {
+        var label = AttributedString(title)
+        label.font = .title3.monospacedDigit().weight(.semibold)
+        self.title = label
+        self.isOn = isOn
+        self.action = action
+    }
+
+    init(title: AttributedString, isOn: Bool, action: @escaping () -> Void) {
+        self.title = title
+        self.isOn = isOn
+        self.action = action
+    }
 
     @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -3238,7 +3283,6 @@ struct GlassSelectTile: View {
         Button(action: action) {
             ZStack(alignment: .topTrailing) {
                 Text(title)
-                    .font(.title3.monospacedDigit().weight(.semibold))
                     .foregroundStyle(
                         isOn
                         ? (theme.isDark ? Color.white : Color.black) // tile content is usually on light-ish glass

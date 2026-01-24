@@ -86,10 +86,6 @@ struct HejiStaffSnippetView: View {
 
             drawLedgerLines(step: layout.staffStepFromMiddle, metrics: m, y: y, topY: topY, bottomY: bottomLineY, ctx: &ctx)
 
-            if let approx = layout.approxMarkerGlyph {
-                let approxText = Text(approx).font(.system(size: m.accSize * 0.8, weight: .regular))
-                ctx.draw(approxText, at: CGPoint(x: m.width - 8, y: topY - snap(2 / displayScale)), anchor: .trailing)
-            }
         }
         .frame(width: m.width, height: m.height)
 
@@ -114,4 +110,3 @@ struct HejiStaffSnippetView: View {
         return (value * scale).rounded(.toNearestOrEven) / scale
     }
 }
-

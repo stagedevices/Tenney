@@ -70,11 +70,15 @@ struct HejiContext {
 enum HejiFont {
     case bravura
     case systemText
+    case heji2Text
+    case heji2Music
 
     var fontName: String {
         switch self {
         case .bravura: return "Bravura"
         case .systemText: return ".SFUI"
+        case .heji2Text: return Heji2FontRegistry.hejiTextFontName
+        case .heji2Music: return Heji2FontRegistry.hejiMusicFontName
         }
     }
 }
@@ -110,11 +114,9 @@ struct HejiAccidental: Hashable {
     var microtonalComponents: [HejiMicrotonalComponent]
 }
 
-enum HejiMicrotonalComponent: Hashable {
-    case syntonic(up: Bool)
-    case septimal(up: Bool)
-    case undecimal(up: Bool)
-    case tridecimal(up: Bool)
+struct HejiMicrotonalComponent: Hashable {
+    let prime: Int
+    let up: Bool
 }
 
 enum HejiNotation {
@@ -147,7 +149,7 @@ enum HejiNotation {
         let staff = NotationFormatter.staffNoteName(freqHz: hz, a4Hz: context.noteNameA4Hz)
         let octaveOut = staff.octave
 
-        let unsupported = unsupportedPrimes(in: ratio)
+        let unsupported = unsupportedPrimes(in: ratio, maxPrime: context.maxPrime)
 
         return HejiSpelling(
             baseLetter: base.letter,
@@ -180,29 +182,32 @@ enum HejiNotation {
         return spelling
     }
 
-    static func textLabel(_ spelling: HejiSpelling, showCents: Bool = false) -> AttributedString {
+    static func textLabel(
+        _ spelling: HejiSpelling,
+        showCents: Bool = false,
+        textStyle: Font.TextStyle = .body,
+        weight: Font.Weight = .regular,
+        design: Font.Design = .default,
+        basePointSize: CGFloat? = nil
+    ) -> AttributedString {
         let (core, marks) = helmholtzParts(letter: spelling.baseLetter, octave: spelling.helmholtzOctave)
-        var out = AttributedString(core)
+        let baseSize = basePointSize ?? Heji2FontRegistry.preferredPointSize(for: textStyle)
+        let baseFont = Font.system(size: baseSize, weight: weight, design: design)
 
-        let accidentalText = textAccidental(spelling.accidental)
+        var out = AttributedString(core + marks)
+        out.font = baseFont
+
+        let accidentalText = accidentalGlyphString(for: spelling.accidental)
         if !accidentalText.isEmpty {
             var acc = AttributedString(accidentalText)
-            acc.font = .system(size: 16, weight: .regular)
+            acc.font = Heji2FontRegistry.hejiTextFont(size: baseSize, relativeTo: textStyle)
             out += acc
-        }
-
-        out += AttributedString(marks)
-
-        if spelling.isApproximate {
-            var approx = AttributedString(" ≈")
-            approx.font = .system(size: 14, weight: .regular)
-            out += approx
         }
 
         if showCents, let cents = spelling.centsError, cents.isFinite {
             let rounded = String(format: "%+.1f¢", cents)
             var centsText = AttributedString(" \(rounded)")
-            centsText.font = .system(size: 12, weight: .regular)
+            centsText.font = .system(size: baseSize * 0.75, weight: .regular, design: .default)
             out += centsText
         }
 
@@ -211,6 +216,35 @@ enum HejiNotation {
 
     static func textLabelString(_ spelling: HejiSpelling, showCents: Bool = false) -> String {
         String(textLabel(spelling, showCents: showCents).characters)
+    }
+
+    static func textLabel(
+        for ratioRef: RatioRef,
+        context: HejiContext,
+        showCents: Bool = false,
+        textStyle: Font.TextStyle = .body,
+        weight: Font.Weight = .regular,
+        design: Font.Design = .default,
+        basePointSize: CGFloat? = nil
+    ) -> AttributedString {
+        if ratioRef.p == 1, ratioRef.q == 1, ratioRef.octave == 0, let tonicE3 = context.tonicE3 {
+            let tonic = TonicSpelling(e3: tonicE3)
+            return tonic.attributedDisplayText(
+                textStyle: textStyle,
+                weight: weight,
+                design: design,
+                basePointSize: basePointSize
+            )
+        }
+        let spelling = spelling(forRatio: ratioRef, context: context)
+        return textLabel(
+            spelling,
+            showCents: showCents,
+            textStyle: textStyle,
+            weight: weight,
+            design: design,
+            basePointSize: basePointSize
+        )
     }
 
     static func textLabelString(for ratioRef: RatioRef, context: HejiContext, showCents: Bool = false) -> String {
@@ -242,14 +276,13 @@ enum HejiNotation {
         let step = staffStepFromMiddle(letter: spelling.baseLetter, octave: spelling.helmholtzOctave, clef: clef)
         let accidentals = staffAccidentalGlyphs(spelling.accidental)
         let ledger = ledgerLineCount(for: step)
-        let approx = spelling.isApproximate ? "≈" : nil
         return HejiStaffLayout(
             clef: clef,
             staffStepFromMiddle: step,
             noteheadGlyph: HejiGlyphs.noteheadBlack,
             accidentalGlyphs: accidentals,
             ledgerLineCount: ledger,
-            approxMarkerGlyph: approx
+            approxMarkerGlyph: nil
         )
     }
 
@@ -272,43 +305,23 @@ enum HejiNotation {
     // MARK: - Microtonal components
 
     private static func microtonalComponents(for ratio: Ratio, maxPrime: Int) -> [HejiMicrotonalComponent] {
-        guard let monzo = ratio.toMonzoIfWithin13() else { return [] }
+        let exponents = primeExponents(for: ratio, maxPrime: maxPrime)
+        let supported = Heji2Mapping.shared.supportedPrimes
         var components: [HejiMicrotonalComponent] = []
-        let primes: [(Int, Int)] = [(5, monzo.e5), (7, monzo.e7), (11, monzo.e11), (13, monzo.e13)]
-        for (prime, exp) in primes where prime <= maxPrime && exp != 0 {
+        for (prime, exp) in exponents where prime >= 5 && prime <= maxPrime && exp != 0 && supported.contains(prime) {
             let up = exp < 0
             let count = abs(exp)
-            let component: HejiMicrotonalComponent
-            switch prime {
-            case 5: component = .syntonic(up: up)
-            case 7: component = .septimal(up: up)
-            case 11: component = .undecimal(up: up)
-            case 13: component = .tridecimal(up: up)
-            default: continue
-            }
+            let component = HejiMicrotonalComponent(prime: prime, up: up)
             components.append(contentsOf: Array(repeating: component, count: count))
         }
         return components
     }
 
-    private static func unsupportedPrimes(in ratio: Ratio) -> [Int] {
-        let primes = [2, 3, 5, 7, 11, 13]
-        func factor(_ x: Int) -> [Int] {
-            var n = abs(x)
-            var out: [Int] = []
-            var p = 2
-            while p * p <= n {
-                if n % p == 0 {
-                    out.append(p)
-                    while n % p == 0 { n /= p }
-                }
-                p += (p == 2 ? 1 : 2)
-            }
-            if n > 1 { out.append(n) }
-            return out
-        }
-        let all = Set(factor(ratio.n) + factor(ratio.d))
-        return all.filter { !primes.contains($0) }.sorted()
+    private static func unsupportedPrimes(in ratio: Ratio, maxPrime: Int) -> [Int] {
+        let allPrimes = Set(factorPrimes(in: ratio.n) + factorPrimes(in: ratio.d))
+        let supported = Heji2Mapping.shared.supportedPrimes
+        let allowed = Set([2, 3]).union(supported.filter { $0 <= maxPrime })
+        return allPrimes.filter { !allowed.contains($0) }.sorted()
     }
 
     // MARK: - Staff layout helpers
@@ -348,30 +361,21 @@ enum HejiNotation {
 
     private static func staffAccidentalGlyphs(_ accidental: HejiAccidental) -> [GlyphRun] {
         var runs: [GlyphRun] = []
-        if accidental.diatonicAccidental != 0 {
-            let glyph = HejiGlyphs.standardAccidental(for: accidental.diatonicAccidental)
-            runs.append(GlyphRun(font: .bravura, glyph: glyph, offset: .zero))
+        let mapping = Heji2Mapping.shared
+        let diatonic = mapping.glyphsForDiatonicAccidental(accidental.diatonicAccidental)
+        for glyph in diatonic {
+            let offset = glyph.staffOffset.map { CGPoint(x: $0.x, y: $0.y) } ?? .zero
+            runs.append(GlyphRun(font: .heji2Music, glyph: glyph.string, offset: offset))
         }
-        for (index, component) in accidental.microtonalComponents.enumerated() {
-            let glyph = HejiGlyphs.microtonalGlyph(for: component)
-            let offset = CGPoint(x: CGFloat(index + 1) * -10, y: 0)
-            runs.append(GlyphRun(font: .bravura, glyph: glyph, offset: offset))
+        let componentGlyphs = mapping.glyphsForPrimeComponents(accidental.microtonalComponents)
+        var stackX: CGFloat = -10
+        for glyph in componentGlyphs {
+            let offset = glyph.staffOffset.map { CGPoint(x: $0.x, y: $0.y) } ?? .zero
+            runs.append(GlyphRun(font: .heji2Music, glyph: glyph.string, offset: CGPoint(x: stackX + offset.x, y: offset.y)))
+            let advance = glyph.staffAdvance ?? glyph.advance ?? -10
+            stackX += CGFloat(advance)
         }
         return runs
-    }
-
-    private static func textAccidental(_ accidental: HejiAccidental) -> String {
-        var text = ""
-        text += accidentalGlyph(accidental.diatonicAccidental)
-        for component in accidental.microtonalComponents {
-            switch component {
-            case .syntonic(let up): text += up ? "↑" : "↓"
-            case .septimal(let up): text += up ? "⇑" : "⇓"
-            case .undecimal(let up): text += up ? "⤒" : "⤓"
-            case .tridecimal(let up): text += up ? "⤒" : "⤓"
-            }
-        }
-        return text
     }
 
     private static func resolvePrimeLimit(_ maxPrime: Int) -> PrimeLimit {
@@ -400,6 +404,56 @@ enum HejiNotation {
         }
     }
 
+    private static func accidentalGlyphString(for accidental: HejiAccidental) -> String {
+        let mapping = Heji2Mapping.shared
+        let diatonic = mapping.glyphsForDiatonicAccidental(accidental.diatonicAccidental)
+        let microtonal = mapping.glyphsForPrimeComponents(accidental.microtonalComponents)
+        return (diatonic + microtonal).map(\.string).joined()
+    }
+
+    private static func primeExponents(for ratio: Ratio, maxPrime: Int) -> [Int: Int] {
+        let num = factorPrimeExponents(abs(ratio.n), maxPrime: maxPrime)
+        let den = factorPrimeExponents(abs(ratio.d), maxPrime: maxPrime)
+        var out: [Int: Int] = [:]
+        for prime in Set(num.keys).union(den.keys) {
+            let exp = (num[prime] ?? 0) - (den[prime] ?? 0)
+            if exp != 0 { out[prime] = exp }
+        }
+        return out
+    }
+
+    private static func factorPrimeExponents(_ value: Int, maxPrime: Int) -> [Int: Int] {
+        guard value > 1 else { return [:] }
+        var n = value
+        var out: [Int: Int] = [:]
+        var p = 2
+        while p * p <= n {
+            while n % p == 0 {
+                out[p, default: 0] += 1
+                n /= p
+            }
+            p += (p == 2 ? 1 : 2)
+        }
+        if n > 1 { out[n, default: 0] += 1 }
+        return out.filter { $0.key <= maxPrime }
+    }
+
+    private static func factorPrimes(in value: Int) -> [Int] {
+        guard value >= 2 else { return [] }
+        var n = value
+        var out: [Int] = []
+        var p = 2
+        while p * p <= n {
+            if n % p == 0 {
+                out.append(p)
+                while n % p == 0 { n /= p }
+            }
+            p += (p == 2 ? 1 : 2)
+        }
+        if n > 1 { out.append(n) }
+        return out
+    }
+
 }
 
 private extension HejiAccidental {
@@ -411,11 +465,14 @@ private extension HejiAccidental {
             pieces.append(String(repeating: "flat ", count: abs(diatonicAccidental)).trimmingCharacters(in: .whitespaces))
         }
         for component in microtonalComponents {
-            switch component {
-            case .syntonic(let up): pieces.append(up ? "syntonic comma up" : "syntonic comma down")
-            case .septimal(let up): pieces.append(up ? "septimal comma up" : "septimal comma down")
-            case .undecimal(let up): pieces.append(up ? "undecimal quartertone up" : "undecimal quartertone down")
-            case .tridecimal(let up): pieces.append(up ? "tridecimal quartertone up" : "tridecimal quartertone down")
+            let prime = component.prime
+            let direction = component.up ? "up" : "down"
+            switch prime {
+            case 5: pieces.append("syntonic comma \(direction)")
+            case 7: pieces.append("septimal comma \(direction)")
+            case 11: pieces.append("undecimal quartertone \(direction)")
+            case 13: pieces.append("tridecimal quartertone \(direction)")
+            default: pieces.append("\(prime)-prime comma \(direction)")
             }
         }
         return pieces.joined(separator: " ")

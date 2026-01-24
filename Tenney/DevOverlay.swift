@@ -61,7 +61,7 @@ struct DevOverlay: ViewModifier {
                     Text("FPS \(counter.fps)")
                     Text("Therm \(thermal.rawValue)")
                     Text("RT \(reduceTrans ? "on" : "off")")
-                    Text("Ctr \(contrast == .increased ? "↑" : "—")")
+                    Text("Ctr \(contrast == .increased ? "high" : "—")")
                 }
                 .font(.footnote)
                 .padding(8)

@@ -12,6 +12,8 @@
 	<array>
 		<string>Resources/Fonts/Bravura/Bravura.otf</string>
 		<string>Resources/Fonts/Bravura/BravuraText.otf</string>
+		<string>Resources/Fonts/HEJI2/HEJI2Text.otf</string>
+		<string>Resources/Fonts/HEJI2/HEJI2Music.otf</string>
 	</array>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
