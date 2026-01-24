@@ -37,6 +37,39 @@ struct PitchContext {
     var maxPrime: Int
 }
 
+func best3LimitE3Interval(p: Int, q: Int, octave: Int) -> Int {
+    guard p != 0, q != 0 else { return 0 }
+    let value = (Double(p) / Double(q)) * pow(2.0, Double(octave))
+    guard value.isFinite, value > 0 else { return 0 }
+
+    var bestE3 = 0
+    var bestE2 = 0
+    var bestCents = Double.greatestFiniteMagnitude
+
+    for e3 in -14...14 {
+        let base = pow(3.0, Double(e3))
+        let e2 = Int(round(log2(value / base)))
+        let candidate = base * pow(2.0, Double(e2))
+        let cents = abs(1200.0 * log2(value / candidate))
+
+        if cents < bestCents - 1e-6 {
+            bestCents = cents
+            bestE3 = e3
+            bestE2 = e2
+        } else if abs(cents - bestCents) <= 1e-6 {
+            if abs(e3) < abs(bestE3) {
+                bestE3 = e3
+                bestE2 = e2
+            } else if abs(e3) == abs(bestE3), abs(e2) < abs(bestE2) {
+                bestE3 = e3
+                bestE2 = e2
+            }
+        }
+    }
+
+    return bestE3
+}
+
 func applyOctaveToPQ(p: Int, q: Int, octave: Int) -> (Int, Int) {
     guard octave != 0 else { return (p, q) }
     let shift = 1 << abs(octave)
