@@ -125,7 +125,7 @@ enum HejiNotation {
 
     static func spelling(forRatio ratio: Ratio, octave: Int = 0, context: HejiContext) -> HejiSpelling {
         let value = ratio.value * pow(2.0, Double(octave))
-        let e3Interval = best3LimitE3(for: ratio, octave: octave)
+        let e3Interval = pythagoreanBaseE3Interval(for: ratio, octave: octave, maxPrime: context.maxPrime)
         let e3Total = context.tonicE3.map { $0 + e3Interval } ?? e3Interval
         let base = letter(for: e3Total)
         let accidental = HejiAccidental(
@@ -237,10 +237,6 @@ enum HejiNotation {
     }
 
     // MARK: - 3-limit base
-
-    private static func best3LimitE3(for ratio: Ratio, octave: Int = 0) -> Int {
-        best3LimitE3Interval(p: ratio.n, q: ratio.d, octave: octave)
-    }
 
     private static func letter(for e3: Int) -> (letter: String, accidentalCount: Int) {
         let spelling = TonicSpelling(e3: e3)

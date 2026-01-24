@@ -8,8 +8,8 @@ import Testing
 
 struct HejiRatioDisplayTests {
 
-    @Test func bestFitE3IntervalForFifteenEight() async throws {
-        #expect(best3LimitE3Interval(p: 15, q: 8, octave: 0) == 5)
+    @Test func pythagoreanBaseE3IntervalForFifteenEight() async throws {
+        #expect(pythagoreanBaseE3Interval(p: 15, q: 8, octave: 0) == 5)
     }
 
     @Test func manualTonicUnisonUsesTonicDisplay() async throws {
