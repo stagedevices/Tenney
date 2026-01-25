@@ -3,7 +3,17 @@
 //  TenneyTests
 //
 
+import Foundation
 import Testing
+#if canImport(CoreText)
+import CoreText
+#endif
+#if canImport(AppKit)
+import AppKit
+#endif
+#if canImport(UIKit)
+import UIKit
+#endif
 @testable import Tenney
 
 struct HejiRatioDisplayTests {
@@ -182,6 +192,76 @@ struct HejiRatioDisplayTests {
         }
     }
 
+    @Test func fiveLimitAccidentalsRenderInBaseThenModifierOrder() async throws {
+        let tonic = TonicSpelling.from(letter: "C", accidental: 0)
+        let context = HejiContext(
+            concertA4Hz: 440,
+            noteNameA4Hz: 440,
+            rootHz: 440,
+            rootRatio: nil,
+            preferred: .auto,
+            maxPrime: 13,
+            allowApproximation: false,
+            scaleDegreeHint: nil,
+            tonicE3: tonic.e3
+        )
+        let cases: [RatioRef] = [
+            RatioRef(p: 32, q: 25, octave: 0, monzo: [:]),
+            RatioRef(p: 5, q: 4, octave: 0, monzo: [:]),
+            RatioRef(p: 8, q: 5, octave: 0, monzo: [:])
+        ]
+        for ratio in cases {
+            let spelling = HejiNotation.spelling(forRatio: ratio, context: context)
+            let accidental = accidentalString(for: spelling.accidental)
+            let label = HejiNotation.textLabelString(spelling, showCents: false)
+            #expect(label.hasSuffix(accidental))
+            #expect(label.unicodeScalars.suffix(accidental.unicodeScalars.count).elementsEqual(accidental.unicodeScalars))
+        }
+    }
+
+    @Test func tridecimalAccidentalsUseHejiTextFontRun() async throws {
+        let tonic = TonicSpelling.from(letter: "C", accidental: 0)
+        let ratio = RatioRef(p: 13, q: 8, octave: 0, monzo: [:])
+        let context = HejiContext(
+            concertA4Hz: 440,
+            noteNameA4Hz: 440,
+            rootHz: 440,
+            rootRatio: nil,
+            preferred: .auto,
+            maxPrime: 13,
+            allowApproximation: false,
+            scaleDegreeHint: ratio,
+            tonicE3: tonic.e3
+        )
+        let spelling = HejiNotation.spelling(forRatio: ratio, context: context)
+        let label = HejiNotation.textLabel(spelling, showCents: false)
+        let labelString = String(label.characters)
+        let accidental = accidentalString(for: spelling.accidental)
+        #expect(!accidental.isEmpty)
+        #expect(labelString.hasSuffix(accidental))
+
+        let nsLabel = NSAttributedString(label)
+        guard let range = labelString.range(of: accidental) else {
+            #expect(false, "Expected accidental substring in label.")
+            return
+        }
+        let location = labelString.distance(from: labelString.startIndex, to: range.lowerBound)
+        let fontAttribute = nsLabel.attribute(.font, at: location, effectiveRange: nil)
+        let expectedFontName = Heji2FontRegistry.hejiTextFontName
+
+#if canImport(UIKit)
+        let fontName = (fontAttribute as? UIFont)?.fontName
+            ?? (fontAttribute as? CTFont).map { CTFontCopyPostScriptName($0) as String }
+        #expect(fontName?.contains(expectedFontName) == true)
+#elseif canImport(AppKit)
+        let fontName = (fontAttribute as? NSFont)?.fontName
+            ?? (fontAttribute as? CTFont).map { CTFontCopyPostScriptName($0) as String }
+        #expect(fontName?.contains(expectedFontName) == true)
+#else
+        #expect(fontAttribute != nil)
+#endif
+    }
+
     @Test func textLabelsAvoidForbiddenSymbols() async throws {
         let context = HejiContext(
             concertA4Hz: 440,
@@ -239,8 +319,11 @@ struct HejiRatioDisplayTests {
 
     private func accidentalString(for accidental: HejiAccidental) -> String {
         let mapping = Heji2Mapping.shared
-        let diatonic = mapping.glyphsForDiatonicAccidental(accidental.diatonicAccidental)
         let microtonal = mapping.glyphsForPrimeComponents(accidental.microtonalComponents)
+        var diatonic = mapping.glyphsForDiatonicAccidental(accidental.diatonicAccidental)
+        if diatonic.isEmpty, accidental.diatonicAccidental == 0, !microtonal.isEmpty {
+            diatonic = [Heji2Glyph(glyph: "\u{E261}", staffOffset: nil, textOffset: nil, advance: nil, staffAdvance: nil, textAdvance: nil)]
+        }
         return (diatonic + microtonal).map(\.string).joined()
     }
 }

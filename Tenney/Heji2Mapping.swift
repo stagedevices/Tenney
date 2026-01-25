@@ -77,9 +77,16 @@ final class Heji2Mapping {
         var out: [Heji2Glyph] = []
         for component in components {
             guard let stepsMap = primeComponents[component.prime] else { continue }
-                        let resolved = stepsMap[component.steps] ?? stepsMap[1] ?? stepsMap.values.first
-                        guard let glyphs = resolved else { continue }
-                        out.append(contentsOf: component.up ? glyphs.up : glyphs.down)
+            let resolved = stepsMap[component.steps] ?? stepsMap[1] ?? stepsMap.values.first
+            guard let glyphs = resolved else { continue }
+            if component.steps > 1, let baseGlyphs = stepsMap[1] ?? resolved {
+                let chosen = component.up ? baseGlyphs.up : baseGlyphs.down
+                for _ in 0..<component.steps {
+                    out.append(contentsOf: chosen)
+                }
+            } else {
+                out.append(contentsOf: component.up ? glyphs.up : glyphs.down)
+            }
         }
         return out
     }
