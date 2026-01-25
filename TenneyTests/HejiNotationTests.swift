@@ -59,6 +59,15 @@ struct HejiNotationTests {
         #expect(tridecimal.accidental.microtonalComponents.contains(.tridecimal(up: false)))
     }
 
+    @Test func maxPrimeGatesHigherPrimeComponents() async throws {
+        let ratio = Ratio(17, 16)
+        let lowPrime = HejiNotation.spelling(forRatio: ratio, context: context)
+        #expect(!lowPrime.accidental.microtonalComponents.contains { $0.prime == 17 })
+
+        let highPrime = HejiNotation.spelling(forRatio: ratio, context: extendedContext)
+        #expect(highPrime.accidental.microtonalComponents.contains { $0.prime == 17 })
+    }
+
     @Test func extendedPrimeGlyphsRender() async throws {
         let ratios: [(prime: Int, ratio: RatioRef)] = [
             (17, RatioRef(p: 17, q: 16, octave: 0, monzo: [:])),

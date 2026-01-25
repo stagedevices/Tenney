@@ -242,7 +242,12 @@ struct LatticeView: View {
         return (num / g, den / g)
     }
 
-    private func overlayLabelText(num: Int, den: Int) -> AttributedString? {
+    private var effectiveMaxPrimeForLatticeLabels: Int {
+        let visibleMax = store.visiblePrimes.max() ?? 3
+        return max(3, app.primeLimit, visibleMax)
+    }
+
+    private func overlayLabelText(num: Int, den: Int, prime: Int, maxPrimeOverride: Int) -> AttributedString? {
         let (cp, cq) = canonicalPQ(num, den)
 
         if store.labelMode == .ratio {
@@ -250,7 +255,25 @@ struct LatticeView: View {
             label.font = .system(size: 9, weight: .semibold, design: .monospaced)
             return label
         } else {
-            return hejiTextLabel(p: cp, q: cq, octave: 0, rootHz: app.rootHz, basePointSize: 9)
+            let ratioRef = RatioRef(p: cp, q: cq, octave: 0, monzo: [:])
+            let hejiContext = hejiContext(for: ratioRef, rootHz: app.rootHz, maxPrime: maxPrimeOverride)
+#if DEBUG
+            let spelling = HejiNotation.spelling(forRatio: ratioRef, context: hejiContext)
+            let hasPrime = spelling.accidental.microtonalComponents.contains { $0.prime == prime }
+            if !hasPrime {
+                let visibleMax = store.visiblePrimes.max() ?? 3
+                print("[LATTICE_HEJI_MAXPRIME_MISMATCH] p=\(prime) maxPrime=\(maxPrimeOverride) ratio=\(cp)/\(cq) visibleMax=\(visibleMax) appPrimeLimit=\(app.primeLimit)")
+            }
+#endif
+            return HejiNotation.textLabel(
+                for: ratioRef,
+                context: hejiContext,
+                showCents: false,
+                textStyle: .caption2,
+                weight: .semibold,
+                design: .monospaced,
+                basePointSize: 9
+            )
         }
     }
 
@@ -4515,8 +4538,9 @@ struct LatticeView: View {
 
 
             // ✅ labels for 7+ overlays (ratio / HEJI), analogous to plane nodes
+            let labelMaxPrime = max(effectiveMaxPrimeForLatticeLabels, p)
             if shouldDrawOverlayLabel(ep: ep),
-               let label = overlayLabelText(num: num, den: den) {
+               let label = overlayLabelText(num: num, den: den, prime: p, maxPrimeOverride: labelMaxPrime) {
 
                 let zoomT = clamp01((store.camera.appliedScale - 52) / 80)
                 let a: CGFloat = 0.85 * zoomT * CGFloat(labelDensity)
@@ -4983,7 +5007,7 @@ struct LatticeView: View {
         return "<" + vec.map(String.init).joined(separator: ", ") + ">"
     }
 
-    private func hejiTextLabel(p: Int, q: Int, octave: Int, rootHz: Double, basePointSize: CGFloat? = nil) -> AttributedString {
+    private func hejiContext(for ratioRef: RatioRef, rootHz: Double, maxPrime: Int) -> HejiContext {
         let pref = AccidentalPreference(rawValue: accidentalPreferenceRaw) ?? .auto
         let mode = TonicNameMode(rawValue: tonicNameModeRaw) ?? .auto
         let tonic = effectiveTonicSpelling(
@@ -4993,19 +5017,31 @@ struct LatticeView: View {
             tonicE3: tonicE3,
             accidentalPreference: pref
         ) ?? TonicSpelling(e3: tonicE3)
-        let ratioRef = RatioRef(p: p, q: q, octave: octave, monzo: [:])
         let hejiPreference = (mode == .auto) ? pref : .auto
-        let hejiContext = HejiContext(
+        return HejiContext(
             concertA4Hz: concertA4Hz,
             noteNameA4Hz: noteNameA4Hz,
             rootHz: rootHz,
             rootRatio: nil,
             preferred: hejiPreference,
-            maxPrime: max(3, app.primeLimit),
+            maxPrime: maxPrime,
             allowApproximation: false,
             scaleDegreeHint: ratioRef,
             tonicE3: tonic.e3
         )
+    }
+
+    private func hejiTextLabel(
+        p: Int,
+        q: Int,
+        octave: Int,
+        rootHz: Double,
+        basePointSize: CGFloat? = nil,
+        maxPrimeOverride: Int? = nil
+    ) -> AttributedString {
+        let ratioRef = RatioRef(p: p, q: q, octave: octave, monzo: [:])
+        let maxPrime = maxPrimeOverride ?? max(3, app.primeLimit)
+        let hejiContext = hejiContext(for: ratioRef, rootHz: rootHz, maxPrime: maxPrime)
         return HejiNotation.textLabel(
             for: ratioRef,
             context: hejiContext,
