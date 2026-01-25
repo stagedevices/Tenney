@@ -462,7 +462,9 @@ enum HejiNotation {
         let baseGlyphs = absorb ? [] : mapping.glyphsForDiatonicAccidental(accidental.diatonicAccidental)
         for glyph in baseGlyphs {
             let offset = glyph.staffOffset.map { CGPoint(x: $0.x, y: $0.y) } ?? .zero
-            runs.append(GlyphRun(font: .heji2Music, glyph: glyph.string, offset: offset))
+            let fontKind = mapping.preferredFontForGlyph(glyph.string)
+            let font: HejiFont = fontKind == .music ? .heji2Music : .heji2Text
+            runs.append(GlyphRun(font: font, glyph: glyph.string, offset: offset))
         }
         var stackX: CGFloat = -10
                 let componentGlyphs = mapping.glyphsForPrimeComponents(
@@ -474,7 +476,9 @@ enum HejiNotation {
         let hasRealDiatonic = !baseGlyphs.isEmpty || componentGlyphs.contains { diatonicAccidentals.contains($0.string) }
         for glyph in componentGlyphs {
             let offset = glyph.staffOffset.map { CGPoint(x: $0.x, y: $0.y) } ?? .zero
-            runs.append(GlyphRun(font: .heji2Music, glyph: glyph.string, offset: CGPoint(x: stackX + offset.x, y: offset.y)))
+            let fontKind = mapping.preferredFontForGlyph(glyph.string)
+            let font: HejiFont = fontKind == .music ? .heji2Music : .heji2Text
+            runs.append(GlyphRun(font: font, glyph: glyph.string, offset: CGPoint(x: stackX + offset.x, y: offset.y)))
             let advance = glyph.staffAdvance ?? glyph.advance ?? -10
             stackX += CGFloat(advance)
         }
