@@ -213,6 +213,51 @@ private func spelledNote(forSemitone idx: Int, preference: AccidentalPreference)
     }
 }
 
+func applyEnharmonicSidePreferenceForPrime23(
+    baseLetter: String,
+    diatonicAccidental: Int,
+    preferSharps: Bool
+) -> (baseLetter: String, diatonicAccidental: Int) {
+    let chroma = chromaForSpelling(letter: baseLetter, accidental: diatonicAccidental)
+    let normalized = baseLetter.uppercased()
+
+    if preferSharps, chroma == 9, normalized == "G" {
+        return (baseLetter: "G", diatonicAccidental: 2)
+    }
+    if !preferSharps, chroma == 9, normalized == "B" {
+        return (baseLetter: "B", diatonicAccidental: -2)
+    }
+
+    let sharps: [(String, Int)] = [
+        ("C", 0), ("C", 1), ("D", 0), ("D", 1),
+        ("E", 0), ("F", 0), ("F", 1), ("G", 0),
+        ("G", 1), ("A", 0), ("A", 1), ("B", 0)
+    ]
+    let flats: [(String, Int)] = [
+        ("C", 0), ("D", -1), ("D", 0), ("E", -1),
+        ("E", 0), ("F", 0), ("G", -1), ("G", 0),
+        ("A", -1), ("A", 0), ("B", -1), ("B", 0)
+    ]
+    let mapping = preferSharps ? sharps : flats
+    let spelling = mapping[chroma]
+    return (baseLetter: spelling.0, diatonicAccidental: spelling.1)
+}
+
+private func chromaForSpelling(letter: String, accidental: Int) -> Int {
+    let base: Int
+    switch letter.uppercased() {
+    case "C": base = 0
+    case "D": base = 2
+    case "E": base = 4
+    case "F": base = 5
+    case "G": base = 7
+    case "A": base = 9
+    case "B": base = 11
+    default: base = 0
+    }
+    return mod(base + accidental, 12)
+}
+
 private func naturalFifths(_ letter: String) -> Int {
     switch letter.uppercased() {
     case "C": return 0
