@@ -164,15 +164,44 @@ enum HejiNotation {
                     freqHz: hz,
                     a4Hz: context.noteNameA4Hz
                 )
+        var baseLetter = base.letter
+        var diatonicAccidental = diatonicAcc
+        var microComponents = microtonalComponents(for: ratio, maxPrime: context.maxPrime)
+
+        if microComponents.contains(where: { $0.prime == 17 }),
+           let tonicE3 = context.tonicE3 {
+            let semitoneOffset = roundedSemitoneOffset(from: value)
+            if abs(semitoneOffset) <= 2 {
+                // Prime-17 schisma near-tonic anchoring: keep tonic letter and force 17 down.
+                baseLetter = letter(for: tonicE3).letter
+                diatonicAccidental = max(-2, min(2, semitoneOffset))
+                microComponents = microComponents.map { component in
+                    guard component.prime == 17 else { return component }
+                    return HejiMicrotonalComponent(prime: 17, up: false, steps: component.steps)
+                }
+            }
+        }
+
+        if let prime19 = microComponents.first(where: { $0.prime == 19 }) {
+            // Prime-19 schisma enharmonic preference is driven by its direction only.
+            let rewritten = rewriteEnharmonic(
+                letter: baseLetter,
+                accidental: diatonicAccidental,
+                preferSharps: !prime19.up
+            )
+            baseLetter = rewritten.letter
+            diatonicAccidental = rewritten.accidental
+        }
+
         let accidental = HejiAccidental(
-            diatonicAccidental: diatonicAcc,
-            microtonalComponents: microtonalComponents(for: ratio, maxPrime: context.maxPrime)
+            diatonicAccidental: diatonicAccidental,
+            microtonalComponents: microComponents
         )
 
         let unsupported = unsupportedPrimes(in: ratio, maxPrime: context.maxPrime)
 
         return HejiSpelling(
-            baseLetter: base.letter,
+            baseLetter: baseLetter,
             helmholtzOctave: octaveOut,
             accidental: accidental,
             isApproximate: false,
@@ -381,6 +410,9 @@ enum HejiNotation {
             switch prime {
             case 11:
                 // Fix: 11/8 should read as “up/sharp”, 16/11 as “down/flat”.
+                return exp > 0
+            case 19:
+                // Prime-19 is numerator-up and denominator-down.
                 return exp > 0
             default:
                 // Works for 5, 7, 13 as used elsewhere in the app currently.
@@ -626,6 +658,42 @@ enum HejiNotation {
 
     private static func etFrequency(midi: Int, a4Hz: Double) -> Double {
         a4Hz * pow(2.0, Double(midi - 69) / 12.0)
+    }
+
+    private static func roundedSemitoneOffset(from ratioValue: Double) -> Int {
+        Int(round(12.0 * log2(ratioValue)))
+    }
+
+    private static func rewriteEnharmonic(
+        letter: String,
+        accidental: Int,
+        preferSharps: Bool
+    ) -> (letter: String, accidental: Int) {
+        guard (-2...2).contains(accidental) else { return (letter, accidental) }
+        let normalized = letter.uppercased()
+        if preferSharps {
+            switch (normalized, accidental) {
+            case ("C", -1): return ("B", 0)
+            case ("F", -1): return ("E", 0)
+            case ("D", -1): return ("C", 1)
+            case ("E", -1): return ("D", 1)
+            case ("G", -1): return ("F", 1)
+            case ("A", -1): return ("G", 1)
+            case ("B", -1): return ("A", 1)
+            default: return (letter, accidental)
+            }
+        } else {
+            switch (normalized, accidental) {
+            case ("B", 1): return ("C", 0)
+            case ("E", 1): return ("F", 0)
+            case ("C", 1): return ("D", -1)
+            case ("D", 1): return ("E", -1)
+            case ("F", 1): return ("G", -1)
+            case ("G", 1): return ("A", -1)
+            case ("A", 1): return ("B", -1)
+            default: return (letter, accidental)
+            }
+        }
     }
 }
 
