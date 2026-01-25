@@ -111,6 +111,29 @@ struct HejiPrime29And31FixesTests {
             #expect(s2.accidental.diatonicAccidental == 0)
             #expect(totalSteps(s2.accidental.microtonalComponents, prime: 29, up: false) == 1)
         }
+    
+    @Test func prime29_FSharpEdgeCasePrefersFNatural() async throws {
+            // These are the two reported regressions: they should spell as F (natural) with 29-arrows,
+            // even though the tuning meter neighborhood is closer to F# in 12-EDO.
+            let r1 = HejiNotation.spelling(forRatio: Ratio(841, 512), context: context)
+            #expect(r1.baseLetter == "F")
+            #expect(r1.accidental.diatonicAccidental == 0)
+    
+            let r2 = HejiNotation.spelling(forRatio: Ratio(33554432, 20511149), context: context)
+            #expect(r2.baseLetter == "F")
+            #expect(r2.accidental.diatonicAccidental == 0)
+        }
+    
+        @Test func prime29_CommonCasesStayStable() async throws {
+            // Guardrails: do not perturb earlier-correct 29-limit nodes.
+            let r1 = HejiNotation.spelling(forRatio: Ratio(29, 16), context: context)
+            #expect(r1.baseLetter == "G")
+            #expect(r1.accidental.diatonicAccidental == 0)
+    
+            let r2 = HejiNotation.spelling(forRatio: Ratio(32, 29), context: context)
+            #expect(r2.baseLetter == "B")
+            #expect(r2.accidental.diatonicAccidental == 0)
+        }
     @Test func prime11RenderingRemainsSuppressed() async throws {
         let ratio = RatioRef(p: 11, q: 8, octave: 0, monzo: [:])
         let label = HejiNotation.textLabelString(for: ratio, context: context, showCents: false)

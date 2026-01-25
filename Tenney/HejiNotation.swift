@@ -168,6 +168,16 @@ enum HejiNotation {
         var diatonicAccidental = diatonicAcc
         var microComponents = microtonalComponents(for: ratio, maxPrime: context.maxPrime)
 
+        // Prime-29: surgical fix for the specific F# edge case (e.g. 841/512 and (32/29)^5),
+                // without affecting other prime-29 spellings (notably the A𝄪→B rewrite for 32/29).
+                if microComponents.contains(where: { $0.prime == 29 }) {
+                    let primes = Set(factorPrimes(in: abs(ratio.n)) + factorPrimes(in: abs(ratio.d)))
+                    let pure29 = primes.contains(29) && primes.subtracting([2, 29]).isEmpty
+                    if pure29 && baseLetter == "F" && diatonicAccidental == 1 {
+                        diatonicAccidental = 0
+                    }
+                }
+        
         if microComponents.contains(where: { $0.prime == 17 }),
            let tonicE3 = context.tonicE3 {
             let semitoneOffset = roundedSemitoneOffset(from: value)
