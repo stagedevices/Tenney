@@ -19,6 +19,11 @@ struct Heji2Glyph: Hashable, Decodable {
     var string: String { glyph }
 }
 
+enum HejiFontKind {
+    case music
+    case text
+}
+
 struct Heji2Offset: Hashable, Decodable {
     let x: Double
     let y: Double
@@ -33,13 +38,14 @@ final class Heji2Mapping {
     private let diatonicAccidentals: [Int: [Heji2Glyph]]
     /// prime -> steps -> directional glyphs (supports step-aware rendering: 3 => 2+1, etc)
     private let primeComponents: [Int: [Int: Heji2DirectionalGlyphs]]
+    private var glyphExistenceCache: [String: Bool] = [:]
+    private var glyphFontCache: [String: HejiFontKind] = [:]
+#if canImport(CoreText)
+    private var ctFontCache: [String: CTFont] = [:]
+#endif
 
     private init() {
-        let bundles = [Bundle.main, Bundle(for: Heji2Mapping.self)]
-        let url = bundles.compactMap { $0.url(forResource: "heji2_mapping", withExtension: "json") }.first
-        guard let resourceUrl = url,
-              let data = try? Data(contentsOf: resourceUrl),
-              let decoded = try? JSONDecoder().decode(Heji2MappingPayload.self, from: data) else {
+        guard let decoded = Heji2MappingPayload.loadFromBundle() else {
             textFontName = nil
             musicFontName = nil
             diatonicAccidentals = [:]
@@ -50,6 +56,9 @@ final class Heji2Mapping {
         musicFontName = decoded.fonts?.music
         diatonicAccidentals = decoded.diatonicAccidentals.decodeIntKeyedGlyphs()
         primeComponents = decoded.primeComponents.decodeIntKeyedComponents()
+#if DEBUG
+        verifyGlyphsExist()
+#endif
     }
 
     var supportedPrimes: Set<Int> {
@@ -117,6 +126,75 @@ final class Heji2Mapping {
         }
         return out
     }
+
+    func glyphExists(_ s: String, fontName: String) -> Bool {
+        let key = "\(fontName)|\(s)"
+        if let cached = glyphExistenceCache[key] { return cached }
+#if canImport(CoreText)
+        let font = ctFont(forName: fontName)
+        let ok = s.unicodeScalars.allSatisfy { scalar in
+            var ch = UniChar(scalar.value)
+            var glyph: CGGlyph = 0
+            return CTFontGetGlyphsForCharacters(font, &ch, &glyph, 1) && glyph != 0
+        }
+        glyphExistenceCache[key] = ok
+        return ok
+#else
+        glyphExistenceCache[key] = true
+        return true
+#endif
+    }
+
+    func preferredFontForGlyph(_ s: String) -> HejiFontKind {
+        if let cached = glyphFontCache[s] { return cached }
+        let musicName = musicFontName ?? "HEJI2Music"
+        let textName = textFontName ?? "HEJI2Text"
+        let preferred: HejiFontKind
+        if glyphExists(s, fontName: musicName) {
+            preferred = .music
+        } else if glyphExists(s, fontName: textName) {
+            preferred = .text
+        } else {
+            preferred = .music
+        }
+        glyphFontCache[s] = preferred
+        return preferred
+    }
+
+    func allGlyphMetadata() -> [Heji2GlyphMetadata] {
+        var out: [Heji2GlyphMetadata] = []
+        for (accidental, glyphs) in diatonicAccidentals {
+            for glyph in glyphs {
+                out.append(Heji2GlyphMetadata(
+                    glyph: glyph.string,
+                    prime: 0,
+                    step: 0,
+                    direction: "diatonic(\(accidental))"
+                ))
+            }
+        }
+        for (prime, steps) in primeComponents {
+            for (step, directional) in steps {
+                for glyph in directional.up {
+                    out.append(Heji2GlyphMetadata(
+                        glyph: glyph.string,
+                        prime: prime,
+                        step: step,
+                        direction: "up"
+                    ))
+                }
+                for glyph in directional.down {
+                    out.append(Heji2GlyphMetadata(
+                        glyph: glyph.string,
+                        prime: prime,
+                        step: step,
+                        direction: "down"
+                    ))
+                }
+            }
+        }
+        return out
+    }
 /// Prime-5 in your JSON is currently the “natural+arrows” glyph family.
     /// If the note is actually sharp/flat, we must shift to the sharp/flat variant glyphs and
     /// *not* render the separate diatonic accidental.
@@ -157,6 +235,35 @@ final class Heji2Mapping {
             )
         }
     }
+
+#if canImport(CoreText)
+    private func ctFont(forName name: String) -> CTFont {
+        if let cached = ctFontCache[name] { return cached }
+        let ct = CTFontCreateWithName(name as CFString, 16, nil)
+        ctFontCache[name] = ct
+        return ct
+    }
+#endif
+
+#if DEBUG
+    private func verifyGlyphsExist() {
+        let musicName = musicFontName ?? "HEJI2Music"
+        let textName = textFontName ?? "HEJI2Text"
+        for glyph in allGlyphMetadata() {
+            let hasMusic = glyphExists(glyph.glyph, fontName: musicName)
+            let hasText = hasMusic ? true : glyphExists(glyph.glyph, fontName: textName)
+            if !hasMusic && !hasText {
+                logMissingGlyph(glyph: glyph.glyph, prime: glyph.prime, step: glyph.step, direction: glyph.direction)
+            }
+        }
+    }
+
+    private func logMissingGlyph(glyph: String, prime: Int, step: Int, direction: String) {
+        let scalar = glyph.unicodeScalars.first?.value ?? 0
+        let codepoint = String(format: "U+%04X", scalar)
+        print("[HEJI2_GLYPH_MISSING] \(codepoint) prime=\(prime) step=\(step) dir=\(direction) glyph=\"\(glyph)\"")
+    }
+#endif
 }
 
 private struct Heji2MappingPayload: Decodable {
@@ -168,6 +275,23 @@ private struct Heji2MappingPayload: Decodable {
     let primeComponents: [String: [String: Heji2DirectionalGlyphs]]
 
     enum CodingKeys: String, CodingKey { case fonts, diatonicAccidentals, primeComponents }
+
+    static func loadFromBundle() -> Heji2MappingPayload? {
+        let bundles = [Bundle.main, Bundle(for: Heji2Mapping.self)]
+        for bundle in bundles {
+            guard let url = bundle.url(forResource: "heji2_mapping", withExtension: "json") else { continue }
+            guard let data = try? Data(contentsOf: url) else { continue }
+            guard let decoded = try? JSONDecoder().decode(Heji2MappingPayload.self, from: data) else { continue }
+#if DEBUG
+            let bundleLabel = bundle == Bundle.main ? "Bundle.main" : "Bundle(for: Heji2Mapping.self)"
+            let primes = decoded.primeComponents.keys.compactMap(Int.init).sorted()
+            print("[HEJI2_MAPPING] loaded=\(url.path) bundle=\(bundleLabel)")
+            print("[HEJI2_MAPPING] primes=\(primes)")
+#endif
+            return decoded
+        }
+        return nil
+    }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -193,6 +317,13 @@ private struct Heji2FontNames: Decodable {
 struct Heji2DirectionalGlyphs: Hashable, Decodable {
     let up: [Heji2Glyph]
     let down: [Heji2Glyph]
+}
+
+struct Heji2GlyphMetadata: Hashable {
+    let glyph: String
+    let prime: Int
+    let step: Int
+    let direction: String
 }
 
 private extension Dictionary where Key == String, Value == [Heji2Glyph] {

@@ -35,10 +35,10 @@
         "1": { "up": [{ "glyph": "\uE2EB" }], "down": [{ "glyph": "\uE2EA" }] }
       },
       "29": {
-        "1": { "up": [{ "glyph": "\uE2EB" }], "down": [{ "glyph": "\uE2EA" }] }
+        "1": { "up": [{ "glyph": "\uE2ED" }], "down": [{ "glyph": "\uE2EC" }] }
       },
       "31": {
-        "1": { "up": [{ "glyph": "\uE2ED" }], "down": [{ "glyph": "\uE2EC" }] }
+        "1": { "up": [{ "glyph": "\uE2EF" }], "down": [{ "glyph": "\uE2EE" }] }
       }
   }
 }

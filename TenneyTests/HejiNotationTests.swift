@@ -84,4 +84,17 @@ struct HejiNotationTests {
             #expect(hasMicrotonal)
         }
     }
+
+    @Test func heji2MappingGlyphsExistInFonts() async throws {
+        Heji2FontRegistry.registerIfNeeded()
+        let mapping = Heji2Mapping.shared
+        let musicName = mapping.musicFontName ?? "HEJI2Music"
+        let textName = mapping.textFontName ?? "HEJI2Text"
+
+        for glyph in mapping.allGlyphMetadata() {
+            let exists = mapping.glyphExists(glyph.glyph, fontName: musicName)
+                || mapping.glyphExists(glyph.glyph, fontName: textName)
+            #expect(exists, "Missing glyph \\(glyph.glyph) prime=\\(glyph.prime) step=\\(glyph.step) dir=\\(glyph.direction)")
+        }
+    }
 }
