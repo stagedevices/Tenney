@@ -5375,15 +5375,15 @@ extension NotationFormatter {
         let a = abs(cents)
         let up = cents >= 0
         if a < 6 { return nil } // treat <6¢ as “no microtonal accidental”
-        struct Step { let cents: Double; let prime: Int }
+        struct Step { let cents: Double; let prime: Int; let steps: Int }
         let table: [Step] = [
-            .init(cents: 21.51, prime: 5),
-            .init(cents: 27.26, prime: 7),
-            .init(cents: 43.02, prime: 5),
-            .init(cents: 48.77, prime: 11)
+            .init(cents: 21.51, prime: 5,  steps: 1),
+            .init(cents: 27.26, prime: 7,  steps: 1),
+            .init(cents: 43.02, prime: 5,  steps: 2),
+            .init(cents: 48.77, prime: 11, steps: 1)
         ]
         guard let nearest = table.min(by: { abs($0.cents - a) < abs($1.cents - a) }) else { return nil }
-        let component = HejiMicrotonalComponent(prime: nearest.prime, up: up)
+        let component = HejiMicrotonalComponent(prime: nearest.prime, up: up, steps: nearest.steps)
         let glyphs = Heji2Mapping.shared.glyphsForPrimeComponents([component])
         return glyphs.first?.string
     }

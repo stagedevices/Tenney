@@ -117,6 +117,8 @@ struct HejiAccidental: Hashable {
 struct HejiMicrotonalComponent: Hashable {
     let prime: Int
     let up: Bool
+    /// “How many” of this prime-step the glyph represents (e.g. 1-arrow vs 2-arrows; 1-flag vs 2-flags).
+    let steps: Int
 }
 
 enum HejiNotation {
@@ -306,17 +308,52 @@ enum HejiNotation {
 
     private static func microtonalComponents(for ratio: Ratio, maxPrime: Int) -> [HejiMicrotonalComponent] {
         let exponents = primeExponents(for: ratio, maxPrime: maxPrime)
-        let supported = Heji2Mapping.shared.supportedPrimes
+        let mapping = Heji2Mapping.shared
         var components: [HejiMicrotonalComponent] = []
-        for (prime, exp) in exponents where prime >= 5 && prime <= maxPrime && exp != 0 && supported.contains(prime) {
-            let up = exp < 0
-            let count = abs(exp)
-            let component = HejiMicrotonalComponent(prime: prime, up: up)
-            components.append(contentsOf: Array(repeating: component, count: count))
+        for (prime, exp) in exponents where prime >= 5 && prime <= maxPrime && exp != 0 && mapping.supportedPrimes.contains(prime) {
+                    let up = hejiUpDirection(forPrime: prime, exponent: exp)
+                    let count = abs(exp)
+        
+                    // Prefer “bigger” glyph-steps when the mapping provides them (e.g. 3 -> 2+1).
+                    let available = mapping.availableSteps(forPrime: prime) // e.g. [2, 1]
+                    let stepParts = decompose(count, using: available)
+                    for s in stepParts {
+                        components.append(HejiMicrotonalComponent(prime: prime, up: up, steps: s))
+                    }
         }
         return components
     }
 
+    /// HEJI polarity is not uniform across primes in practice; prime 11 is the one you called out as inverted.
+        private static func hejiUpDirection(forPrime prime: Int, exponent exp: Int) -> Bool {
+            switch prime {
+            case 11:
+                // Fix: 11/8 should read as “up/sharp”, 16/11 as “down/flat”.
+                return exp > 0
+            default:
+                // Works for 5, 7, 13 as used elsewhere in the app currently.
+                return exp < 0
+            }
+        }
+    
+        private static func decompose(_ count: Int, using availableSteps: [Int]) -> [Int] {
+            guard count > 0 else { return [] }
+            var steps = availableSteps.filter { $0 > 0 }.sorted(by: >)
+            if steps.isEmpty { steps = [1] }
+            if steps.last != 1 { steps.append(1) }
+    
+            var remaining = count
+            var out: [Int] = []
+            for s in steps {
+                while remaining >= s {
+                    out.append(s)
+                    remaining -= s
+                }
+                if remaining == 0 { break }
+            }
+            return out
+        }
+    
     private static func unsupportedPrimes(in ratio: Ratio, maxPrime: Int) -> [Int] {
         let allPrimes = Set(factorPrimes(in: ratio.n) + factorPrimes(in: ratio.d))
         let supported = Heji2Mapping.shared.supportedPrimes
@@ -405,10 +442,11 @@ enum HejiNotation {
     }
 
     private static func accidentalGlyphString(for accidental: HejiAccidental) -> String {
-        let mapping = Heji2Mapping.shared
-        let diatonic = mapping.glyphsForDiatonicAccidental(accidental.diatonicAccidental)
-        let microtonal = mapping.glyphsForPrimeComponents(accidental.microtonalComponents)
-        return (diatonic + microtonal).map(\.string).joined()
+            let mapping = Heji2Mapping.shared
+            let microtonal = mapping.glyphsForPrimeComponents(accidental.microtonalComponents)
+            let diatonic = mapping.glyphsForDiatonicAccidental(accidental.diatonicAccidental)
+            // Fix (1b) + (2): modifiers first, then diatonic (reads like “sharp with arrows/flags”).
+            return (microtonal + diatonic).map(\.string).joined()
     }
 
     private static func primeExponents(for ratio: Ratio, maxPrime: Int) -> [Int: Int] {

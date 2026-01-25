@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import SwiftUI
 
 func spellHejiRatioDisplay(
     ratio: RatioRef,
