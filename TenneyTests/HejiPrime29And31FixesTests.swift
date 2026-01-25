@@ -46,6 +46,9 @@ struct HejiPrime29And31FixesTests {
         let prime29Up = mapping.glyphsForPrimeComponents([
             HejiMicrotonalComponent(prime: 29, up: true, steps: 1)
         ])
+        let prime29Down = mapping.glyphsForPrimeComponents([
+            HejiMicrotonalComponent(prime: 29, up: false, steps: 1)
+        ])
         let prime31Up = mapping.glyphsForPrimeComponents([
             HejiMicrotonalComponent(prime: 31, up: true, steps: 1)
         ])
@@ -53,18 +56,29 @@ struct HejiPrime29And31FixesTests {
             HejiMicrotonalComponent(prime: 31, up: false, steps: 1)
         ])
 
-        let prime29Scalar = firstScalar(from: prime29Up)
-        let prime31Scalar = firstScalar(from: prime31Up)
-        #expect(prime29Scalar != nil)
-        #expect(prime31Scalar != nil)
-        #expect(prime29Scalar != prime31Scalar)
+        let prime29UpScalar = firstScalar(from: prime29Up)
+        let prime29DownScalar = firstScalar(from: prime29Down)
+        let prime31UpScalar = firstScalar(from: prime31Up)
+        let prime31DownScalar = firstScalar(from: prime31Down)
+        #expect(prime29UpScalar == 0xEE50)
+        #expect(prime29DownScalar == 0xEE51)
+        #expect(prime31UpScalar == 0xE2ED)
+        #expect(prime31DownScalar == 0xE2EC)
+        #expect(prime29UpScalar != prime31UpScalar)
 
         let bracketScalars: Set<UInt32> = [0xE2EE, 0xE2EF]
-        if let upScalar = prime31Scalar {
+        if let upScalar = prime31UpScalar {
             #expect(!bracketScalars.contains(upScalar))
         }
-        if let downScalar = firstScalar(from: prime31Down) {
+        if let downScalar = prime31DownScalar {
             #expect(!bracketScalars.contains(downScalar))
+        }
+
+        let temperedRange = 0xE2F0...0xE2F6
+        for scalar in [prime29UpScalar, prime29DownScalar, prime31UpScalar, prime31DownScalar] {
+            if let scalar {
+                #expect(!temperedRange.contains(Int(scalar)))
+            }
         }
     }
 
