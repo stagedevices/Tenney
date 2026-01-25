@@ -201,6 +201,17 @@ enum HejiNotation {
             diatonicAccidental = rewritten.diatonicAccidental
         }
 
+        if shouldAnchorToTonicForPrime31(
+            ratioValue: value,
+            context: context,
+            microComponents: microComponents
+        ) {
+            if let tonicE3 = context.tonicE3 {
+                baseLetter = letter(for: tonicE3).letter
+                diatonicAccidental = 0
+            }
+        }
+
         let accidental = HejiAccidental(
             diatonicAccidental: diatonicAccidental,
             microtonalComponents: microComponents
@@ -414,40 +425,59 @@ enum HejiNotation {
     }
 
     /// HEJI polarity is not uniform across primes in practice; prime 11 is the one you called out as inverted.
-        private static func hejiUpDirection(forPrime prime: Int, exponent exp: Int) -> Bool {
-            switch prime {
-            case 11:
-                // Fix: 11/8 should read as “up/sharp”, 16/11 as “down/flat”.
-                return exp > 0
-            case 19:
-                // Prime-19 is numerator-up and denominator-down.
-                return exp > 0
-            case 23:
-                // Prime-23 is numerator-up and denominator-down.
-                return exp > 0
-            default:
-                // Works for 5, 7, 13 as used elsewhere in the app currently.
-                return exp < 0
-            }
+    private static func hejiUpDirection(forPrime prime: Int, exponent exp: Int) -> Bool {
+        switch prime {
+        case 11:
+            // Fix: 11/8 should read as “up/sharp”, 16/11 as “down/flat”.
+            return exp > 0
+        case 29:
+            // Prime-29 uses numerator-up and denominator-down.
+            return exp > 0
+        case 31:
+            // Prime-31 inverts direction versus primes 19/23.
+            return exp < 0
+        case 19:
+            // Prime-19 is numerator-up and denominator-down.
+            return exp > 0
+        case 23:
+            // Prime-23 is numerator-up and denominator-down.
+            return exp > 0
+        default:
+            // Works for 5, 7, 13 as used elsewhere in the app currently.
+            return exp < 0
         }
+    }
+
+    private static func shouldAnchorToTonicForPrime31(
+        ratioValue: Double,
+        context: HejiContext,
+        microComponents: [HejiMicrotonalComponent]
+    ) -> Bool {
+        guard context.tonicE3 != nil else { return false }
+        guard microComponents.contains(where: { $0.prime == 31 }) else { return false }
+        let semitoneOffset = roundedSemitoneOffset(from: ratioValue)
+        let nearUnison = abs(semitoneOffset) <= 1
+        let nearOctave = abs(abs(semitoneOffset) - 12) <= 1
+        return nearUnison || nearOctave
+    }
     
-        private static func decompose(_ count: Int, using availableSteps: [Int]) -> [Int] {
-            guard count > 0 else { return [] }
-            var steps = availableSteps.filter { $0 > 0 }.sorted(by: >)
-            if steps.isEmpty { steps = [1] }
-            if steps.last != 1 { steps.append(1) }
-    
-            var remaining = count
-            var out: [Int] = []
-            for s in steps {
-                while remaining >= s {
-                    out.append(s)
-                    remaining -= s
-                }
-                if remaining == 0 { break }
+    private static func decompose(_ count: Int, using availableSteps: [Int]) -> [Int] {
+        guard count > 0 else { return [] }
+        var steps = availableSteps.filter { $0 > 0 }.sorted(by: >)
+        if steps.isEmpty { steps = [1] }
+        if steps.last != 1 { steps.append(1) }
+
+        var remaining = count
+        var out: [Int] = []
+        for s in steps {
+            while remaining >= s {
+                out.append(s)
+                remaining -= s
             }
-            return out
+            if remaining == 0 { break }
         }
+        return out
+    }
     
     private static func unsupportedPrimes(in ratio: Ratio, maxPrime: Int) -> [Int] {
         let allPrimes = Set(factorPrimes(in: ratio.n) + factorPrimes(in: ratio.d))
