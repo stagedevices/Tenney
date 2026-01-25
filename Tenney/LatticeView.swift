@@ -217,6 +217,28 @@ struct LatticeView: View {
     }
 
 
+
+    // MARK: - Max-prime helpers (so lattice labels can render 13–31 even if app.primeLimit is still <= 13)
+        private func maxPrimeFactor(of value: Int) -> Int {
+            var n = abs(value)
+            guard n > 1 else { return 1 }
+            var maxP = 1
+            var p = 2
+            while p * p <= n {
+                while n % p == 0 {
+                    maxP = p
+                    n /= p
+                }
+                p += (p == 2 ? 1 : 2)
+            }
+            if n > 1 { maxP = max(maxP, n) }
+            return maxP
+        }
+    
+        private func maxPrimeFactor(p: Int, q: Int) -> Int {
+            max(maxPrimeFactor(of: p), maxPrimeFactor(of: q))
+        }
+    
     // MARK: - Overlay-node labels (7+ primes)
 
     private func overlayPQ(e3: Int, e5: Int, prime: Int, eP: Int) -> (Int, Int)? {
@@ -1554,7 +1576,15 @@ struct LatticeView: View {
             label.font = .system(size: 11, weight: .semibold, design: .monospaced)
             return label
         } else {
-            return hejiTextLabel(p: cp, q: cq, octave: 0, rootHz: app.rootHz, basePointSize: 11)
+            let labelMaxPrime = max(effectiveMaxPrimeForLatticeLabels, maxPrimeFactor(p: cp, q: cq))
+                        return hejiTextLabel(
+                            p: cp,
+                            q: cq,
+                            octave: 0,
+                            rootHz: app.rootHz,
+                            basePointSize: 11,
+                            maxPrimeOverride: labelMaxPrime
+                        )
         }
     }
 
@@ -4735,7 +4765,9 @@ struct LatticeView: View {
                 rootHz: app.rootHz,
                 rootRatio: nil,
                 preferred: hejiPreference,
-                maxPrime: max(3, app.primeLimit),
+                // Important: lattice may show primes beyond the app’s “primeLimit” bucket;
+                           // labels still need to render them.
+                           maxPrime: effectiveMaxPrimeForLatticeLabels,
                 allowApproximation: false,
                 scaleDegreeHint: ratioRef,
                 tonicE3: tonic.e3
