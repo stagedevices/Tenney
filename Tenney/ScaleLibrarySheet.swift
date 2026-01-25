@@ -2582,6 +2582,7 @@ private struct HearPage: View {
                             DegreeRow(
                                 ratio: ratio,
                                 rootHz: rootHz,
+                                maxPrime: max(3, currentScale.detectedLimit),
                                 isSelected: focusedDegreeID == ratio.id
                             )
                             .onTapGesture {
@@ -2925,6 +2926,7 @@ private struct RatioChip: View {
 private struct DegreeRow: View {
     let ratio: RatioRef
     let rootHz: Double
+    let maxPrime: Int
     let isSelected: Bool
     @AppStorage(SettingsKeys.accidentalPreference) private var accidentalPreferenceRaw: String = AccidentalPreference.auto.rawValue
     @AppStorage(SettingsKeys.staffA4Hz) private var concertA4Hz: Double = 440
@@ -2952,7 +2954,7 @@ private struct DegreeRow: View {
             rootHz: rootHz,
             rootRatio: RatioRef(p: 1, q: 1, octave: 0, monzo: [:]),
             preferred: pref,
-            maxPrime: 13,
+            maxPrime: maxPrime,
             allowApproximation: false,
             scaleDegreeHint: ratioRef,
             tonicE3: resolvedTonicE3

@@ -23,7 +23,22 @@
         "1": { "up": [{ "glyph": "\uE2E3" }], "down": [{ "glyph": "\uE2E2" }] }
       },
       "13": {
+        "1": { "up": [{ "glyph": "\uE2E5" }], "down": [{ "glyph": "\uE2E4" }] }
+      },
+      "17": {
         "1": { "up": [{ "glyph": "\uE2E7" }], "down": [{ "glyph": "\uE2E6" }] }
+      },
+      "19": {
+        "1": { "up": [{ "glyph": "\uE2E9" }], "down": [{ "glyph": "\uE2E8" }] }
+      },
+      "23": {
+        "1": { "up": [{ "glyph": "\uE2EB" }], "down": [{ "glyph": "\uE2EA" }] }
+      },
+      "29": {
+        "1": { "up": [{ "glyph": "\uE2EB" }], "down": [{ "glyph": "\uE2EA" }] }
+      },
+      "31": {
+        "1": { "up": [{ "glyph": "\uE2ED" }], "down": [{ "glyph": "\uE2EC" }] }
       }
   }
 }
