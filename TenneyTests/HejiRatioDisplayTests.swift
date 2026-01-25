@@ -219,6 +219,32 @@ struct HejiRatioDisplayTests {
         }
     }
 
+    @Test func fiveLimitAccidentalsAvoidForcedNaturals() async throws {
+        let tonic = TonicSpelling.from(letter: "C", accidental: 0)
+        let context = HejiContext(
+            concertA4Hz: 440,
+            noteNameA4Hz: 440,
+            rootHz: 440,
+            rootRatio: nil,
+            preferred: .auto,
+            maxPrime: 13,
+            allowApproximation: false,
+            scaleDegreeHint: nil,
+            tonicE3: tonic.e3
+        )
+        let naturalGlyph = "\u{E261}"
+        let ratios: [RatioRef] = [
+            RatioRef(p: 32, q: 25, octave: 0, monzo: [:]),
+            RatioRef(p: 5, q: 4, octave: 0, monzo: [:]),
+            RatioRef(p: 8, q: 5, octave: 0, monzo: [:])
+        ]
+        let spellings = ratios.map { HejiNotation.spelling(forRatio: $0, context: context) }
+        let accidentals = spellings.map { accidentalString(for: $0.accidental) }
+        #expect(!accidentals[0].hasPrefix(naturalGlyph))
+        #expect(!accidentals[1].hasPrefix(naturalGlyph))
+        #expect(accidentals[2].hasPrefix(naturalGlyph))
+    }
+
     @Test func tridecimalAccidentalsUseHejiTextFontRun() async throws {
         let tonic = TonicSpelling.from(letter: "C", accidental: 0)
         let ratio = RatioRef(p: 13, q: 8, octave: 0, monzo: [:])
@@ -259,6 +285,28 @@ struct HejiRatioDisplayTests {
         #expect(fontName?.contains(expectedFontName) == true)
 #else
         #expect(fontAttribute != nil)
+#endif
+    }
+
+    @Test func tridecimalGlyphsExistInHejiFont() async throws {
+#if canImport(CoreText)
+        Heji2FontRegistry.registerIfNeeded()
+        let component = HejiMicrotonalComponent(prime: 13, up: true, steps: 1)
+        let glyphString = Heji2Mapping.shared
+            .glyphsForPrimeComponents([component])
+            .map(\.string)
+            .joined()
+        #expect(!glyphString.isEmpty)
+
+        let fontName = Heji2FontRegistry.hejiTextFontName
+        let font = CTFontCreateWithName(fontName as CFString, 16, nil)
+        let characters = Array(glyphString.utf16)
+        var glyphs = Array<CGGlyph>(repeating: 0, count: characters.count)
+        let mapped = CTFontGetGlyphsForCharacters(font, characters, &glyphs, characters.count)
+        #expect(mapped)
+        #expect(glyphs.contains { $0 != 0 })
+#else
+        #expect(true)
 #endif
     }
 
@@ -320,10 +368,7 @@ struct HejiRatioDisplayTests {
     private func accidentalString(for accidental: HejiAccidental) -> String {
         let mapping = Heji2Mapping.shared
         let microtonal = mapping.glyphsForPrimeComponents(accidental.microtonalComponents)
-        var diatonic = mapping.glyphsForDiatonicAccidental(accidental.diatonicAccidental)
-        if diatonic.isEmpty, accidental.diatonicAccidental == 0, !microtonal.isEmpty {
-            diatonic = [Heji2Glyph(glyph: "\u{E261}", staffOffset: nil, textOffset: nil, advance: nil, staffAdvance: nil, textAdvance: nil)]
-        }
+        let diatonic = mapping.glyphsForDiatonicAccidental(accidental.diatonicAccidental)
         return (diatonic + microtonal).map(\.string).joined()
     }
 }
