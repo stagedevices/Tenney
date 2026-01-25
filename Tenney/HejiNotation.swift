@@ -344,6 +344,18 @@ enum HejiNotation {
     private static func microtonalComponents(for ratio: Ratio, maxPrime: Int) -> [HejiMicrotonalComponent] {
         let exponents = primeExponents(for: ratio, maxPrime: maxPrime)
         let mapping = Heji2Mapping.shared
+#if DEBUG
+        if maxPrime >= 5 {
+            let missing = exponents
+                .filter { $0.key >= 5 && $0.key <= maxPrime && $0.value != 0 && !mapping.supportsPrime($0.key) }
+            if !missing.isEmpty {
+                let ratioText = "\(ratio.n)/\(ratio.d)"
+                for (prime, exp) in missing.sorted(by: { $0.key < $1.key }) {
+                    print("[HEJI_MISSING_MAPPING] prime=\(prime) exp=\(exp) ratio=\(ratioText) maxPrime=\(maxPrime)")
+                }
+            }
+        }
+#endif
         var components: [HejiMicrotonalComponent] = []
         for prime in exponents.keys.sorted() {
             guard prime >= 5, prime <= maxPrime, mapping.supportsPrime(prime) else { continue }

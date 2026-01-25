@@ -22,6 +22,7 @@ struct HejiGalleryView: View {
     @AppStorage(SettingsKeys.noteNameA4Hz) private var noteNameA4Hz: Double = 440
     @AppStorage(SettingsKeys.tonicNameMode) private var tonicNameModeRaw: String = TonicNameMode.auto.rawValue
     @AppStorage(SettingsKeys.tonicE3) private var tonicE3: Int = 0
+    @EnvironmentObject private var app: AppModel
 
     var body: some View {
         let pref = AccidentalPreference(rawValue: accidentalPreferenceRaw) ?? .auto
@@ -39,7 +40,7 @@ struct HejiGalleryView: View {
             rootHz: 440,
             rootRatio: RatioRef(p: 1, q: 1, octave: 0, monzo: [:]),
             preferred: pref,
-            maxPrime: 13,
+            maxPrime: max(3, app.primeLimit),
             allowApproximation: false,
             scaleDegreeHint: nil,
             tonicE3: resolvedTonicE3
