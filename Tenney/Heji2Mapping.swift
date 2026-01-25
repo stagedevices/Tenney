@@ -95,7 +95,8 @@ final class Heji2Mapping {
             absorbDiatonicIntoPrime5 diatonicAccidental: Int = 0
         ) -> [Heji2Glyph] {
         var out: [Heji2Glyph] = []
-        for component in components {
+        let normalizedComponents = coalescedComponentsForRendering(components)
+        for component in normalizedComponents {
             guard let stepsMap = primeComponents[component.prime] else { continue }
             if let exact = stepsMap[component.steps] {
                 let chosen = component.up ? exact.up : exact.down
@@ -123,6 +124,57 @@ final class Heji2Mapping {
                                     diatonicAccidental: diatonicAccidental
                                 ))
             }
+        }
+        return out
+    }
+
+    private struct PrimeDirectionKey: Hashable {
+        let prime: Int
+        let up: Bool
+    }
+
+    private func coalescedComponentsForRendering(
+        _ components: [HejiMicrotonalComponent]
+    ) -> [HejiMicrotonalComponent] {
+        guard components.count > 1 else { return components }
+        var totals: [PrimeDirectionKey: Int] = [:]
+        for component in components {
+            let key = PrimeDirectionKey(prime: component.prime, up: component.up)
+            totals[key, default: 0] += component.steps
+        }
+        let sortedKeys = totals.keys.sorted {
+            if $0.prime != $1.prime { return $0.prime < $1.prime }
+            return $0.up == $1.up ? false : (!$0.up && $1.up)
+        }
+        var out: [HejiMicrotonalComponent] = []
+        for key in sortedKeys {
+            let totalSteps = totals[key, default: 0]
+            guard totalSteps > 0 else { continue }
+            let available = availableSteps(forPrime: key.prime)
+            if available.isEmpty {
+                out.append(HejiMicrotonalComponent(prime: key.prime, up: key.up, steps: totalSteps))
+                continue
+            }
+            let decomposed = decomposeSteps(totalSteps, available: available)
+            for step in decomposed {
+                out.append(HejiMicrotonalComponent(prime: key.prime, up: key.up, steps: step))
+            }
+        }
+        return out
+    }
+
+    private func decomposeSteps(_ total: Int, available: [Int]) -> [Int] {
+        guard total > 0 else { return [] }
+        var remaining = total
+        var out: [Int] = []
+        for step in available where step > 0 {
+            while remaining >= step {
+                out.append(step)
+                remaining -= step
+            }
+        }
+        if remaining > 0 {
+            out.append(remaining)
         }
         return out
     }
@@ -204,25 +256,22 @@ final class Heji2Mapping {
         diatonicAccidental: Int
     ) -> [Heji2Glyph] {
         guard prime == 5 else { return glyphs }
-        guard abs(diatonicAccidental) == 1 else { return glyphs } // keep this tight/safe
+        guard diatonicAccidental != 0 else { return glyphs }
+        guard (-2...2).contains(diatonicAccidental) else { return glyphs }
+        guard glyphs.allSatisfy({ $0.string.unicodeScalars.count == 1 }) else { return glyphs }
 
-        // Attempt to shift each glyph by ±1 codepoint (SMuFL flat/natural/sharp grouping).
+        // Attempt to shift each glyph by the diatonic accidental codepoint (SMuFL flat/natural/sharp grouping).
         return glyphs.map { g in
             guard let s = g.string.unicodeScalars.first else { return g }
-            let v = s.value
-            let shifted = diatonicAccidental < 0 ? (v &- 1) : (v &+ 1)
-            guard let ns = UnicodeScalar(shifted) else { return g }
+            let shiftedValue = Int(s.value) + diatonicAccidental
+            guard let ns = UnicodeScalar(shiftedValue) else { return g }
 
             // Don’t risk tofu: verify the shifted scalar is present in the HEJI2 font at runtime.
             // If verification is not available on this platform, we still return the shifted glyph;
             // worst case you’ll see tofu and we can pin exact codepoints then.
             #if canImport(CoreText)
-            let fontName = Heji2FontRegistry.hejiTextFontName as CFString
-            let ct = CTFontCreateWithName(fontName, 16, nil)
-            var ch: UniChar = UniChar(shifted)
-            var cg: CGGlyph = 0
-            let ok = CTFontGetGlyphsForCharacters(ct, &ch, &cg, 1)
-            guard ok, cg != 0 else { return g }
+            let fontName = Heji2FontRegistry.hejiTextFontName
+            guard glyphExists(String(ns), fontName: fontName) else { return g }
             #endif
 
             return Heji2Glyph(

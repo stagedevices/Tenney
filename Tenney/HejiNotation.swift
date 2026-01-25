@@ -454,12 +454,22 @@ enum HejiNotation {
         return (absStep - 4 + 1) / 2
     }
 
+    private static func normalizedForRendering(_ accidental: HejiAccidental) -> (
+        diatonicToRender: Int,
+        absorbDiatonicIntoPrime5: Int
+    ) {
+        let has11 = accidental.microtonalComponents.contains { $0.prime == 11 }
+        let has5 = accidental.microtonalComponents.contains { $0.prime == 5 }
+        let diatonic = has11 ? 0 : accidental.diatonicAccidental
+        let absorb = (!has11 && has5 && diatonic != 0) ? diatonic : 0
+        return (diatonicToRender: absorb != 0 ? 0 : diatonic, absorbDiatonicIntoPrime5: absorb)
+    }
+
     private static func staffAccidentalGlyphs(_ accidental: HejiAccidental) -> [GlyphRun] {
         var runs: [GlyphRun] = []
         let mapping = Heji2Mapping.shared
-        let hasPrime5 = accidental.microtonalComponents.contains { $0.prime == 5 }
-        let absorb = hasPrime5 && abs(accidental.diatonicAccidental) == 1
-        let baseGlyphs = absorb ? [] : mapping.glyphsForDiatonicAccidental(accidental.diatonicAccidental)
+        let norm = normalizedForRendering(accidental)
+        let baseGlyphs = mapping.glyphsForDiatonicAccidental(norm.diatonicToRender)
         for glyph in baseGlyphs {
             let offset = glyph.staffOffset.map { CGPoint(x: $0.x, y: $0.y) } ?? .zero
             let fontKind = mapping.preferredFontForGlyph(glyph.string)
@@ -469,7 +479,7 @@ enum HejiNotation {
         var stackX: CGFloat = -10
                 let componentGlyphs = mapping.glyphsForPrimeComponents(
                     accidental.microtonalComponents,
-                    absorbDiatonicIntoPrime5: absorb ? accidental.diatonicAccidental : 0
+                    absorbDiatonicIntoPrime5: norm.absorbDiatonicIntoPrime5
                 )
 
         // If we already have any real diatonic accidental glyph in the run, E261 is just a placeholder → strip ALL of them.
@@ -513,12 +523,11 @@ enum HejiNotation {
 
     private static func accidentalGlyphString(for accidental: HejiAccidental) -> String {
         let mapping = Heji2Mapping.shared
-        let hasPrime5 = accidental.microtonalComponents.contains { $0.prime == 5 }
-                let absorb = hasPrime5 && abs(accidental.diatonicAccidental) == 1
-                let base = absorb ? [] : mapping.glyphsForDiatonicAccidental(accidental.diatonicAccidental)
+        let norm = normalizedForRendering(accidental)
+                let base = mapping.glyphsForDiatonicAccidental(norm.diatonicToRender)
                 let micro = mapping.glyphsForPrimeComponents(
                     accidental.microtonalComponents,
-                    absorbDiatonicIntoPrime5: absorb ? accidental.diatonicAccidental : 0
+                    absorbDiatonicIntoPrime5: norm.absorbDiatonicIntoPrime5
                 )
                 return (base + micro).map(\.string).joined()
     }
