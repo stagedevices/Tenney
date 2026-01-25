@@ -191,6 +191,14 @@ enum HejiNotation {
             )
             baseLetter = rewritten.letter
             diatonicAccidental = rewritten.accidental
+        } else if let prime23 = microComponents.first(where: { $0.prime == 23 }) {
+            let rewritten = applyEnharmonicSidePreferenceForPrime23(
+                baseLetter: baseLetter,
+                diatonicAccidental: diatonicAccidental,
+                preferSharps: prime23.up
+            )
+            baseLetter = rewritten.baseLetter
+            diatonicAccidental = rewritten.diatonicAccidental
         }
 
         let accidental = HejiAccidental(
@@ -413,6 +421,9 @@ enum HejiNotation {
                 return exp > 0
             case 19:
                 // Prime-19 is numerator-up and denominator-down.
+                return exp > 0
+            case 23:
+                // Prime-23 is numerator-up and denominator-down.
                 return exp > 0
             default:
                 // Works for 5, 7, 13 as used elsewhere in the app currently.
