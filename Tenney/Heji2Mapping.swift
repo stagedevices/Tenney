@@ -90,7 +90,11 @@ final class Heji2Mapping {
             guard let stepsMap = primeComponents[component.prime] else { continue }
             if let exact = stepsMap[component.steps] {
                 let chosen = component.up ? exact.up : exact.down
-                out.append(contentsOf: chosen)
+                out.append(contentsOf: applyPrime5VariantIfNeeded(
+                    chosen,
+                    prime: component.prime,
+                    diatonicAccidental: diatonicAccidental
+                ))
                 continue
             }
             guard let baseGlyphs = stepsMap[1] ?? stepsMap.values.first else { continue }
@@ -123,7 +127,6 @@ final class Heji2Mapping {
     ) -> [Heji2Glyph] {
         guard prime == 5 else { return glyphs }
         guard abs(diatonicAccidental) == 1 else { return glyphs } // keep this tight/safe
-        let delta: UInt32 = diatonicAccidental < 0 ? 0xFFFF_FFFF : 1 // -1 or +1
 
         // Attempt to shift each glyph by ±1 codepoint (SMuFL flat/natural/sharp grouping).
         return glyphs.map { g in

@@ -12,7 +12,8 @@
   "primeComponents": {
         "5": {
         "1": { "up": [{ "glyph": "\uE2C7" }], "down": [{ "glyph": "\uE2C2" }] },
-        "2": { "up": [{ "glyph": "\uE2D1" }], "down": [{ "glyph": "\uE2CC" }] }
+        "2": { "up": [{ "glyph": "\uE2D1" }], "down": [{ "glyph": "\uE2CC" }] },
+        "3": { "up": [{ "glyph": "\uE2DB" }], "down": [{ "glyph": "\uE2D6" }] }
       },
       "7": {
         "1": { "up": [{ "glyph": "\uE2DF" }], "down": [{ "glyph": "\uE2DE" }] },
