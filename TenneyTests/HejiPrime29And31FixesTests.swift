@@ -98,7 +98,19 @@ struct HejiPrime29And31FixesTests {
         #expect(downTwo.accidental.diatonicAccidental == 0)
         #expect(totalSteps(downTwo.accidental.microtonalComponents, prime: 31, up: false) == 2)
     }
-
+    @Test func prime29DirectionAndEnharmonicSimplification() async throws {
+            // 29/16 => G + utonal (prime29 up)
+            let s1 = HejiNotation.spelling(forRatio: Ratio(29, 16), context: context)
+            #expect(s1.baseLetter == "G")
+            #expect(s1.accidental.diatonicAccidental == 0)
+            #expect(totalSteps(s1.accidental.microtonalComponents, prime: 29, up: true) == 1)
+    
+            // 32/29 => B + otonal (prime29 down), not A𝄪
+            let s2 = HejiNotation.spelling(forRatio: Ratio(32, 29), context: context)
+            #expect(s2.baseLetter == "B")
+            #expect(s2.accidental.diatonicAccidental == 0)
+            #expect(totalSteps(s2.accidental.microtonalComponents, prime: 29, up: false) == 1)
+        }
     @Test func prime11RenderingRemainsSuppressed() async throws {
         let ratio = RatioRef(p: 11, q: 8, octave: 0, monzo: [:])
         let label = HejiNotation.textLabelString(for: ratio, context: context, showCents: false)

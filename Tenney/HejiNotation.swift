@@ -200,6 +200,15 @@ enum HejiNotation {
             baseLetter = rewritten.baseLetter
             diatonicAccidental = rewritten.diatonicAccidental
         }
+        
+        // Prime-29 only: prefer adjacent naturals over double-accidentals when equivalent.
+               // (Do NOT fight the prime-17 near-tonic “tonic-letter anchored” rule.)
+               let has29 = microComponents.contains(where: { $0.prime == 29 })
+               let has17 = microComponents.contains(where: { $0.prime == 17 })
+               if has29 && !has17 && baseLetter == "A" && diatonicAccidental == 2 {
+                   baseLetter = "B"
+                   diatonicAccidental = 0
+               }
 
         if shouldAnchorToTonicForPrime31(
             ratioValue: value,
@@ -431,8 +440,8 @@ enum HejiNotation {
             // Fix: 11/8 should read as “up/sharp”, 16/11 as “down/flat”.
             return exp > 0
         case 29:
-            // Prime-29 uses numerator-up and denominator-down.
-            return exp > 0
+                // Prime-29: numerator = utonal, denominator = otonal
+                return exp < 0
         case 31:
             // Prime-31 inverts direction versus primes 19/23.
             return exp < 0
