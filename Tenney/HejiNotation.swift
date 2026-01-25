@@ -240,6 +240,7 @@ enum HejiNotation {
             )
         }
         let spelling = spelling(forRatio: ratioRef, context: context)
+        logHejiRenderingIfNeeded(spelling)
         return textLabel(
             spelling,
             showCents: showCents,
@@ -305,22 +306,39 @@ enum HejiNotation {
         return whitelist.contains(key)
     }
 
+    private static func logHejiRenderingIfNeeded(_ spelling: HejiSpelling) {
+#if DEBUG
+        guard let ratio = spelling.ratio else { return }
+        let reduced = Ratio(ratio.n, ratio.d)
+        let key = "\(reduced.n)/\(reduced.d)"
+        let targets: Set<String> = ["32/25", "5/4", "8/5"]
+        guard targets.contains(key) else { return }
+        let components = spelling.accidental.microtonalComponents
+            .map { "(\($0.prime), \($0.steps), \($0.up))" }
+            .joined(separator: ", ")
+        print("[HEJI_RENDER] ratio=\(key) baseLetter=\(spelling.baseLetter) diatonicAccidental=\(spelling.accidental.diatonicAccidental) microtonalComponents=[\(components)]")
+#endif
+    }
+
     // MARK: - Microtonal components
 
     private static func microtonalComponents(for ratio: Ratio, maxPrime: Int) -> [HejiMicrotonalComponent] {
         let exponents = primeExponents(for: ratio, maxPrime: maxPrime)
         let mapping = Heji2Mapping.shared
         var components: [HejiMicrotonalComponent] = []
-        for (prime, exp) in exponents where prime >= 5 && prime <= maxPrime && exp != 0 && mapping.supportedPrimes.contains(prime) {
-                    let up = hejiUpDirection(forPrime: prime, exponent: exp)
-                    let count = abs(exp)
-        
-                    // Prefer “bigger” glyph-steps when the mapping provides them (e.g. 3 -> 2+1).
-                    let available = mapping.availableSteps(forPrime: prime) // e.g. [2, 1]
-                    let stepParts = decompose(count, using: available)
-                    for s in stepParts {
-                        components.append(HejiMicrotonalComponent(prime: prime, up: up, steps: s))
-                    }
+        for prime in exponents.keys.sorted() {
+            guard prime >= 5, prime <= maxPrime, mapping.supportedPrimes.contains(prime) else { continue }
+            let exp = exponents[prime] ?? 0
+            guard exp != 0 else { continue }
+            let up = hejiUpDirection(forPrime: prime, exponent: exp)
+            let count = abs(exp)
+
+            // Prefer “bigger” glyph-steps when the mapping provides them (e.g. 3 -> 2+1).
+            let available = mapping.availableSteps(forPrime: prime) // e.g. [2, 1]
+            let stepParts = decompose(count, using: available)
+            for s in stepParts {
+                components.append(HejiMicrotonalComponent(prime: prime, up: up, steps: s))
+            }
         }
         return components
     }
@@ -400,10 +418,7 @@ enum HejiNotation {
     private static func staffAccidentalGlyphs(_ accidental: HejiAccidental) -> [GlyphRun] {
         var runs: [GlyphRun] = []
         let mapping = Heji2Mapping.shared
-        var baseGlyphs = mapping.glyphsForDiatonicAccidental(accidental.diatonicAccidental)
-        if baseGlyphs.isEmpty, accidental.diatonicAccidental == 0, !accidental.microtonalComponents.isEmpty {
-            baseGlyphs = [Heji2Glyph(glyph: "\u{E261}", staffOffset: nil, textOffset: nil, advance: nil, staffAdvance: nil, textAdvance: nil)]
-        }
+        let baseGlyphs = mapping.glyphsForDiatonicAccidental(accidental.diatonicAccidental)
         for glyph in baseGlyphs {
             let offset = glyph.staffOffset.map { CGPoint(x: $0.x, y: $0.y) } ?? .zero
             runs.append(GlyphRun(font: .heji2Music, glyph: glyph.string, offset: offset))
@@ -448,10 +463,7 @@ enum HejiNotation {
     private static func accidentalGlyphString(for accidental: HejiAccidental) -> String {
         let mapping = Heji2Mapping.shared
         let microtonal = mapping.glyphsForPrimeComponents(accidental.microtonalComponents)
-        var base = mapping.glyphsForDiatonicAccidental(accidental.diatonicAccidental)
-        if base.isEmpty, accidental.diatonicAccidental == 0, !microtonal.isEmpty {
-            base = [Heji2Glyph(glyph: "\u{E261}", staffOffset: nil, textOffset: nil, advance: nil, staffAdvance: nil, textAdvance: nil)]
-        }
+        let base = mapping.glyphsForDiatonicAccidental(accidental.diatonicAccidental)
         return (base + microtonal).map(\.string).joined()
     }
 
