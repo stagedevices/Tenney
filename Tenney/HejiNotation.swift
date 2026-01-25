@@ -122,6 +122,17 @@ struct HejiMicrotonalComponent: Hashable {
 }
 
 enum HejiNotation {
+    private static let placeholderNatural = "\u{E261}"
+        // HEJI2 / SMuFL-ish diatonic accidentals you’re already using.
+        // (We only need “non-natural” to know when E261 is just a placeholder.)
+        private static let diatonicAccidentals: Set<String> = [
+            "\u{E260}", // flat
+            "\u{E262}", // sharp
+            "\u{E263}", // double-sharp
+            "\u{E264}", // double-flat
+            "\u{E265}", // triple-sharp (if present)
+            "\u{E266}"  // triple-flat (if present)
+        ]
     static func spelling(forRatio ratioRef: RatioRef, context: HejiContext) -> HejiSpelling {
         let ratio = Ratio(ratioRef.p, ratioRef.q)
         let spelling = spelling(forRatio: ratio, octave: ratioRef.octave, context: context)
@@ -139,17 +150,24 @@ enum HejiNotation {
 
     static func spelling(forRatio ratio: Ratio, octave: Int = 0, context: HejiContext) -> HejiSpelling {
         let value = ratio.value * pow(2.0, Double(octave))
+        
+        let hz = context.rootHz > 0 ? context.rootHz * value : value
+                let staff = NotationFormatter.staffNoteName(freqHz: hz, a4Hz: context.noteNameA4Hz)
+                let octaveOut = staff.octave
         let e3Interval = pythagoreanBaseE3Interval(for: ratio, octave: octave, maxPrime: context.maxPrime)
         let e3Total = context.tonicE3.map { $0 + e3Interval } ?? e3Interval
         let base = letter(for: e3Total)
+        
+        let diatonicAcc = bestDiatonicAccidentalCount(
+                    for: base.letter,
+                    nearOctave: octaveOut,
+                    freqHz: hz,
+                    a4Hz: context.noteNameA4Hz
+                )
         let accidental = HejiAccidental(
-            diatonicAccidental: base.accidentalCount,
+            diatonicAccidental: diatonicAcc,
             microtonalComponents: microtonalComponents(for: ratio, maxPrime: context.maxPrime)
         )
-
-        let hz = context.rootHz > 0 ? context.rootHz * value : value
-        let staff = NotationFormatter.staffNoteName(freqHz: hz, a4Hz: context.noteNameA4Hz)
-        let octaveOut = staff.octave
 
         let unsupported = unsupportedPrimes(in: ratio, maxPrime: context.maxPrime)
 
@@ -256,6 +274,7 @@ enum HejiNotation {
             return TonicSpelling(e3: tonicE3).displayText
         }
         let spelling = spelling(forRatio: ratioRef, context: context)
+        logHejiRenderingIfNeeded(spelling) // ← add
         return textLabelString(spelling, showCents: showCents)
     }
 
@@ -327,7 +346,9 @@ enum HejiNotation {
         let mapping = Heji2Mapping.shared
         var components: [HejiMicrotonalComponent] = []
         for prime in exponents.keys.sorted() {
-            guard prime >= 5, prime <= maxPrime, mapping.supportedPrimes.contains(prime) else { continue }
+            guard prime >= 5, prime <= maxPrime, mapping.supportsPrime(prime) else { continue }
+            // Don’t let a stale supportedPrimes list block 13 (or higher) if the mapping actually has steps.
+            guard !mapping.availableSteps(forPrime: prime).isEmpty || mapping.supportedPrimes.contains(prime) else { continue }
             let exp = exponents[prime] ?? 0
             guard exp != 0 else { continue }
             let up = hejiUpDirection(forPrime: prime, exponent: exp)
@@ -375,8 +396,14 @@ enum HejiNotation {
     
     private static func unsupportedPrimes(in ratio: Ratio, maxPrime: Int) -> [Int] {
         let allPrimes = Set(factorPrimes(in: ratio.n) + factorPrimes(in: ratio.d))
-        let supported = Heji2Mapping.shared.supportedPrimes
-        let allowed = Set([2, 3]).union(supported.filter { $0 <= maxPrime })
+        let mapping = Heji2Mapping.shared
+        let allowedMicro: [Int]
+        if maxPrime >= 5 {
+        allowedMicro = (5...maxPrime).filter { !mapping.availableSteps(forPrime: $0).isEmpty || mapping.supportedPrimes.contains($0) }
+            } else {
+            allowedMicro = []
+            }
+        let allowed = Set([2, 3]).union(allowedMicro)
         return allPrimes.filter { !allowed.contains($0) }.sorted()
     }
 
@@ -418,13 +445,21 @@ enum HejiNotation {
     private static func staffAccidentalGlyphs(_ accidental: HejiAccidental) -> [GlyphRun] {
         var runs: [GlyphRun] = []
         let mapping = Heji2Mapping.shared
-        let baseGlyphs = mapping.glyphsForDiatonicAccidental(accidental.diatonicAccidental)
+        let hasPrime5 = accidental.microtonalComponents.contains { $0.prime == 5 }
+        let absorb = hasPrime5 && abs(accidental.diatonicAccidental) == 1
+        let baseGlyphs = absorb ? [] : mapping.glyphsForDiatonicAccidental(accidental.diatonicAccidental)
         for glyph in baseGlyphs {
             let offset = glyph.staffOffset.map { CGPoint(x: $0.x, y: $0.y) } ?? .zero
             runs.append(GlyphRun(font: .heji2Music, glyph: glyph.string, offset: offset))
         }
-        let componentGlyphs = mapping.glyphsForPrimeComponents(accidental.microtonalComponents)
         var stackX: CGFloat = -10
+                let componentGlyphs = mapping.glyphsForPrimeComponents(
+                    accidental.microtonalComponents,
+                    absorbDiatonicIntoPrime5: absorb ? accidental.diatonicAccidental : 0
+                )
+
+        // If we already have any real diatonic accidental glyph in the run, E261 is just a placeholder → strip ALL of them.
+        let hasRealDiatonic = !baseGlyphs.isEmpty || componentGlyphs.contains { diatonicAccidentals.contains($0.string) }
         for glyph in componentGlyphs {
             let offset = glyph.staffOffset.map { CGPoint(x: $0.x, y: $0.y) } ?? .zero
             runs.append(GlyphRun(font: .heji2Music, glyph: glyph.string, offset: CGPoint(x: stackX + offset.x, y: offset.y)))
@@ -462,9 +497,14 @@ enum HejiNotation {
 
     private static func accidentalGlyphString(for accidental: HejiAccidental) -> String {
         let mapping = Heji2Mapping.shared
-        let microtonal = mapping.glyphsForPrimeComponents(accidental.microtonalComponents)
-        let base = mapping.glyphsForDiatonicAccidental(accidental.diatonicAccidental)
-        return (base + microtonal).map(\.string).joined()
+        let hasPrime5 = accidental.microtonalComponents.contains { $0.prime == 5 }
+                let absorb = hasPrime5 && abs(accidental.diatonicAccidental) == 1
+                let base = absorb ? [] : mapping.glyphsForDiatonicAccidental(accidental.diatonicAccidental)
+                let micro = mapping.glyphsForPrimeComponents(
+                    accidental.microtonalComponents,
+                    absorbDiatonicIntoPrime5: absorb ? accidental.diatonicAccidental : 0
+                )
+                return (base + micro).map(\.string).joined()
     }
 
     private static func primeExponents(for ratio: Ratio, maxPrime: Int) -> [Int: Int] {
@@ -509,7 +549,59 @@ enum HejiNotation {
         if n > 1 { out.append(n) }
         return out
     }
+// MARK: - ET helper for diatonic accidental count (keeps letter, chooses ♯/♭ count that best fits Hz)
 
+    private static func bestDiatonicAccidentalCount(
+        for letter: String,
+        nearOctave: Int,
+        freqHz: Double,
+        a4Hz: Double
+    ) -> Int {
+        // Search small accidental range, and allow octave±1 so enharmonics like B#≈C can win.
+        let accRange = -2...2
+        let octRange = (nearOctave - 1)...(nearOctave + 1)
+
+        var bestAcc = 0
+        var bestAbsCents = Double.infinity
+
+        for oct in octRange {
+            for acc in accRange {
+                let midi = midiNumber(letter: letter, accidental: acc, octave: oct)
+                let target = etFrequency(midi: midi, a4Hz: a4Hz)
+                let cents = 1200.0 * log2(freqHz / target)
+                let absCents = abs(cents)
+                if absCents < bestAbsCents {
+                    bestAbsCents = absCents
+                    bestAcc = acc
+                }
+            }
+        }
+        return bestAcc
+    }
+
+    private static func semitoneForLetterNatural(_ letter: String) -> Int {
+        switch letter.uppercased() {
+        case "C": return 0
+        case "D": return 2
+        case "E": return 4
+        case "F": return 5
+        case "G": return 7
+        case "A": return 9
+        case "B": return 11
+        default:  return 0
+        }
+    }
+
+    private static func midiNumber(letter: String, accidental: Int, octave: Int) -> Int {
+        // MIDI: C-1 = 0, C4 = 60, A4 = 69.
+        let base = semitoneForLetterNatural(letter)
+        let semitone = base + accidental
+        return (octave + 1) * 12 + semitone
+    }
+
+    private static func etFrequency(midi: Int, a4Hz: Double) -> Double {
+        a4Hz * pow(2.0, Double(midi - 69) / 12.0)
+    }
 }
 
 private extension HejiAccidental {

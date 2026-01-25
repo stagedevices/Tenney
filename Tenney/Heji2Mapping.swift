@@ -4,6 +4,9 @@
 //
 
 import Foundation
+#if canImport(CoreText)
+import CoreText
+#endif
 
 struct Heji2Glyph: Hashable, Decodable {
     let glyph: String
@@ -54,10 +57,15 @@ final class Heji2Mapping {
     }
     
     func availableSteps(forPrime prime: Int) -> [Int] {
-           guard let steps = primeComponents[prime]?.keys, !steps.isEmpty else { return [1] }
-           let sorted = Array(steps).sorted(by: >)
+        // IMPORTANT: if a prime is not present in the mapping, return [] (not [1]).
+                  // Returning [1] makes unsupported primes look supported and causes “missing glyph” bugs.
+        guard let steps = primeComponents[prime]?.keys, !steps.isEmpty else { return [] }
+        let sorted = Array(steps).sorted(by: >)
            return sorted.contains(1) ? sorted : (sorted + [1])
        }
+    func supportsPrime(_ prime: Int) -> Bool {
+            primeComponents[prime] != nil
+        }
 
     func glyphsForDiatonicAccidental(_ n: Int) -> [Heji2Glyph] {
         guard n != 0 else { return [] }
@@ -73,7 +81,10 @@ final class Heji2Mapping {
         return []
     }
 
-    func glyphsForPrimeComponents(_ components: [HejiMicrotonalComponent]) -> [Heji2Glyph] {
+    func glyphsForPrimeComponents(
+            _ components: [HejiMicrotonalComponent],
+            absorbDiatonicIntoPrime5 diatonicAccidental: Int = 0
+        ) -> [Heji2Glyph] {
         var out: [Heji2Glyph] = []
         for component in components {
             guard let stepsMap = primeComponents[component.prime] else { continue }
@@ -86,13 +97,62 @@ final class Heji2Mapping {
             let chosen = component.up ? baseGlyphs.up : baseGlyphs.down
             if component.steps > 1 {
                 for _ in 0..<component.steps {
-                    out.append(contentsOf: chosen)
+                    out.append(contentsOf: applyPrime5VariantIfNeeded(
+                                            chosen,
+                                            prime: component.prime,
+                                            diatonicAccidental: diatonicAccidental
+                                        ))
                 }
             } else {
-                out.append(contentsOf: chosen)
+                out.append(contentsOf: applyPrime5VariantIfNeeded(
+                                    chosen,
+                                    prime: component.prime,
+                                    diatonicAccidental: diatonicAccidental
+                                ))
             }
         }
         return out
+    }
+/// Prime-5 in your JSON is currently the “natural+arrows” glyph family.
+    /// If the note is actually sharp/flat, we must shift to the sharp/flat variant glyphs and
+    /// *not* render the separate diatonic accidental.
+    private func applyPrime5VariantIfNeeded(
+        _ glyphs: [Heji2Glyph],
+        prime: Int,
+        diatonicAccidental: Int
+    ) -> [Heji2Glyph] {
+        guard prime == 5 else { return glyphs }
+        guard abs(diatonicAccidental) == 1 else { return glyphs } // keep this tight/safe
+        let delta: UInt32 = diatonicAccidental < 0 ? 0xFFFF_FFFF : 1 // -1 or +1
+
+        // Attempt to shift each glyph by ±1 codepoint (SMuFL flat/natural/sharp grouping).
+        return glyphs.map { g in
+            guard let s = g.string.unicodeScalars.first else { return g }
+            let v = s.value
+            let shifted = diatonicAccidental < 0 ? (v &- 1) : (v &+ 1)
+            guard let ns = UnicodeScalar(shifted) else { return g }
+
+            // Don’t risk tofu: verify the shifted scalar is present in the HEJI2 font at runtime.
+            // If verification is not available on this platform, we still return the shifted glyph;
+            // worst case you’ll see tofu and we can pin exact codepoints then.
+            #if canImport(CoreText)
+            let fontName = Heji2FontRegistry.hejiTextFontName as CFString
+            let ct = CTFontCreateWithName(fontName, 16, nil)
+            var ch: UniChar = UniChar(shifted)
+            var cg: CGGlyph = 0
+            let ok = CTFontGetGlyphsForCharacters(ct, &ch, &cg, 1)
+            guard ok, cg != 0 else { return g }
+            #endif
+
+            return Heji2Glyph(
+                glyph: String(ns),
+                staffOffset: g.staffOffset,
+                textOffset: g.textOffset,
+                advance: g.advance,
+                staffAdvance: g.staffAdvance,
+                textAdvance: g.textAdvance
+            )
+        }
     }
 }
 

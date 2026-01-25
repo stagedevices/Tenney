@@ -245,8 +245,9 @@ private func unsupportedPrimes(p: Int, q: Int, maxPrime: Int) -> [Int] {
     let remainingP = stripFactors(stripFactors(abs(p), prime: 2), prime: 3)
     let remainingQ = stripFactors(stripFactors(abs(q), prime: 2), prime: 3)
     let primes = Set(factorPrimes(remainingP) + factorPrimes(remainingQ))
-    let supported = Heji2Mapping.shared.supportedPrimes.filter { $0 <= maxPrime }
-    let allowed = Set([2, 3]).union(supported)
+    let mapping = Heji2Mapping.shared
+            let allowedMicro = (5...maxPrime).filter { mapping.supportsPrime($0) }
+            let allowed = Set([2, 3]).union(allowedMicro)
     return primes.filter { !allowed.contains($0) }.sorted()
 }
 
