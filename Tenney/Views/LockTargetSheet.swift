@@ -83,6 +83,21 @@ struct LockTargetSheet: View {
             }
             .navigationTitle("Lock Target")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        onCancel()
+                    } label: {
+                        Image(systemName: "checkmark")
+                            .font(.headline.weight(.semibold))
+                            .frame(width: 32, height: 32)
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .modifier(GlassBlueCircle())
+                    .accessibilityLabel("Done")
+                }
+            }
         }
     }
 
@@ -344,13 +359,18 @@ struct LockTargetSheet: View {
                 .disabled(!isValid)
                 .opacity(isValid ? 1 : 0.6)
 
-                glassActionButton(title: "Lock", systemImage: "lock.fill", action: {
+                glassActionButton(
+                    title: "Lock",
+                    systemImage: "lock.fill",
+                    usesRedStyle: true,
+                    action: {
                     guard let preview = lockPreview else { return }
                     onCommit(preview)
 #if os(iOS) && !targetEnvironment(macCatalyst)
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
 #endif
-                })
+                    }
+                )
                 .disabled(!isValid)
                 .opacity(isValid ? 1 : 0.6)
             }
@@ -503,12 +523,15 @@ private extension LockTargetSheet {
         systemImage: String,
         tint: Color? = nil,
         isDestructive: Bool = false,
+        usesRedStyle: Bool = false,
         minHeight: CGFloat = 44,
         horizontalPadding: CGFloat = 14,
         fillsWidth: Bool = true,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
+            let corner: CGFloat = 12
+            let redStyle = isDestructive || usesRedStyle
             let label = HStack(spacing: 6) {
                 Image(systemName: systemImage)
                 Text(title)
@@ -516,15 +539,16 @@ private extension LockTargetSheet {
             }
             .frame(maxWidth: fillsWidth ? .infinity : nil, minHeight: minHeight)
             .padding(.horizontal, horizontalPadding)
-            .foregroundStyle(isDestructive ? .white : (tint ?? .primary))
+            .foregroundStyle(redStyle ? .white : (tint ?? .primary))
 
             Group {
-                if isDestructive {
-                    label.modifier(GlassRedRoundedRect(corner: 12))
+                if redStyle {
+                    label.modifier(GlassRedRoundedRect(corner: corner))
                 } else {
-                    label.modifier(GlassRoundedRect(corner: 12))
+                    label.modifier(GlassRoundedRect(corner: corner))
                 }
             }
+            .contentShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
         }
         .buttonStyle(GlassPressFeedback())
     }
