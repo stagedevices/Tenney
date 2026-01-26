@@ -4092,10 +4092,10 @@ struct LatticeView: View {
         VStack {
             HStack {
                 if !latticePreviewMode && !latticePreviewHideChips {
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 4) {
                         overlayChips
                     }
-                    .padding(8)
+                    .padding(.horizontal, 8)
 #if os(macOS) || targetEnvironment(macCatalyst)
                     .padding(.top, 20)
                     .padding(.leading, 164)
