@@ -4118,7 +4118,7 @@ struct LatticeView: View {
                         .padding(.trailing, 12)
                         .frame(maxWidth: infoCardMaxWidth, alignment: .trailing)
                         .fixedSize(horizontal: false, vertical: true)
-                        .contentShape(Rectangle())
+                        // .contentShape(Rectangle())
                 }
             }
             Spacer()

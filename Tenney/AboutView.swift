@@ -423,13 +423,13 @@ struct AboutView: View {
     }
 }
 
-private struct MuseumCard: ViewModifier {
+ public struct MuseumCard: ViewModifier {
     let corner: CGFloat
     let theme: ResolvedTenneyTheme
     var emphasize: Bool = false
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
-    func body(content: Content) -> some View {
+   public func body(content: Content) -> some View {
         content
             .background(
                 ZStack {
