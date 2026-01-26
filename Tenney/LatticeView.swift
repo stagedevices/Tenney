@@ -5926,7 +5926,7 @@ struct LatticeView: View {
         }
 
         private func endpointModel(label: String, exps: [Int:Int]) -> DistanceDetailSheet.Endpoint {
-            let ratioComponents = ratioFromMonzo(exps)
+            let ratioComponents = ratioFromMonzo(exps).map { RatioMath.canonicalPQUnit($0.p, $0.q) }
             let ratioText = ratioComponents.map { RatioMath.unitLabel($0.p, $0.q) } ?? "—"
             let pitchLabel = label != ratioText ? label : nil
             return DistanceDetailSheet.Endpoint(
@@ -6051,11 +6051,15 @@ struct LatticeView: View {
         }
 
         private func melodicRatioDisplayText(delta: [Int:Int]) -> String {
-            ratioFromMonzo(delta).map { "\($0.p) : \($0.q)" } ?? "—"
+            ratioFromMonzo(delta)
+                .map { RatioMath.canonicalPQUnit($0.p, $0.q) }
+                .map { "\($0.p) : \($0.q)" } ?? "—"
         }
 
         private func melodicCents(delta: [Int:Int]) -> Double {
-            ratioFromMonzo(delta).map { RatioMath.centsForRatio($0.p, $0.q) } ?? .nan
+            ratioFromMonzo(delta)
+                .map { RatioMath.canonicalPQUnit($0.p, $0.q) }
+                .map { RatioMath.centsForRatio($0.p, $0.q) } ?? .nan
         }
 
         private func frequencyDeltaText(
