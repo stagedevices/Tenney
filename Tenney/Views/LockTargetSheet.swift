@@ -98,14 +98,6 @@ struct LockTargetSheet: View {
             }
             .navigationTitle("Lock Target")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                            ToolbarItem(placement: .topBarTrailing) {
-                                GlassDismissCircleButton {
-                                    handleCancel()
-                                }
-                                .disabled(isDismissing)
-                            }
-                        }
         }
     }
 
@@ -117,7 +109,9 @@ struct LockTargetSheet: View {
                 minHeight: 32,
                 horizontalPadding: 12,
                 fillsWidth: false,
-                action: onUnlock
+                action: {
+                    requestDismiss(onUnlock)
+                }
             )
         }
     
@@ -416,6 +410,7 @@ struct LockTargetSheet: View {
             guard !isDismissing else { return }
             isDismissing = true
             focusedField = nil
+            TunerLockSheetGate.armCooldown(seconds: 0.6)
     
             // Prevent immediate re-trigger / tap-through / re-entrant state coupling.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {

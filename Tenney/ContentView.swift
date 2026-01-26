@@ -1479,6 +1479,7 @@ extension Notification.Name {
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: .tunerOpenLockSheet)) { _ in
+                guard !TunerLockSheetGate.shouldIgnoreOpen() else { return }
                 showLockSheet = true
             }
             .sheet(isPresented: $showLockSheet) {
@@ -2399,6 +2400,7 @@ private struct UtilityBar: View {
                 width: tunerLockPillWidth,
                 matchedGeometry: nil
             ) {
+                guard !TunerLockSheetGate.shouldIgnoreOpen() else { return }
                 NotificationCenter.default.post(name: .tunerOpenLockSheet, object: nil)
             }
             .frame(width: tunerLockPillWidth)
