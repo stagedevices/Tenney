@@ -30,9 +30,12 @@ struct LockTargetSheet: View {
     let onCommit: (RatioResult) -> Void
     let onRemoveRecent: (RatioResult) -> Void
     let onClearRecents: () -> Void
+    @State private var isDismissing: Bool = false
+
 
     @FocusState private var focusedField: Field?
     @State private var showKeypad: Bool = false
+    @Environment(\.verticalSizeClass) private var vSize
 
     private enum Field {
         case numerator
@@ -68,12 +71,24 @@ struct LockTargetSheet: View {
         return false
 #endif
     }
+    
+    // iPhone landscape sheet: remove the in-body title + lock pill (UtilityBar owns the lock surface there).
+       private var isPhoneLandscapeCompact: Bool {
+           isPhone && vSize == .compact
+       }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    header
+                    if !isPhoneLandscapeCompact {
+                                            header
+                                        } else if lockedTarget != nil {
+                                            HStack {
+                                                Spacer()
+                                                unlockButton
+                                            }
+                                        }
                     sectionLayout
                 }
                 .padding()
@@ -84,23 +99,28 @@ struct LockTargetSheet: View {
             .navigationTitle("Lock Target")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        onCancel()
-                    } label: {
-                        Image(systemName: "checkmark")
-                            .font(.headline.weight(.semibold))
-                            .frame(width: 44, height: 44)
-                            .contentShape(Circle())
-                    }
-                    .buttonStyle(.plain)
-                    .modifier(GlassBlueCircle())
-                    .accessibilityLabel("Done")
-                }
-            }
+                            ToolbarItem(placement: .topBarTrailing) {
+                                GlassDismissCircleButton {
+                                    handleCancel()
+                                }
+                                .disabled(isDismissing)
+                            }
+                        }
         }
     }
 
+    private var unlockButton: some View {
+            glassActionButton(
+                title: "Unlock",
+                systemImage: "lock.open",
+                isDestructive: true,
+                minHeight: 32,
+                horizontalPadding: 12,
+                fillsWidth: false,
+                action: onUnlock
+            )
+        }
+    
     private var header: some View {
         VStack(alignment: .leading, spacing: 12) {
             LockFieldPill(
@@ -116,15 +136,7 @@ struct LockTargetSheet: View {
                     .foregroundStyle(.primary)
                 Spacer()
                 if lockedTarget != nil {
-                    glassActionButton(
-                        title: "Unlock",
-                        systemImage: "lock.open",
-                        isDestructive: true,
-                        minHeight: 32,
-                        horizontalPadding: 12,
-                        fillsWidth: false,
-                        action: onUnlock
-                    )
+                    unlockButton
                 }
             }
         }
@@ -350,11 +362,11 @@ struct LockTargetSheet: View {
         return VStack(spacing: 0) {
             Divider()
             HStack(spacing: 12) {
-                glassActionButton(title: "Cancel", systemImage: "xmark", action: onCancel)
+                glassActionButton(title: "Cancel", systemImage: "xmark", action: handleCancel)
 
                 glassActionButton(title: "Set", systemImage: "checkmark.circle", action: {
                     guard let preview = lockPreview else { return }
-                    onSet(preview)
+                    requestDismiss { onSet(preview) }
                 })
                 .disabled(!isValid)
                 .opacity(isValid ? 1 : 0.6)
@@ -365,15 +377,19 @@ struct LockTargetSheet: View {
                     usesRedStyle: true,
                     action: {
                     guard let preview = lockPreview else { return }
-                    onCommit(preview)
+                        requestDismiss {
+                            onCommit(preview)
 #if os(iOS) && !targetEnvironment(macCatalyst)
-                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                            UINotificationFeedbackGenerator().notificationOccurred(.success)
+                            
 #endif
+                        }
                     }
                 )
                 .disabled(!isValid)
                 .opacity(isValid ? 1 : 0.6)
             }
+            .disabled(isDismissing)
             .padding()
             .background(.thinMaterial)
         }
@@ -391,6 +407,24 @@ struct LockTargetSheet: View {
         octave = ratio.octave
         focusedField = nil
     }
+
+    private func handleCancel() {
+            requestDismiss(onCancel)
+        }
+    
+        private func requestDismiss(_ work: @escaping () -> Void) {
+            guard !isDismissing else { return }
+            isDismissing = true
+            focusedField = nil
+    
+            // Prevent immediate re-trigger / tap-through / re-entrant state coupling.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                work()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    isDismissing = false
+                }
+            }
+        }
 
     private var pickItems: [LockPickItem] {
         var items: [LockPickItem] = []
