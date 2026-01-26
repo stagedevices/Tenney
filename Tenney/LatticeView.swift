@@ -5817,9 +5817,25 @@ struct LatticeView: View {
             let primeDeltas = makePrimeDeltas(delta)
             let chips = makeChipMetrics(H: H, primeDeltas: primeDeltas)
             let endpoints = makeEndpoints()
-            let rows = makeRows(delta: delta, H: H, endpoints: endpoints)
-            let melodicRatioText = melodicRatioDisplayText(delta: delta)
-            let melodicCentsValue = melodicCents(delta: delta)
+            let melodic = melodicPQ(from: endpoints.from, to: endpoints.to)
+            let melodicRatioText = melodic.map { "\($0.p) : \($0.q)" } ?? "—"
+            let melodicCentsValue = melodic.map { RatioMath.centsForRatio($0.p, $0.q) }
+            let rows = makeRows(
+                delta: delta,
+                H: H,
+                endpoints: endpoints,
+                melodicRatioText: melodicRatioText,
+                melodicCentsValue: melodicCentsValue
+            )
+
+#if DEBUG
+            debugValidateDirectedIntervals(
+                endpoints: endpoints,
+                melodic: melodic,
+                melodicCentsValue: melodicCentsValue,
+                referenceHz: referenceA4Hz
+            )
+#endif
 
             VStack(spacing: 6) {
                 // Total (always visible when not .off)
@@ -5926,7 +5942,7 @@ struct LatticeView: View {
         }
 
         private func endpointModel(label: String, exps: [Int:Int]) -> DistanceDetailSheet.Endpoint {
-            let ratioComponents = ratioFromMonzo(exps).map { RatioMath.canonicalPQUnit($0.p, $0.q) }
+            let ratioComponents = ratioFromMonzo(exps).map { reducePQ(p: $0.p, q: $0.q) }
             let ratioText = ratioComponents.map { RatioMath.unitLabel($0.p, $0.q) } ?? "—"
             let pitchLabel = label != ratioText ? label : nil
             return DistanceDetailSheet.Endpoint(
@@ -5942,6 +5958,40 @@ struct LatticeView: View {
             let pq = RatioMath.pq(fromMonzo: monzo)
             guard pq.p > 0, pq.q > 0 else { return nil }
             return pq
+        }
+
+        private func gcd(_ a: Int, _ b: Int) -> Int {
+            var x = a
+            var y = b
+            while y != 0 {
+                let t = x % y
+                x = y
+                y = t
+            }
+            return x
+        }
+
+        private func reducePQ(p: Int, q: Int) -> (p: Int, q: Int) {
+            let g = gcd(p, q)
+            return (p / g, q / g)
+        }
+
+        private func safeMul(_ a: Int, _ b: Int) -> Int? {
+            let (r, o) = a.multipliedReportingOverflow(by: b)
+            return o ? nil : r
+        }
+
+        private func melodicPQ(
+            from: DistanceDetailSheet.Endpoint,
+            to: DistanceDetailSheet.Endpoint
+        ) -> (p: Int, q: Int)? {
+            guard let fromNum = from.num,
+                  let fromDen = from.den,
+                  let toNum = to.num,
+                  let toDen = to.den,
+                  let numerator = safeMul(toNum, fromDen),
+                  let denominator = safeMul(toDen, fromNum) else { return nil }
+            return reducePQ(p: numerator, q: denominator)
         }
 
         private func makePrimeDeltas(_ delta: [Int:Int]) -> [DistanceDetailSheet.PrimeDelta] {
@@ -5994,11 +6044,13 @@ struct LatticeView: View {
         private func makeRows(
             delta: [Int:Int],
             H: Double,
-            endpoints: (from: DistanceDetailSheet.Endpoint, to: DistanceDetailSheet.Endpoint)
+            endpoints: (from: DistanceDetailSheet.Endpoint, to: DistanceDetailSheet.Endpoint),
+            melodicRatioText: String,
+            melodicCentsValue: Double?
         ) -> [DistanceDetailSheet.MetricRow] {
-            let melodicRatio = melodicRatioDisplayText(delta: delta)
-            let centsValue = melodicCents(delta: delta)
-            let centsText = centsValue.isFinite ? String(format: "%+.1f¢", centsValue) : "—"
+            let centsText = melodicCentsValue?.isFinite == true
+                ? String(format: "%+.1f¢", melodicCentsValue ?? 0)
+                : "—"
             let primeSummary = makePrimeSummary(delta)
             let freqText = frequencyDeltaText(endpoints: endpoints, referenceHz: referenceA4Hz) ?? "—"
 
@@ -6006,9 +6058,9 @@ struct LatticeView: View {
                 DistanceDetailSheet.MetricRow(
                     id: "melodic-ratio",
                     label: "Melodic ratio",
-                    valueText: melodicRatio,
+                    valueText: melodicRatioText,
                     footnote: nil,
-                    copyText: melodicRatio
+                    copyText: melodicRatioText
                 ),
                 DistanceDetailSheet.MetricRow(
                     id: "melodic-cents",
@@ -6050,18 +6102,6 @@ struct LatticeView: View {
             return summary.isEmpty ? "—" : summary.joined(separator: " · ")
         }
 
-        private func melodicRatioDisplayText(delta: [Int:Int]) -> String {
-            ratioFromMonzo(delta)
-                .map { RatioMath.canonicalPQUnit($0.p, $0.q) }
-                .map { "\($0.p) : \($0.q)" } ?? "—"
-        }
-
-        private func melodicCents(delta: [Int:Int]) -> Double {
-            ratioFromMonzo(delta)
-                .map { RatioMath.canonicalPQUnit($0.p, $0.q) }
-                .map { RatioMath.centsForRatio($0.p, $0.q) } ?? .nan
-        }
-
         private func frequencyDeltaText(
             endpoints: (from: DistanceDetailSheet.Endpoint, to: DistanceDetailSheet.Endpoint),
             referenceHz: Double?
@@ -6074,8 +6114,55 @@ struct LatticeView: View {
             let fromHz = RatioMath.hz(rootHz: referenceHz, p: fromNum, q: fromDen, octave: endpoints.from.octave ?? 0, fold: false)
             let toHz = RatioMath.hz(rootHz: referenceHz, p: toNum, q: toDen, octave: endpoints.to.octave ?? 0, fold: false)
             guard fromHz.isFinite, toHz.isFinite else { return nil }
-            return String(format: "%+.2f Hz", toHz - fromHz)
+            return String(format: "%+.1f Hz", toHz - fromHz)
         }
+
+#if DEBUG
+        private func debugValidateDirectedIntervals(
+            endpoints: (from: DistanceDetailSheet.Endpoint, to: DistanceDetailSheet.Endpoint),
+            melodic: (p: Int, q: Int)?,
+            melodicCentsValue: Double?,
+            referenceHz: Double?
+        ) {
+            guard let referenceHz,
+                  abs(referenceHz - 440.0) < 0.0001,
+                  let fromNum = endpoints.from.num,
+                  let fromDen = endpoints.from.den,
+                  let toNum = endpoints.to.num,
+                  let toDen = endpoints.to.den else { return }
+
+            func matches(_ p: Int, _ q: Int, _ num: Int, _ den: Int) -> Bool {
+                p == num && q == den
+            }
+
+            func hzDelta() -> Double? {
+                let fromHz = RatioMath.hz(rootHz: referenceHz, p: fromNum, q: fromDen, octave: endpoints.from.octave ?? 0, fold: false)
+                let toHz = RatioMath.hz(rootHz: referenceHz, p: toNum, q: toDen, octave: endpoints.to.octave ?? 0, fold: false)
+                return (fromHz.isFinite && toHz.isFinite) ? (toHz - fromHz) : nil
+            }
+
+            let centsTol = 0.2
+            let hzTol = 0.2
+
+            if matches(5, 4, fromNum, fromDen) && matches(5, 3, toNum, toDen) {
+                assert(melodic?.p == 4 && melodic?.q == 3)
+                if let cents = melodicCentsValue {
+                    assert(abs(cents - 498.0) <= centsTol)
+                }
+                if let delta = hzDelta() {
+                    assert(abs(delta - 183.3333333333) <= hzTol)
+                }
+            } else if matches(5, 4, fromNum, fromDen) && matches(1, 1, toNum, toDen) {
+                assert(melodic?.p == 4 && melodic?.q == 5)
+                if let cents = melodicCentsValue {
+                    assert(abs(cents + 386.3) <= centsTol)
+                }
+                if let delta = hzDelta() {
+                    assert(abs(delta + 110.0) <= hzTol)
+                }
+            }
+        }
+#endif
     }
 
     private func distanceLabel(for coord: LatticeCoord) -> String {
