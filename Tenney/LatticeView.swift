@@ -46,7 +46,13 @@ enum LatticeGridMode: String, CaseIterable, Identifiable {
 
 
 struct LatticeView: View {
+    @Environment(\.verticalSizeClass) private var vsc
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.utilityBarHeight) private var utilityBarHeight
+
     @State private var infoCardStaffWidth: CGFloat = 0
+    @State private var infoCardHeight: CGFloat = 0
+    @State private var chipsHUDHeight: CGFloat = 0
 
     private struct InfoCardStaffWidthKey: PreferenceKey {
         static var defaultValue: CGFloat = 0
@@ -55,6 +61,20 @@ struct LatticeView: View {
         }
     }
 
+    private struct InfoCardHeightKey: PreferenceKey {
+        static var defaultValue: CGFloat = 0
+        static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+            value = max(value, nextValue())
+        }
+    }
+
+    private struct ChipsHUDHeightKey: PreferenceKey {
+            static var defaultValue: CGFloat = 0
+            static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+                value = max(value, nextValue())
+            }
+        }
+    
     @AppStorage(SettingsKeys.latticeSoundEnabled)
     private var latticeSoundEnabled: Bool = true
     @State private var infoSwitchSeq: UInt64 = 0
@@ -1685,7 +1705,10 @@ struct LatticeView: View {
     @State private var trayHeight: CGFloat = 0
     @State private var bottomHUDHeight: CGFloat = 0
     @State private var latticeViewSize: CGSize = .zero
-    private let utilityBarHeight: CGFloat = 50 // matches your UtilityBar; tweak if needed
+
+    private var isPhoneLandscape: Bool {
+        UIDevice.current.userInterfaceIdiom == .phone && vsc == .compact
+    }
     
     
     @AppStorage(SettingsKeys.nodeSize)     private var nodeSize = "m"
@@ -1759,6 +1782,18 @@ struct LatticeView: View {
     private struct BottomHUDHeightKey: PreferenceKey {
         static var defaultValue: CGFloat = 0
         static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+    }
+
+    private struct LandscapeSideUnsafe: ViewModifier {
+        let isOn: Bool
+
+        func body(content: Content) -> some View {
+            if isOn {
+                content.ignoresSafeArea(.container, edges: .horizontal)
+            } else {
+                content
+            }
+        }
     }
     
     // REPLACE tapper(viewRect:) with this (same body; just swap gesture type + location source)
@@ -2244,6 +2279,63 @@ struct LatticeView: View {
     
     
     // MARK: - Axis Shift HUD (v0.3)
+    private struct AxisShiftPill: View {
+        @ObservedObject var store: LatticeStore
+        @ObservedObject var app: AppModel
+
+        /// theme tint per prime
+        let tint: (Int) -> Color
+
+        @Environment(\.colorScheme) private var scheme
+        @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+        @State private var showPro = false
+        @Namespace private var ns
+
+        private let primes: [Int] = [3,5,7,11,13,17,19,23,29,31]
+
+        var body: some View {
+            Button {
+                withAnimation(.snappy) { showPro = true }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrow.left.and.right.circle")
+                        .symbolRenderingMode(.hierarchical)
+                    Text("Axis")
+                        .font(.footnote.weight(.semibold))
+                }
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .background(
+                Group {
+                    if #available(iOS 26.0, *) {
+                        Color.clear.glassEffect(.regular, in: Capsule())
+                    } else {
+                        Capsule().fill(reduceTransparency ? .thinMaterial : .ultraThinMaterial)
+                    }
+                }
+            )
+            .overlay(Capsule().stroke(Color.secondary.opacity(0.12), lineWidth: 1))
+            .sheet(isPresented: $showPro) {
+                AxisShiftProSheet(
+                    store: store,
+                    app: app,
+                    tint: tint,
+                    primes: primes,
+                    scheme: scheme,
+                    ns: ns
+                )
+                .presentationDetents([.height(300), .large])
+                .presentationDragIndicator(.hidden)
+                .presentationBackground(.ultraThinMaterial)
+                .tenneySheetSizing()
+            }
+        }
+    }
+
     private struct AxisShiftHUD: View {
         @ObservedObject var store: LatticeStore
         @ObservedObject var app: AppModel
@@ -2713,6 +2805,7 @@ struct LatticeView: View {
         @ObservedObject var store: LatticeStore
         @ObservedObject var app: AppModel
         let stopInfoPreview: (Bool) -> Void
+        let isPhoneLandscape: Bool
 
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
         @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -2744,10 +2837,10 @@ struct LatticeView: View {
         }
 
         // MARK: - Sizing (keep tray height stable)
-        private let ctl: CGFloat = 40          // uniform control size
-        private let addCompactSide: CGFloat = 40   // square-ish compact width for "+"
+        private var ctl: CGFloat { isPhoneLandscape ? 34 : 40 }          // uniform control size
+        private var addCompactSide: CGFloat { ctl }   // square-ish compact width for "+"
         private let corner: CGFloat = 12       // rounded-rect corner radius
-        private let trayPadV: CGFloat = 8      // reduce padding so net height stays ~same
+        private var trayPadV: CGFloat { isPhoneLandscape ? 5 : 8 }      // reduce padding so net height stays ~same
         private let railSpacing: CGFloat = 4
 
         private struct BuilderSessionStatus: Equatable {
@@ -3435,26 +3528,37 @@ struct LatticeView: View {
 
         // MARK: - Main rows
 
+        @ViewBuilder
         private var activeRow: some View {
-            HStack(spacing: 10) {
+            let row = HStack(spacing: 10) {
                 statusCluster
                 toolsCapsule
                 addButton
                 libraryButton
             }
-            .frame(maxWidth: .infinity, alignment: .center)
-        }
-
-
-        private var emptyRow: some View {
-            HStack(spacing: 10) {
-                emptyQuickToggle
-                Spacer(minLength: 0)
-                libraryButton
+            if isPhoneLandscape {
+                row
+            } else {
+                row.frame(maxWidth: .infinity, alignment: .center)
             }
-            .frame(maxWidth: .infinity)
         }
 
+        @ViewBuilder
+                private var emptyRow: some View {
+                    if isPhoneLandscape {
+                        HStack(spacing: 10) {
+                            emptyQuickToggle
+                            libraryButton
+                        }
+                    } else {
+                        HStack(spacing: 10) {
+                            emptyQuickToggle
+                            Spacer(minLength: 0)
+                            libraryButton
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                }
         // MARK: - Body
 
         var body: some View {
@@ -3463,7 +3567,7 @@ struct LatticeView: View {
                 ? .opacity
                 : .move(edge: .bottom).combined(with: .opacity)
 
-            return VStack(spacing: railSpacing) {
+            let tray = VStack(spacing: railSpacing) {
                 ZStack {
                     emptyRow
                         .opacity(isActive ? 0 : 1)
@@ -3476,7 +3580,7 @@ struct LatticeView: View {
                         .allowsHitTesting(isActive)
                 }
 
-                if status.exists {
+                if status.exists && !isPhoneLandscape {
                     builderSessionRail
                         .transition(railTransition)
                 }
@@ -3486,14 +3590,19 @@ struct LatticeView: View {
             .animation(.spring(response: 0.32, dampingFraction: 0.9), value: isActive)
             .animation(reduceMotion ? .easeOut(duration: 0.12) : .snappy(duration: 0.22), value: status.exists)
             .animation(reduceMotion ? .easeOut(duration: 0.12) : .snappy(duration: 0.2), value: status.isEdited)
-            .frame(maxWidth: .infinity)
             .modifier(_SelectionTrayContainer(showsRail: status.exists, reduceTransparency: reduceTransparency))
-            .fixedSize(horizontal: false, vertical: true)
             .background(
                 GeometryReader { proxy in
                     Color.clear.preference(key: SelectionTrayHeightKey.self, value: proxy.size.height)
                 }
             )
+            
+            if isPhoneLandscape {
+                            tray.fixedSize(horizontal: true, vertical: true)
+                        } else {
+                            tray.frame(maxWidth: .infinity)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
         }
 
     }
@@ -4097,7 +4206,15 @@ struct LatticeView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         overlayChips
                     }
-                    .padding(8)
+                    .padding(.horizontal, 8)
+                    .padding(.top, isPhoneLandscape ? 2 : 8)
+                    .padding(.bottom, 8)
+                    .padding(.leading, isPhoneLandscape ? 12 : 0)
+                    .background(
+                        GeometryReader { proxy in
+                            Color.clear.preference(key: ChipsHUDHeightKey.self, value: proxy.size.height)
+                        }
+                    )
 #if os(macOS) || targetEnvironment(macCatalyst)
                     .padding(.top, 20)
                     .padding(.leading, 164)
@@ -4109,43 +4226,77 @@ struct LatticeView: View {
             }
             Spacer()
         }
-        .allowsHitTesting(false)         // only the chip stack handles taps
-        .safeAreaPadding(.top, 46)        // keeps chips out of the top safe area
+        // NOTE: don't disable hit-testing at the parent; it disables the ScrollView taps too.
+        .safeAreaPadding(.top, isPhoneLandscape ? 6 : 46)
     }
     
     private var infoOverlayLayer: some View {
-        VStack {
+        let topBand = isPhoneLandscape ? chipsHUDHeight : 0
+        let bandHeight = max(0, latticeViewSize.height - bottomHUDHeight - topBand)
+        let centeredTop = topBand + max(0, (bandHeight - infoCardHeight) / 2)
+        let topPadding = isPhoneLandscape ? (centeredTop + 6) : (infoCardTopPad + infoCardNudgeY)
+         
+        return VStack {
             HStack {
                 Spacer()
                 if focusedPoint != nil {
                     infoCard
-                        .padding(.top, infoCardTopPad + infoCardNudgeY)
+                        .padding(.top, topPadding)
                         .padding(.trailing, 12)
                         .frame(maxWidth: infoCardMaxWidth, alignment: .trailing)
                         .fixedSize(horizontal: false, vertical: true)
+                        .background(
+                            GeometryReader { proxy in
+                                Color.clear.preference(key: InfoCardHeightKey.self, value: proxy.size.height)
+                            }
+                        )
                         // .contentShape(Rectangle())
                 }
             }
             Spacer()
         }
+        .animation(reduceMotion ? nil : .snappy(duration: 0.24), value: topPadding)
     }
     
     private var bottomHUDLayer: some View {
         VStack {
             Spacer()
             if !latticePreviewMode {
-                VStack(spacing: 8) {
-                    SelectionTray(
-                        store: store,
-                        app: app,
-                        stopInfoPreview: { hard in releaseInfoVoice(hard: hard) }
-                    )
-
-                    AxisShiftHUD(
-                        store: store,
-                        app: app,
-                        tint: { activeTheme.primeTint($0) }
-                    )
+                Group {
+                    if isPhoneLandscape {
+                        HStack(spacing: 0) {
+                            Spacer(minLength: 0)
+                            HStack(alignment: .center, spacing: 10) {
+                                SelectionTray(
+                                    store: store,
+                                    app: app,
+                                    stopInfoPreview: { hard in releaseInfoVoice(hard: hard) },
+                                    isPhoneLandscape: true
+                                )
+                                AxisShiftPill(
+                                    store: store,
+                                    app: app,
+                                    tint: { activeTheme.primeTint($0) }
+                                )
+                            }
+                            .fixedSize(horizontal: true, vertical: true)
+                            Spacer(minLength: 0)
+                        }
+                    } else {
+                        VStack(spacing: 8) {
+                            SelectionTray(
+                                store: store,
+                                app: app,
+                                stopInfoPreview: { hard in releaseInfoVoice(hard: hard) },
+                                isPhoneLandscape: false
+                            )
+                            AxisShiftHUD(
+                                store: store,
+                                app: app,
+                                tint: { activeTheme.primeTint($0) }
+                            )
+                        }
+                    }
                 }
                 .padding(.horizontal, 10)
                 .padding(.bottom, 8)
@@ -4251,44 +4402,43 @@ struct LatticeView: View {
                 // ✅ also stop any selection audition/sustain currently running
                 stopAllLatticeVoices(hard: true)
             }
+            .onReceive(NotificationCenter.default.publisher(for: .settingsChanged)) { note in
+                applySettingsChanged(note)
 
-                .onReceive(NotificationCenter.default.publisher(for: .settingsChanged)) { note in
-                    applySettingsChanged(note)
-                    
-                    // ✅ make default zoom preset changes affect the live view too
-                    guard note.userInfo?[SettingsKeys.latticeDefaultZoomPreset] != nil else { return }
-                    
-                    if latticePreviewMode {
-                        withAnimation(.snappy) { store.resetView(in: geo.size) }
-                    } else {
-                        withAnimation(.snappy) { store.camera.scale = store.defaultZoomScale() }
+                // ✅ make default zoom preset changes affect the live view too
+                guard note.userInfo?[SettingsKeys.latticeDefaultZoomPreset] != nil else { return }
+
+                if latticePreviewMode {
+                    withAnimation(.snappy) { store.resetView(in: geo.size) }
+                } else {
+                    withAnimation(.snappy) { store.camera.scale = store.defaultZoomScale() }
+                }
+            }
+            .overlay { tenneyOverlay }
+            .onChange(of: latticePreviewMode) { isPreview in
+                if isPreview { bottomHUDHeight = 0 }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .tenneyBuilderDidFinish)) { note in
+                let u = note.userInfo
+
+                if (u?["clearSelection"] as? Bool) == true {
+                    withAnimation(.snappy) { store.clearSelection() }
+                }
+
+                if (u?["endStaging"] as? Bool) == true {
+                    DispatchQueue.main.async {
+                        store.endStaging()
+                    }
+                } else if (u?["resetDelta"] as? Bool) == true {
+                    // Canonical “baseline reset” you already have (used when starting builder/staging).
+                    // This is the safest no-regression primitive if it exists.
+                    DispatchQueue.main.async {
+                        store.beginStaging()
                     }
                 }
-            
-                .overlay { tenneyOverlay }
-                .onChange(of: latticePreviewMode) { isPreview in
-                    if isPreview { bottomHUDHeight = 0 }
-                }
-                .onReceive(NotificationCenter.default.publisher(for: .tenneyBuilderDidFinish)) { note in
-                    let u = note.userInfo
-
-                    if (u?["clearSelection"] as? Bool) == true {
-                        withAnimation(.snappy) { store.clearSelection() }
-                    }
-
-                    if (u?["endStaging"] as? Bool) == true {
-                        DispatchQueue.main.async {
-                            store.endStaging()
-                        }
-                    } else if (u?["resetDelta"] as? Bool) == true {
-                        // Canonical “baseline reset” you already have (used when starting builder/staging).
-                        // This is the safest no-regression primitive if it exists.
-                        DispatchQueue.main.async {
-                            store.beginStaging()
-                        }
-                    }
-                }
-                .onChange(of: app.builderLoadedScale?.id) { id in
+            }
+            .onPreferenceChange(InfoCardHeightKey.self) { infoCardHeight = $0 }
+            .onChange(of: app.builderLoadedScale?.id) { id in
                     if id != nil {
                         store.captureLoadedScaleBaseline()
                     } else {
@@ -4299,35 +4449,37 @@ struct LatticeView: View {
                         metadataEdited: app.loadedScaleMetadataEdited
                     )
                 }
-                .onChange(of: store.loadedScaleEdited) { edited in
-                    app.updateBuilderSessionEdited(
-                        loadedScaleEdited: edited,
-                        metadataEdited: app.loadedScaleMetadataEdited
-                    )
+            .onChange(of: store.loadedScaleEdited) { edited in
+                app.updateBuilderSessionEdited(
+                    loadedScaleEdited: edited,
+                    metadataEdited: app.loadedScaleMetadataEdited
+                )
+            }
+            .onChange(of: app.loadedScaleMetadataEdited) { edited in
+                app.updateBuilderSessionEdited(
+                    loadedScaleEdited: store.loadedScaleEdited,
+                    metadataEdited: edited
+                )
+            }
+            .onChange(of: store.selected) { newValue in
+                if let fp = focusedPoint, let c = fp.coord, !newValue.contains(c), !autoSelectInFlight {
+                    releaseInfoVoice()
+                    withAnimation(.easeOut(duration: 0.2)) { focusedPoint = nil }
                 }
-                .onChange(of: app.loadedScaleMetadataEdited) { edited in
-                    app.updateBuilderSessionEdited(
-                        loadedScaleEdited: store.loadedScaleEdited,
-                        metadataEdited: edited
-                    )
-                }
+                if newValue.isEmpty, !autoSelectInFlight { releaseInfoVoice() }
 
-                .onChange(of: store.selected) { newValue in
-                    if let fp = focusedPoint, let c = fp.coord, !newValue.contains(c), !autoSelectInFlight {
-                        releaseInfoVoice()
-                        withAnimation(.easeOut(duration: 0.2)) { focusedPoint = nil }
-                    }
-                    if newValue.isEmpty, !autoSelectInFlight { releaseInfoVoice() }
-
-                    if !newValue.isEmpty {
-                        LearnEventBus.shared.send(.latticeNodeSelected("selected"))
-                    }
+                if !newValue.isEmpty {
+                    LearnEventBus.shared.send(.latticeNodeSelected("selected"))
                 }
+            }
 #if os(macOS) || targetEnvironment(macCatalyst)
-                .scrollDisabled(isHoveringLattice)
+            .scrollDisabled(isHoveringLattice)
 #endif
-
         }
+        // Do not move this ignoresSafeArea into latticeStack; it breaks hit testing due to coordinate mapping.
+        .modifier(LandscapeSideUnsafe(isOn: isPhoneLandscape))
+        .onPreferenceChange(ChipsHUDHeightKey.self) { chipsHUDHeight = $0 }
+        .onPreferenceChange(InfoCardHeightKey.self) { infoCardHeight = $0 }
     }
     
     
