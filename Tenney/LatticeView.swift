@@ -48,6 +48,7 @@ enum LatticeGridMode: String, CaseIterable, Identifiable {
 struct LatticeView: View {
     @State private var infoCardStaffWidth: CGFloat = 0
     @State private var activeDistanceDetail: DistanceDetailSheet.Model? = nil
+    @State private var distanceChipTapTargets: [DistanceChipTapTarget] = []
 
     private struct InfoCardStaffWidthKey: PreferenceKey {
         static var defaultValue: CGFloat = 0
@@ -1932,6 +1933,22 @@ struct LatticeView: View {
         static var defaultValue: CGFloat = 0
         static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
     }
+
+    private struct DistanceChipTapTarget: Equatable {
+        let rect: CGRect
+        let model: DistanceDetailSheet.Model
+
+        static func == (lhs: DistanceChipTapTarget, rhs: DistanceChipTapTarget) -> Bool {
+            lhs.rect == rhs.rect && lhs.model.id == rhs.model.id
+        }
+    }
+
+    private struct DistanceChipTapTargetsKey: PreferenceKey {
+        static var defaultValue: [DistanceChipTapTarget] = []
+        static func reduce(value: inout [DistanceChipTapTarget], nextValue: () -> [DistanceChipTapTarget]) {
+            value.append(contentsOf: nextValue())
+        }
+    }
     
     // REPLACE tapper(viewRect:) with this (same body; just swap gesture type + location source)
     private func tapper(viewRect: CGRect) -> some Gesture {
@@ -1939,6 +1956,11 @@ struct LatticeView: View {
             .onEnded { v in
                 let loc = v.location
                 lastTapPoint = loc
+
+                if let target = distanceChipTapTargets.first(where: { $0.rect.contains(loc) }) {
+                    presentDistanceDetailSheet(target.model)
+                    return
+                }
                 
                 // capture BEFORE we mutate focus (used for haptic + focus tick)
                 let prevFocusCoord = focusedPoint?.coord
@@ -4212,6 +4234,14 @@ struct LatticeView: View {
             
             
         }
+        .coordinateSpace(name: "LatticeTouchSpace")
+        .onPreferenceChange(DistanceChipTapTargetsKey.self) { newTargets in
+            DispatchQueue.main.async {
+                if newTargets != distanceChipTapTargets {
+                    distanceChipTapTargets = newTargets
+                }
+            }
+        }
         .onAppear {
             latticeViewSize = geo.size
             if latticePreviewMode {
@@ -4387,8 +4417,7 @@ struct LatticeView: View {
                     b: nodes[1],
                     mode: store.tenneyDistanceMode,
                     totalChip: totalChip,
-                    breakdownChips: breakdownChips,
-                    presentDetail: presentDistanceDetailSheet
+                    breakdownChips: breakdownChips
                 )
             }
         }
@@ -4476,7 +4505,10 @@ struct LatticeView: View {
                     }
                 }
             
-                .overlay(alignment: .topLeading) { tenneyOverlay }
+                .overlay(alignment: .topLeading) {
+                    tenneyOverlay
+                        .allowsHitTesting(false)
+                }
                 .onChange(of: latticePreviewMode) { isPreview in
                     if isPreview { bottomHUDHeight = 0 }
                 }
@@ -5683,7 +5715,6 @@ struct LatticeView: View {
         let mode: TenneyDistanceMode
         let totalChip: DistanceChipDetail
         let breakdownChips: [DistanceChipDetail]
-        let presentDetail: (DistanceDetailSheet.Model) -> Void
 
         @State private var chipStackSize: CGSize = .zero
 
@@ -5701,12 +5732,12 @@ struct LatticeView: View {
             let anchor = CGPoint(x: mid.x + nx * 16, y: mid.y + ny * 16)
 
             let chipStack = VStack(spacing: 6) {
-                tappableChip(totalChip)
+                chipView(totalChip)
 
                 if mode == .breakdown, !breakdownChips.isEmpty {
                     HStack(spacing: 6) {
                         ForEach(breakdownChips) { part in
-                            tappableChip(part)
+                            chipView(part)
                         }
                     }
                 }
@@ -5730,14 +5761,17 @@ struct LatticeView: View {
         }
 
         @ViewBuilder
-        private func tappableChip(_ chip: DistanceChipDetail) -> some View {
+        private func chipView(_ chip: DistanceChipDetail) -> some View {
             GlassChip(text: chip.text, tint: chip.tint)
-                .contentShape(Capsule())
-                .onTapGesture {
-                    guard let model = chip.model else { return }
-                    presentDetail(model)
-                }
-                .accessibilityAddTraits(.isButton)
+                .background(
+                    GeometryReader { proxy in
+                        let rect = proxy.frame(in: .named("LatticeTouchSpace"))
+                        Color.clear.preference(
+                            key: DistanceChipTapTargetsKey.self,
+                            value: chip.model.map { [DistanceChipTapTarget(rect: rect, model: $0)] } ?? []
+                        )
+                    }
+                )
         }
     }
 
