@@ -147,7 +147,7 @@ struct LatticeView: View {
 
     private let latticeCoordinateSpaceName = "LatticeSpace"
 #if DEBUG
-    private let latticeGestureDebugEnabled = false
+    private let latticeGestureDebugEnabled = LatticeDebug.gestureLoggingEnabled
 #endif
 
     private var overlayChipPrimes: [Int] {
@@ -1708,6 +1708,8 @@ struct LatticeView: View {
     @State private var panThresholdPassed = false
     @State private var focusedPoint: (pos: CGPoint, label: String, etCents: Double, hz: Double, coord: LatticeCoord?, num: Int, den: Int)? = nil
     @State private var lastTapPoint: CGPoint = .zero
+    @State private var lastPressPoint: CGPoint = .zero
+    @State private var pressingNode = false
     @State private var cometScreen: CGPoint? = nil
     @State private var cometVisible: Bool = false
     @State private var trayHeight: CGFloat = 0
@@ -1810,6 +1812,10 @@ struct LatticeView: View {
             .onEnded { v in
                 let loc = v.location
                 lastTapPoint = loc
+                lastPressPoint = loc
+#if DEBUG
+                debugLog("[GEST] NODE_TAP phase=ended selected=\(store.selected.count) \(debugCameraState()) pt=\(debugPoint(loc))")
+#endif
                 
                 // capture BEFORE we mutate focus (used for haptic + focus tick)
                 let prevFocusCoord = focusedPoint?.coord
@@ -1826,7 +1832,7 @@ struct LatticeView: View {
                 if cand.isPlane, let c = cand.coord, focusedPoint?.coord == c, store.selected.contains(c) {
                     releaseInfoVoice(hard: true)
                     autoSelectInFlight = true
-                    store.toggleSelection(c)
+                    store.toggleSelection(c, reason: .tap)
                     selectionHapticTick &+= 1
                     autoSelectNextNode(
                         excluding: .plane(c),
@@ -1876,7 +1882,7 @@ struct LatticeView: View {
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred(intensity: 1.0)
                 #endif
                     }
-                    store.toggleSelection(c)
+                    store.toggleSelection(c, reason: .tap)
                     infoOctaveOffset = store.octaveOffset(for: c)
                     selectionHapticTick &+= 1
                     if wasSelected {
@@ -1890,7 +1896,7 @@ struct LatticeView: View {
                     let ghostKey = LatticeStore.GhostMonzo(e3: g.e3, e5: g.e5, p: g.prime, eP: g.eP)
                     let wasSelected = store.selectedGhosts.contains(ghostKey)
                     if wasSelected { autoSelectInFlight = true }
-                    store.toggleOverlay(prime: g.prime, e3: g.e3, e5: g.e5, eP: g.eP)
+                    store.toggleOverlay(prime: g.prime, e3: g.e3, e5: g.e5, eP: g.eP, reason: .tap)
                     infoOctaveOffset = 0
                     selectionHapticTick &+= 1
                     if wasSelected {
@@ -3969,38 +3975,50 @@ struct LatticeView: View {
     
     
     
-    /// Long-press to set pivot (nearest plane node to last tap)
+    /// Long-press for node context (does not mutate pivot/camera).
     private func longPresser(viewRect: CGRect) -> some Gesture {
         LongPressGesture(minimumDuration: 0.35)
             .onChanged { _ in
                 guard !overlayPressActive else {
 #if DEBUG
-                    debugLog("[GUARD] overlayPressActive longPress begin \(debugPoint(lastTapPoint)) \(debugCameraState())")
+                    debugLog("[GUARD] overlayPressActive longPress begin \(debugPoint(lastPressPoint)) \(debugCameraState())")
 #endif
                     return
                 }
                 if !pressActive {
                     pressActive = true
 #if DEBUG
-                    let coord = hitTestCandidate(at: lastTapPoint, viewRect: viewRect)?.coord
-                    debugLog("[LONGPRESS] state=began pt=\(debugPoint(lastTapPoint)) coord=\(String(describing: coord)) \(debugCameraState())")
+                    debugLog("[GEST] LATTICE_LONGPRESS phase=began selected=\(store.selected.count) \(debugCameraState()) pt=\(debugPoint(lastPressPoint))")
+                    let coord = hitTestCandidate(at: lastPressPoint, viewRect: viewRect)?.coord
+                    debugLog("[LONGPRESS] state=began pt=\(debugPoint(lastPressPoint)) coord=\(String(describing: coord)) \(debugCameraState())")
 #endif
+                    if let cand = hitTestCandidate(at: lastPressPoint, viewRect: viewRect),
+                       cand.isPlane, cand.coord != nil {
+                        pressingNode = true
+#if DEBUG
+                        debugLog("[GEST] NODE_LONGPRESS phase=began selected=\(store.selected.count) \(debugCameraState()) pt=\(debugPoint(lastPressPoint))")
+#endif
+                    }
                 }
             }
             .onEnded { _ in
                 pressActive = false
+                pressingNode = false
                 guard !overlayPressActive else {
 #if DEBUG
-                    debugLog("[GUARD] overlayPressActive longPress \(debugPoint(lastTapPoint)) \(debugCameraState())")
+                    debugLog("[GUARD] overlayPressActive longPress \(debugPoint(lastPressPoint)) \(debugCameraState())")
 #endif
                     return
                 }
-                if let cand = hitTestCandidate(at: lastTapPoint, viewRect: viewRect),
+#if DEBUG
+                debugLog("[GEST] LATTICE_LONGPRESS phase=ended selected=\(store.selected.count) \(debugCameraState()) pt=\(debugPoint(lastPressPoint))")
+#endif
+                if let cand = hitTestCandidate(at: lastPressPoint, viewRect: viewRect),
                    cand.isPlane, let c = cand.coord {
 #if DEBUG
-                    debugLog("[LONGPRESS] state=ended pt=\(debugPoint(lastTapPoint)) coord=\(c) \(debugCameraState())")
+                    debugLog("[LONGPRESS] state=ended pt=\(debugPoint(lastPressPoint)) coord=\(c) \(debugCameraState())")
+                    debugLog("[GEST] NODE_LONGPRESS phase=ended selected=\(store.selected.count) \(debugCameraState()) pt=\(debugPoint(lastPressPoint))")
 #endif
-                    store.setPivot(c)
                 }
             }
     }
@@ -4214,6 +4232,10 @@ struct LatticeView: View {
         let brush = brushGesture(in: geo, viewRect: viewRect)
         let pressOrTap = press.exclusively(before: tap)
         let panOrPressTap = pan.exclusively(before: pressOrTap)
+        let touchDown = DragGesture(minimumDistance: 0, coordinateSpace: .named(latticeCoordinateSpaceName))
+            .onChanged { v in
+                lastPressPoint = v.location
+            }
         
         let activeHeight = max(0, geo.size.height - bottomHUDHeight)
         
@@ -4222,6 +4244,7 @@ struct LatticeView: View {
                 .frame(height: activeHeight)
                 .contentShape(Rectangle())
                 .gesture(panOrPressTap, including: .gesture)
+                .simultaneousGesture(touchDown, including: .gesture)
                 .simultaneousGesture(pinch, including: .gesture)
                 .simultaneousGesture(brush, including: .gesture)
 
@@ -5627,7 +5650,7 @@ struct LatticeView: View {
     }
 
     private func logCameraChange(reason: String, before: LatticeCamera, after: LatticeCamera) {
-        debugLog("[CAM] reason=\(reason) before=\(debugCameraState(before)) after=\(debugCameraState(after))")
+        debugLog("[CAM] reason=\(reason) selected=\(store.selected.count) before=\(debugCameraState(before)) after=\(debugCameraState(after))")
     }
 #endif
     
@@ -5649,18 +5672,24 @@ struct LatticeView: View {
 #if DEBUG
                 debugLog("[PAN] state=changed translation=\(debugSize(translation)) passedThreshold=\(passedThreshold)")
 #endif
-                if pressActive && !passedThreshold {
+                if (pressActive || pressingNode) && !passedThreshold {
 #if DEBUG
                     debugLog("[GUARD] pressActive pan \(debugPoint(v.location))")
 #endif
                     return
                 }
                 guard passedThreshold else { return }
+                if pressingNode {
+                    pressingNode = false
+                }
                 if pressActive {
                     pressActive = false
                 }
                 if !panThresholdPassed {
                     panThresholdPassed = true
+#if DEBUG
+                    debugLog("[GEST] LATTICE_PAN phase=began selected=\(store.selected.count) \(debugCameraState()) pt=\(debugPoint(v.location))")
+#endif
                 }
 #if DEBUG
                 assert(!pressActive, "Press should not remain active while panning")
@@ -5673,6 +5702,7 @@ struct LatticeView: View {
                 let dy = translation.height - lastDrag.height
 #if DEBUG
                 debugLog("[LATTICE_DRAG] begin=\(debugPoint(v.startLocation)) delta=\(debugSize(v.translation)) \(debugCameraState())")
+                debugLog("[GEST] LATTICE_PAN phase=changed selected=\(store.selected.count) \(debugCameraState()) pt=\(debugPoint(v.location))")
 #endif
                 store.camera.pan(by: CGSize(width: dx, height: dy))
 #if DEBUG
@@ -5684,6 +5714,7 @@ struct LatticeView: View {
                 let pan = hypot(v.translation.width, v.translation.height)
 #if DEBUG
                 debugLog("[PAN] state=ended translation=\(debugSize(v.translation)) passedThreshold=\(panThresholdPassed)")
+                debugLog("[GEST] LATTICE_PAN phase=ended selected=\(store.selected.count) \(debugCameraState()) pt=\(debugPoint(v.location))")
 #endif
                 if panThresholdPassed, pan > 0.5 {
                     LearnEventBus.shared.send(.latticeCameraChanged(pan: Double(pan), zoom: 1.0))
@@ -5731,7 +5762,7 @@ struct LatticeView: View {
                     }
                 }
                 if let c = target, !store.brushVisited.contains(c) {
-                    store.toggleSelection(c)
+                    store.toggleSelection(c, reason: .drag)
                     store.brushVisited.insert(c)
                 }
             }
@@ -5813,7 +5844,7 @@ struct LatticeView: View {
     ) -> (pos: CGPoint, label: String, isPlane: Bool, coord: LatticeCoord?, p: Int, q: Int, ghost: (prime:Int, e3:Int, e5:Int, eP:Int)?)? {
 
 #if DEBUG
-    debugLog("[HITTEST] pt=\(debugPoint(point)) pivot=\(store.pivot) axisShift=\(store.axisShift) \(debugCameraState())")
+    debugLog("[HIT] pt=\(debugPoint(point)) selected=\(store.selected.count) pivot=\(store.pivot) axisShift=\(store.axisShift) \(debugCameraState())")
 #endif
 
     // Screen-space radii so overlays can't steal taps from plane nodes.
@@ -5890,6 +5921,9 @@ struct LatticeView: View {
 
     if let b = bestPlane {
         let (cp, cq) = canonicalPQ(b.p, b.q)
+#if DEBUG
+        debugLog("[HIT] pt=\(debugPoint(point)) -> coord=\(b.coord) selected=\(store.selected.count) \(debugCameraState())")
+#endif
         return (b.pos, "\(cp)/\(cq)", true, b.coord, b.p, b.q, nil)
     }
 
@@ -5971,6 +6005,9 @@ struct LatticeView: View {
 
     if let o = bestOverlay {
         let (cp, cq) = canonicalPQ(o.p, o.q)
+#if DEBUG
+        debugLog("[HIT] pt=\(debugPoint(point)) -> coord=nil selected=\(store.selected.count) \(debugCameraState())")
+#endif
         return (o.pos, "\(cp)/\(cq)", false, nil, o.p, o.q, (prime: o.prime, e3: o.e3, e5: o.e5, eP: o.eP))
     }
 
