@@ -82,6 +82,7 @@ struct LatticeView: View {
         }
     
         // Keep the translucent card from overlapping the 13–31 row (and stealing taps).
+    private let infoCardNudgeY: CGFloat = 24
         private var infoCardTopPad: CGFloat {
             app.primeLimit >= 13 ? 104 : 72
         }
@@ -3991,6 +3992,7 @@ struct LatticeView: View {
         ZStack {
             canvasLayer(viewRect: viewRect)
                 .allowsHitTesting(false)
+                .zIndex(-10) // keep it visually behind; also helps avoid touch weirdness
 #if os(macOS) || targetEnvironment(macCatalyst)
                 .overlay(alignment: .topLeading) {
                     LatticeTrackpadBridge(
@@ -4038,6 +4040,7 @@ struct LatticeView: View {
             
             
         }
+        .ignoresSafeArea(.container, edges: .top)
         .onAppear {
             latticeViewSize = geo.size
             if latticePreviewMode {
@@ -4094,7 +4097,7 @@ struct LatticeView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         overlayChips
                     }
-                    .padding(.horizontal, 8)
+                    .padding(8)
 #if os(macOS) || targetEnvironment(macCatalyst)
                     .padding(.top, 20)
                     .padding(.leading, 164)
@@ -4106,6 +4109,8 @@ struct LatticeView: View {
             }
             Spacer()
         }
+        .allowsHitTesting(false)         // only the chip stack handles taps
+        .safeAreaPadding(.top, 46)        // keeps chips out of the top safe area
     }
     
     private var infoOverlayLayer: some View {
@@ -4114,7 +4119,7 @@ struct LatticeView: View {
                 Spacer()
                 if focusedPoint != nil {
                     infoCard
-                        .padding(.top, infoCardTopPad)
+                        .padding(.top, infoCardTopPad + infoCardNudgeY)
                         .padding(.trailing, 12)
                         .frame(maxWidth: infoCardMaxWidth, alignment: .trailing)
                         .fixedSize(horizontal: false, vertical: true)
@@ -4673,6 +4678,7 @@ struct LatticeView: View {
                             }
                         }
                     }
+                    
                     .highPriorityGesture(
                         LongPressGesture(minimumDuration: 0.35)
                             .onEnded { _ in
@@ -4688,6 +4694,10 @@ struct LatticeView: View {
             }
             .padding(8)
         }
+        // iOS 26-ish depth: shadow each chip, not the whole rail
+        .compositingGroup()
+        .shadow(color: Color.black.opacity(theme.isDark ? 0.22 : 0.14), radius: 6, x: 0, y: 2)
+        .shadow(color: Color.black.opacity(theme.isDark ? 0.12 : 0.08), radius: 2, x: 0, y: 0)
 #if os(macOS) || targetEnvironment(macCatalyst)
         .scaleEffect(1.3)
 #endif
@@ -4716,7 +4726,11 @@ struct LatticeView: View {
                 }
             }
         }
-    }
+        .compositingGroup()
+        .shadow(color: Color.black.opacity(0.18), radius: 22, x: 0, y: 14)
+        .shadow(color: Color.black.opacity(0.10), radius: 6,  x: 0, y: 2)
+     }
+    
     private struct DrawerGlassButton: View {
         let title: String
         let systemImage: String
