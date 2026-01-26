@@ -204,8 +204,8 @@ struct LatticeView: View {
     
     private struct TenneyDistanceNode {
         let screen: CGPoint
-        let exps: [Int:Int]   // prime -> exponent (absolute, includes axisShift where appropriate)
-        let octave: Int
+        let oddPrimeExps: [Int:Int]   // prime -> exponent (absolute, includes axisShift where appropriate)
+        let octaveExp2: Int
     }
 #if targetEnvironment(macCatalyst)
     private struct ContextTarget {
@@ -239,22 +239,52 @@ struct LatticeView: View {
                 let e5 = c.e5 + store.pivot.e5 + (store.axisShift[5] ?? 0)
                 let world = layout.position(for: LatticeCoord(e3: e3, e5: e5))
                 let screen = store.camera.worldToScreen(world)
-                let octave = store.octaveOffset(for: c)
-                return TenneyDistanceNode(screen: screen, exps: [3: e3, 5: e5], octave: octave)
+                let octaveExp2 = selectedOctaveExp2(for: key)
+                return TenneyDistanceNode(screen: screen, oddPrimeExps: [3: e3, 5: e5], octaveExp2: octaveExp2)
 
             case .ghost(let g):
                 // Ghosts already store absolute exponents in hitTest; include the higher prime.
                 let exps: [Int:Int] = [3: g.e3, 5: g.e5, g.p: g.eP]
                 let world = layout.position(monzo: exps)
                 let screen = store.camera.worldToScreen(world)
-                let octave = store.octaveOffset(for: g)
-                return TenneyDistanceNode(screen: screen, exps: exps, octave: octave)
+                let octaveExp2 = selectedOctaveExp2(for: key)
+                return TenneyDistanceNode(screen: screen, oddPrimeExps: exps, octaveExp2: octaveExp2)
             }
         }
         guard keys.count == 2 else { return [] }
 
         guard let n0 = node(for: keys[0]), let n1 = node(for: keys[1]) else { return [] }
         return [n0, n1]
+    }
+
+    private func selectedOctaveExp2(for key: LatticeStore.SelectionKey) -> Int {
+        switch key {
+        case .plane(let c):
+            let e3 = c.e3 + store.pivot.e3 + (store.axisShift[3] ?? 0)
+            let e5 = c.e5 + store.pivot.e5 + (store.axisShift[5] ?? 0)
+            guard let (p, q) = planePQ(e3: e3, e5: e5) else { return store.octaveOffset(for: c) }
+            return unitOctaveExp2(p: p, q: q) + store.octaveOffset(for: c)
+        case .ghost(let g):
+            guard let (p, q) = overlayPQ(e3: g.e3, e5: g.e5, prime: g.p, eP: g.eP) else {
+                return store.octaveOffset(for: g)
+            }
+            return unitOctaveExp2(p: p, q: q) + store.octaveOffset(for: g)
+        }
+    }
+
+    private func unitOctaveExp2(p: Int, q: Int) -> Int {
+        guard p > 0, q > 0 else { return 0 }
+        var exp2 = 0
+        var ratio = Double(p) / Double(q)
+        while ratio >= 2.0 {
+            ratio *= 0.5
+            exp2 -= 1
+        }
+        while ratio < 1.0 {
+            ratio *= 2.0
+            exp2 += 1
+        }
+        return exp2
     }
 
 
@@ -5807,7 +5837,7 @@ struct LatticeView: View {
             let ny =  vx / len
             let anchor = CGPoint(x: mid.x + nx * 16, y: mid.y + ny * 16)
 
-            let delta = tenneyDelta(a.exps, b.exps)
+            let delta = tenneyDelta(a.oddPrimeExps, b.oddPrimeExps)
             let H = tenneyHeightDelta(delta)
 
             let parts: [(prime: Int, text: String)] =
@@ -5939,28 +5969,36 @@ struct LatticeView: View {
         }
 
         private func makeEndpoints() -> (from: DistanceDetailSheet.Endpoint, to: DistanceDetailSheet.Endpoint) {
-            let fromEndpoint = endpointModel(label: fromLabel, exps: a.exps, octave: a.octave)
-            let toEndpoint = endpointModel(label: toLabel, exps: b.exps, octave: b.octave)
+            let fromEndpoint = endpointModel(
+                label: fromLabel,
+                oddPrimeExps: a.oddPrimeExps,
+                octaveExp2: a.octaveExp2
+            )
+            let toEndpoint = endpointModel(
+                label: toLabel,
+                oddPrimeExps: b.oddPrimeExps,
+                octaveExp2: b.octaveExp2
+            )
             return (fromEndpoint, toEndpoint)
         }
 
-        private func endpointModel(label: String, exps: [Int:Int], octave: Int) -> DistanceDetailSheet.Endpoint {
-            let oddRatio = ratioFromMonzo(exps).map { reducePQ(p: $0.p, q: $0.q) }
-            let ratioComponents = oddRatio
-                .flatMap { applyOctaveToPQ(p: $0.p, q: $0.q, octaveExp2: octave) }
-                .map { reducePQ(p: $0.p, q: $0.q) }
-            let ratioText = ratioComponents.map { RatioMath.unitLabel($0.p, $0.q) } ?? "—"
-            let pitchLabel = label != ratioText ? label : nil
-#if DEBUG
-            if let odd = oddRatio, let full = ratioComponents, odd.p == 5, odd.q == 1, octave == -2 {
-                assert(full.p == 5 && full.q == 4)
+        private func endpointModel(
+            label: String,
+            oddPrimeExps: [Int:Int],
+            octaveExp2: Int
+        ) -> DistanceDetailSheet.Endpoint {
+            var fullMonzo = oddPrimeExps
+            if octaveExp2 != 0 {
+                fullMonzo[2] = octaveExp2
             }
-#endif
+            let fullRatio = ratioFromMonzo(fullMonzo).map { reducePQ(p: $0.p, q: $0.q) }
+            let ratioText = fullRatio.map { "\($0.p)/\($0.q)" } ?? "—"
+            let pitchLabel = label != ratioText ? label : nil
             return DistanceDetailSheet.Endpoint(
                 ratioText: ratioText,
                 pitchLabelText: pitchLabel,
-                num: ratioComponents?.p,
-                den: ratioComponents?.q,
+                num: fullRatio?.p,
+                den: fullRatio?.q,
                 octave: 0
             )
         }
@@ -5992,28 +6030,28 @@ struct LatticeView: View {
             return o ? nil : r
         }
 
-        private func pow2(_ exp: Int) -> Int? {
-            guard exp >= 0 else { return nil }
-            var result = 1
-            for _ in 0..<exp {
-                guard let next = safeMul(result, 2) else { return nil }
-                result = next
-            }
-            return result
-        }
+        private func reducedDivision(
+            numerator: Int,
+            denominator: Int,
+            by otherNumerator: Int,
+            otherDenominator: Int
+        ) -> (p: Int, q: Int)? {
+            var a = numerator
+            var b = denominator
+            var c = otherNumerator
+            var d = otherDenominator
 
-        private func applyOctaveToPQ(p: Int, q: Int, octaveExp2: Int) -> (p: Int, q: Int)? {
-            guard p > 0, q > 0 else { return nil }
-            if octaveExp2 == 0 { return (p, q) }
-            let exp = abs(octaveExp2)
-            guard let factor = pow2(exp) else { return nil }
-            if octaveExp2 > 0 {
-                guard let newP = safeMul(p, factor) else { return nil }
-                return reducePQ(p: newP, q: q)
-            } else {
-                guard let newQ = safeMul(q, factor) else { return nil }
-                return reducePQ(p: p, q: newQ)
-            }
+            let g1 = gcd(a, c)
+            a /= g1
+            c /= g1
+
+            let g2 = gcd(d, b)
+            d /= g2
+            b /= g2
+
+            guard let num = safeMul(a, d),
+                  let den = safeMul(b, c) else { return nil }
+            return reducePQ(p: num, q: den)
         }
 
         private func melodicFromToPQ(
@@ -6023,10 +6061,13 @@ struct LatticeView: View {
             guard let fromNum = from.num,
                   let fromDen = from.den,
                   let toNum = to.num,
-                  let toDen = to.den,
-                  let numerator = safeMul(fromNum, toDen),
-                  let denominator = safeMul(toNum, fromDen) else { return nil }
-            return reducePQ(p: numerator, q: denominator)
+                  let toDen = to.den else { return nil }
+            return reducedDivision(
+                numerator: fromNum,
+                denominator: fromDen,
+                by: toNum,
+                otherDenominator: toDen
+            )
         }
 
         private func intervalToFromPQ(
@@ -6036,10 +6077,13 @@ struct LatticeView: View {
             guard let fromNum = from.num,
                   let fromDen = from.den,
                   let toNum = to.num,
-                  let toDen = to.den,
-                  let numerator = safeMul(toNum, fromDen),
-                  let denominator = safeMul(toDen, fromNum) else { return nil }
-            return reducePQ(p: numerator, q: denominator)
+                  let toDen = to.den else { return nil }
+            return reducedDivision(
+                numerator: toNum,
+                denominator: toDen,
+                by: fromNum,
+                otherDenominator: fromDen
+            )
         }
 
         private func intervalCents(
@@ -6168,8 +6212,8 @@ struct LatticeView: View {
                   let fromDen = endpoints.from.den,
                   let toNum = endpoints.to.num,
                   let toDen = endpoints.to.den else { return nil }
-            let fromHz = RatioMath.hz(rootHz: referenceHz, p: fromNum, q: fromDen, octave: 0, fold: false)
-            let toHz = RatioMath.hz(rootHz: referenceHz, p: toNum, q: toDen, octave: 0, fold: false)
+            let fromHz = referenceHz * (Double(fromNum) / Double(fromDen))
+            let toHz = referenceHz * (Double(toNum) / Double(toDen))
             guard fromHz.isFinite, toHz.isFinite else { return nil }
             return String(format: "%+.1f Hz", toHz - fromHz)
         }
@@ -6193,8 +6237,8 @@ struct LatticeView: View {
             }
 
             func hzDelta() -> Double? {
-                let fromHz = RatioMath.hz(rootHz: referenceHz, p: fromNum, q: fromDen, octave: 0, fold: false)
-                let toHz = RatioMath.hz(rootHz: referenceHz, p: toNum, q: toDen, octave: 0, fold: false)
+                let fromHz = referenceHz * (Double(fromNum) / Double(fromDen))
+                let toHz = referenceHz * (Double(toNum) / Double(toDen))
                 return (fromHz.isFinite && toHz.isFinite) ? (toHz - fromHz) : nil
             }
 
