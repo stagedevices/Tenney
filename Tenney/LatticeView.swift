@@ -161,10 +161,167 @@ struct LatticeView: View {
         if UIAccessibility.isReduceMotionEnabled {
             activeDistanceDetail = model
         } else {
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
+            withAnimation(.snappy) {
                 activeDistanceDetail = model
             }
         }
+    }
+
+    private struct DistanceDetailBase {
+        let from: DistanceDetailSheet.Endpoint
+        let to: DistanceDetailSheet.Endpoint
+        let directedRatioText: String
+        let inversionRatioText: String
+        let centsText: String
+        let deltaHzText: String
+        let tenneyDistanceText: String?
+        let monzoDeltaText: String?
+    }
+
+    private struct DistanceEndpointData {
+        let endpoint: DistanceDetailSheet.Endpoint
+        let p: Int
+        let q: Int
+        let hz: Double
+    }
+
+    private func distanceDetailBase(
+        tenneyDistanceText: String?,
+        monzoDeltaText: String?
+    ) -> DistanceDetailBase? {
+        guard let pair = store.selectedPair() else { return nil }
+        guard let fromData = distanceEndpointData(for: pair.0),
+              let toData = distanceEndpointData(for: pair.1) else { return nil }
+
+        let ratioValue = (Double(toData.p) / Double(toData.q)) / (Double(fromData.p) / Double(fromData.q))
+        let centsText = formatCentsText(1200.0 * log2(ratioValue))
+        let deltaHzText = formatDeltaHzText(toData.hz - fromData.hz)
+
+        let directedRatioText: String
+        let inversionRatioText: String
+        if let dirNum = safeMul(toData.p, fromData.q),
+           let dirDen = safeMul(toData.q, fromData.p) {
+            let (rnum, rden) = reduceNoFold(dirNum, dirDen)
+            directedRatioText = "\(rnum)/\(rden)"
+            inversionRatioText = "\(rden)/\(rnum)"
+        } else {
+            directedRatioText = String(format: "%.6f", ratioValue)
+            inversionRatioText = String(format: "%.6f", 1.0 / ratioValue)
+        }
+
+        return DistanceDetailBase(
+            from: fromData.endpoint,
+            to: toData.endpoint,
+            directedRatioText: directedRatioText,
+            inversionRatioText: inversionRatioText,
+            centsText: centsText,
+            deltaHzText: deltaHzText,
+            tenneyDistanceText: tenneyDistanceText,
+            monzoDeltaText: monzoDeltaText
+        )
+    }
+
+    private func distanceEndpointData(for coord: LatticeCoord) -> DistanceEndpointData? {
+        let e3 = coord.e3 + (store.axisShift[3] ?? 0)
+        let e5 = coord.e5 + (store.axisShift[5] ?? 0)
+        guard let (p, q) = planePQ(e3: e3, e5: e5) else { return nil }
+        let (cp, cq) = canonicalPQ(p, q)
+
+        let ratioRef = RatioRef(p: cp, q: cq, octave: 0, monzo: [:])
+        let maxPrimeOverride = max(effectiveMaxPrimeForLatticeLabels, maxPrimeFactor(p: cp, q: cq))
+        let hejiContext = hejiContext(for: ratioRef, rootHz: app.rootHz, maxPrime: maxPrimeOverride)
+        let hejiAttributed: AttributedString = HejiNotation.textLabel(
+            for: ratioRef,
+            context: hejiContext,
+            showCents: false,
+            textStyle: .headline,
+            weight: .semibold,
+            design: .default,
+            basePointSize: 20
+        )
+        let hejiPlain = String(hejiAttributed.characters)
+        let hz = RatioMath.foldToAudible(app.rootHz * (Double(cp) / Double(cq)))
+
+        let endpoint = DistanceDetailSheet.Endpoint(
+            hejiPlain: hejiPlain,
+            hejiAttributed: hejiAttributed,
+            ratioText: "\(cp)/\(cq)",
+            hzText: formatHzText(hz),
+            staffView: AnyView(
+                HejiPitchLabel(
+                    showsUnsupportedBadge: false,
+                    context: hejiContext,
+                    pitch: .ratio(ratioRef),
+                    modeOverride: .staff,
+                    showCentsWhenApproximate: false
+                )
+            )
+        )
+
+        return DistanceEndpointData(endpoint: endpoint, p: cp, q: cq, hz: hz)
+    }
+
+    private func formatHzText(_ hz: Double) -> String? {
+        guard hz.isFinite else { return nil }
+        if hz >= 1000 {
+            let khz = hz / 1000
+            return khz >= 10 ? String(format: "%.1f kHz", khz) : String(format: "%.2f kHz", khz)
+        }
+        return hz >= 100 ? String(format: "%.1f Hz", hz) : String(format: "%.2f Hz", hz)
+    }
+
+    private func formatDeltaHzText(_ hzDelta: Double) -> String {
+        if abs(hzDelta) >= 1000 {
+            return String(format: "%+.2f kHz", hzDelta / 1000)
+        }
+        return String(format: "%+.2f Hz", hzDelta)
+    }
+
+    private func formatCentsText(_ cents: Double) -> String {
+        let absVal = abs(cents)
+        if absVal >= 100 { return String(format: "%+.0f¢", cents) }
+        if absVal >= 10 { return String(format: "%+.1f¢", cents) }
+        if absVal >= 1 { return String(format: "%+.2f¢", cents) }
+        return String(format: "%+.3f¢", cents)
+    }
+
+    private func distanceDetailModel(
+        base: DistanceDetailBase,
+        heroTitle: String,
+        heroValue: String,
+        heroSubvalue: String? = nil
+    ) -> DistanceDetailSheet.Model {
+        DistanceDetailSheet.Model(
+            from: base.from,
+            to: base.to,
+            heroTitle: heroTitle,
+            heroValue: heroValue,
+            heroSubvalue: heroSubvalue,
+            directedRatioText: base.directedRatioText,
+            inversionRatioText: base.inversionRatioText,
+            centsText: base.centsText,
+            deltaHzText: base.deltaHzText,
+            tenneyDistanceText: base.tenneyDistanceText,
+            monzoDeltaText: base.monzoDeltaText
+        )
+    }
+
+    private func tenneyDelta(_ a: [Int:Int], _ b: [Int:Int]) -> [Int:Int] {
+        var out: [Int:Int] = [:]
+        let keys = Set(a.keys).union(b.keys)
+        for p in keys {
+            let d = (b[p] ?? 0) - (a[p] ?? 0)
+            if d != 0 { out[p] = d }
+        }
+        return out
+    }
+
+    private func tenneyPartLabel(prime: Int, exp: Int) -> String {
+        if prime == 3 || prime == 5 {
+            return deltaLabel(prime, exp)
+        }
+        let sign = exp > 0 ? "+" : ""
+        return "\(prime)^\(sign)\(exp)"
     }
 
     @Environment(\.latticePreviewMode) private var latticePreviewMode
@@ -4186,13 +4343,50 @@ struct LatticeView: View {
 
             let nodes = tenneyDistanceNodes()
             if nodes.count == 2 {
+                let delta = tenneyDelta(nodes[0].exps, nodes[1].exps)
+                let totalText = String(format: "H %.2f", tenneyHeightDelta(delta))
+                let parts: [(prime: Int, text: String)] =
+                    delta.keys.sorted().compactMap { p in
+                        let d = delta[p, default: 0]
+                        guard d != 0 else { return nil }
+                        return (p, tenneyPartLabel(prime: p, exp: d))
+                    }
+                let monzoDeltaText = parts.isEmpty ? nil : parts.map(\.text).joined(separator: " ")
+                let base = distanceDetailBase(
+                    tenneyDistanceText: totalText,
+                    monzoDeltaText: monzoDeltaText
+                )
+
                 TenneyDistanceOverlay(
                     a: nodes[0],
                     b: nodes[1],
                     mode: store.tenneyDistanceMode,
-                    theme: activeTheme
+                    totalChip: DistanceChipDetail(
+                        text: totalText,
+                        tint: .accentColor,
+                        model: base.map { baseModel in
+                            distanceDetailModel(
+                                base: baseModel,
+                                heroTitle: "Tenney distance",
+                                heroValue: totalText
+                            )
+                        }
+                    ),
+                    breakdownChips: parts.map { part in
+                        DistanceChipDetail(
+                            text: part.text,
+                            tint: activeTheme.primeTint(part.prime),
+                            model: base.map { baseModel in
+                                distanceDetailModel(
+                                    base: baseModel,
+                                    heroTitle: "Prime delta",
+                                    heroValue: part.text
+                                )
+                            }
+                        )
+                    },
+                    presentDetail: presentDistanceDetailSheet
                 )
-                .allowsHitTesting(false)
             }
         }
     }
@@ -5466,11 +5660,20 @@ struct LatticeView: View {
             }
     }
     
+    private struct DistanceChipDetail: Identifiable {
+        let id = UUID()
+        let text: String
+        let tint: Color
+        let model: DistanceDetailSheet.Model?
+    }
+
     private struct TenneyDistanceOverlay: View {
         let a: TenneyDistanceNode
         let b: TenneyDistanceNode
         let mode: TenneyDistanceMode
-        let theme: LatticeTheme
+        let totalChip: DistanceChipDetail
+        let breakdownChips: [DistanceChipDetail]
+        let presentDetail: (DistanceDetailSheet.Model) -> Void
 
         var body: some View {
             let A = a.screen
@@ -5485,25 +5688,13 @@ struct LatticeView: View {
             let ny =  vx / len
             let anchor = CGPoint(x: mid.x + nx * 16, y: mid.y + ny * 16)
 
-            let delta = tenneyDelta(a.exps, b.exps)
-            let H = tenneyHeightDelta(delta)
-
-            let parts: [(prime: Int, text: String)] =
-                delta.keys.sorted().compactMap { p in
-                    let d = delta[p, default: 0]
-                    guard d != 0 else { return nil }
-                    return (p, labelFor(prime: p, exp: d))
-                }
-
             VStack(spacing: 6) {
-                // Total (always visible when not .off)
-                GlassChip(text: String(format: "H %.2f", H))
+                chipButton(totalChip)
 
-                // Breakdown (only in .breakdown)
-                if mode == .breakdown, !parts.isEmpty {
+                if mode == .breakdown, !breakdownChips.isEmpty {
                     HStack(spacing: 6) {
-                        ForEach(parts, id: \.prime) { part in
-                            GlassChip(text: part.text, tint: theme.primeTint(part.prime))
+                        ForEach(breakdownChips) { part in
+                            chipButton(part)
                         }
                     }
                 }
@@ -5511,23 +5702,16 @@ struct LatticeView: View {
             .position(anchor)
         }
 
-        private func tenneyDelta(_ a: [Int:Int], _ b: [Int:Int]) -> [Int:Int] {
-            var out: [Int:Int] = [:]
-            let keys = Set(a.keys).union(b.keys)
-            for p in keys {
-                let d = (b[p] ?? 0) - (a[p] ?? 0)
-                if d != 0 { out[p] = d }
+        @ViewBuilder
+        private func chipButton(_ chip: DistanceChipDetail) -> some View {
+            Button {
+                guard let model = chip.model else { return }
+                presentDetail(model)
+            } label: {
+                GlassChip(text: chip.text, tint: chip.tint)
             }
-            return out
-        }
-
-        private func labelFor(prime: Int, exp: Int) -> String {
-            // Keep your existing 3/5 formatting if you already have deltaLabel(prime, exp)
-            if prime == 3 || prime == 5 {
-                return deltaLabel(prime, exp)
-            }
-            let sign = exp > 0 ? "+" : ""
-            return "\(prime)^\(sign)\(exp)"
+            .buttonStyle(.plain)
+            .contentShape(Capsule())
         }
     }
 
