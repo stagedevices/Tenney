@@ -90,7 +90,7 @@ struct LockTargetSheet: View {
                     } label: {
                         Image(systemName: "checkmark")
                             .font(.headline.weight(.semibold))
-                            .frame(width: 32, height: 32)
+                            .frame(width: 44, height: 44)
                             .contentShape(Circle())
                     }
                     .buttonStyle(.plain)
