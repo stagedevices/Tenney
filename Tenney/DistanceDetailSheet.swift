@@ -16,7 +16,9 @@ struct DistanceDetailSheet: View {
         let chips: [ChipMetric]
         let rows: [MetricRow]
         let primeDeltas: [PrimeDelta]
-        let referenceHz: Double?
+        let referenceA4Hz: Double?
+        let melodicRatioText: String
+        let melodicCentsValue: Double?
         let tint: Color
     }
 
@@ -53,33 +55,20 @@ struct DistanceDetailSheet: View {
         let tint: Color
     }
 
-    private enum SheetTab: String, CaseIterable, Identifiable {
-        case summary = "Summary"
-        case meaning = "Meaning"
-        case primes = "Primes"
-
-        var id: String { rawValue }
-    }
-
     let model: Model
 
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var tab: SheetTab = .summary
     @State private var toastText: String? = nil
     @State private var heroExpanded = false
     @State private var tenneyExpanded = false
     @State private var melodicExpanded = false
-    @State private var centsExpanded = false
-    @State private var directionExpanded = false
-    @State private var referenceText: String
-    @State private var referenceHz: Double?
+    @State private var primesExpanded = false
+    @State private var selectedHeroID: String
 
     init(model: Model) {
         self.model = model
-        let initialHz = model.referenceHz.map { String(format: "%.2f", $0) } ?? ""
-        _referenceText = State(initialValue: initialHz)
-        _referenceHz = State(initialValue: model.referenceHz)
+        _selectedHeroID = State(initialValue: model.primaryMetricID)
     }
 
     var body: some View {
@@ -88,23 +77,16 @@ struct DistanceDetailSheet: View {
                 header
                 heroCard
                 chipStrip
-
-                switch tab {
-                case .summary:
-                    ratioCards
-                    atAGlance
-                    referencePanel
-                case .meaning:
-                    whatThisMeans
-                case .primes:
-                    primeMotionMap
-                }
+                ratioCards
+                atAGlance
+                primeMotionMap
+                contextualMeaning
             }
             .padding(20)
         }
         .background(reduceTransparency ? AnyShapeStyle(.regularMaterial) : AnyShapeStyle(.ultraThinMaterial))
         .overlay(alignment: .bottom) { toastView }
-        .onChange(of: referenceText) { _ in updateReferenceHz() }
+        .onChange(of: selectedHeroID) { _ in heroExpanded = false }
     }
 
     private var header: some View {
@@ -113,12 +95,6 @@ struct DistanceDetailSheet: View {
                 .font(.title3.weight(.semibold))
                 .multilineTextAlignment(.leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            Picker("View", selection: $tab) {
-                ForEach(SheetTab.allCases) { tab in
-                    Text(tab.rawValue).tag(tab)
-                }
-            }
-            .pickerStyle(.segmented)
         }
     }
 
@@ -152,12 +128,28 @@ struct DistanceDetailSheet: View {
     private var chipStrip: some View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 10)], spacing: 10) {
             ForEach(model.chips) { chip in
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(chip.title)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    GlassChip(text: chip.valueText, tint: chip.tint)
+                Button {
+                    selectedHeroID = chip.id
+                } label: {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(chip.title)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        GlassChip(text: chip.valueText, tint: chip.tint)
+                    }
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(.ultraThinMaterial)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(selectedHeroID == chip.id ? chip.tint.opacity(0.6) : .clear, lineWidth: 1.5)
+                            )
+                    )
                 }
+                .buttonStyle(.plain)
+                .contentShape(RoundedRectangle(cornerRadius: 12))
             }
         }
     }
@@ -167,6 +159,8 @@ struct DistanceDetailSheet: View {
             RatioCard(
                 title: "Ratio I",
                 ratioText: model.from.ratioText,
+                numerator: model.from.num,
+                denominator: model.from.den,
                 pitchLabel: model.from.pitchLabelText,
                 tint: model.tint,
                 onCopy: { copyToPasteboard(model.from.ratioText, message: "Copied ratio") }
@@ -174,6 +168,8 @@ struct DistanceDetailSheet: View {
             RatioCard(
                 title: "Ratio II",
                 ratioText: model.to.ratioText,
+                numerator: model.to.num,
+                denominator: model.to.den,
                 pitchLabel: model.to.pitchLabelText,
                 tint: model.tint,
                 onCopy: { copyToPasteboard(model.to.ratioText, message: "Copied ratio") }
@@ -187,43 +183,10 @@ struct DistanceDetailSheet: View {
                 Text("At a glance")
                     .font(.headline)
                 VStack(spacing: 8) {
-                    ForEach(resolvedRows) { row in
+                    ForEach(model.rows) { row in
                         MetricRowView(row: row) {
                             copyToPasteboard(row.copyText, message: "Copied")
                         }
-                    }
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var referencePanel: some View {
-        if shouldShowReferencePanel {
-            GlassCard {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Reference")
-                        .font(.headline)
-                    Text("Adjust the root frequency used for Hz values. This doesn’t change the lattice or selection.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    TextField("Hz", text: $referenceText)
-                        .textFieldStyle(.roundedBorder)
-#if os(iOS)
-                        .keyboardType(.decimalPad)
-#endif
-                    HStack(spacing: 8) {
-                        ForEach([415, 432, 440], id: \.self) { value in
-                            Button("\(value)") {
-                                referenceText = String(format: "%d", value)
-                            }
-                            .buttonStyle(.bordered)
-                        }
-                    }
-                    if !canComputeHzValues {
-                        Text("Hz values unavailable without ratio components.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
                     }
                 }
             }
@@ -256,30 +219,25 @@ struct DistanceDetailSheet: View {
         }
     }
 
-    private var whatThisMeans: some View {
+    private var contextualMeaning: some View {
         GlassCard {
             VStack(alignment: .leading, spacing: 12) {
-                Text("What this means")
+                Text("Contextual meaning")
                     .font(.headline)
                 disclosure(
-                    title: "What is Tenney height?",
-                    isExpanded: $tenneyExpanded,
-                    text: "Tenney height sums the absolute prime-exponent changes, weighted by log₂(prime). It’s a compact proxy for harmonic complexity."
+                    title: "Prime-factor delta",
+                    isExpanded: $primesExpanded,
+                    text: primeDeltaExplanation
                 )
                 disclosure(
-                    title: "What is melodic distance?",
+                    title: "Interval summary",
                     isExpanded: $melodicExpanded,
-                    text: "The melodic ratio is the exact interval from From → To. It preserves direction: ratios below 1 imply descending motion."
+                    text: melodicIntervalExplanation
                 )
                 disclosure(
-                    title: "How are cents computed?",
-                    isExpanded: $centsExpanded,
-                    text: "Cents are 1200 × log₂(ratio). Signed cents match the direction of the melodic ratio."
-                )
-                disclosure(
-                    title: "How direction works",
-                    isExpanded: $directionExpanded,
-                    text: "All rows are ordered. If you swap From and To, signs and ratios reverse."
+                    title: "Tenney height context",
+                    isExpanded: $tenneyExpanded,
+                    text: tenneyContextExplanation
                 )
             }
         }
@@ -307,7 +265,7 @@ struct DistanceDetailSheet: View {
     }
 
     private var heroChip: ChipMetric {
-        model.chips.first { $0.id == model.primaryMetricID } ?? model.chips.first ??
+        model.chips.first { $0.id == selectedHeroID } ?? model.chips.first ??
         ChipMetric(
             id: "fallback",
             title: "Metric",
@@ -317,59 +275,35 @@ struct DistanceDetailSheet: View {
             tint: model.tint
         )
     }
-
-    private var resolvedRows: [MetricRow] {
-        model.rows.map { row in
-            guard row.id == "freq-delta" else { return row }
-            guard let referenceHz, canComputeHzValues, let delta = frequencyDeltaText(referenceHz) else {
-                return MetricRow(
-                    id: row.id,
-                    label: row.label,
-                    valueText: "—",
-                    footnote: "Needs reference pitch",
-                    copyText: "—"
-                )
-            }
-            return MetricRow(
-                id: row.id,
-                label: row.label,
-                valueText: delta.text,
-                footnote: nil,
-                copyText: delta.copy
-            )
+    private var primeDeltaExplanation: String {
+        let summary = model.primeDeltas.map(\.displayText).joined(separator: ", ")
+        if summary.isEmpty {
+            return "From → To does not change any prime factors in the current limit."
         }
+        return "From → To changes prime factors by: \(summary). Positive means multiplying by that prime; negative means dividing."
     }
 
-    private var shouldShowReferencePanel: Bool {
-        model.rows.contains { $0.id == "freq-delta" }
-    }
-
-    private var canComputeHzValues: Bool {
-        model.from.num != nil && model.from.den != nil && model.to.num != nil && model.to.den != nil
-    }
-
-    private func frequencyDeltaText(_ reference: Double) -> (text: String, copy: String)? {
-        guard let fromHz = endpointHz(model.from, reference: reference),
-              let toHz = endpointHz(model.to, reference: reference) else { return nil }
-        let delta = toHz - fromHz
-        let text = String(format: "%+.2f Hz", delta)
-        return (text, text)
-    }
-
-    private func endpointHz(_ endpoint: Endpoint, reference: Double) -> Double? {
-        guard let num = endpoint.num, let den = endpoint.den else { return nil }
-        let octave = endpoint.octave ?? 0
-        let hz = RatioMath.hz(rootHz: reference, p: num, q: den, octave: octave, fold: false)
-        return hz.isFinite ? hz : nil
-    }
-
-    private func updateReferenceHz() {
-        let sanitized = referenceText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let value = Double(sanitized), value > 0 else {
-            referenceHz = nil
-            return
+    private var melodicIntervalExplanation: String {
+        let centsValue = model.melodicCentsValue ?? .nan
+        guard centsValue.isFinite else {
+            return "This move’s interval could not be resolved from the available ratio data."
         }
-        referenceHz = value
+        let centsText = String(format: "%+.1f¢", centsValue)
+        let direction: String
+        if centsValue == 0 {
+            direction = "a unison"
+        } else if centsValue > 0 {
+            direction = "an ascending interval"
+        } else {
+            direction = "a descending interval"
+        }
+        return "This move is \(direction) of \(centsText) (To/From = \(model.melodicRatioText))."
+    }
+
+    private var tenneyContextExplanation: String {
+        let tenneyRow = model.rows.first { $0.id == "tenney-height" }?.valueText ?? "H —"
+        let primeSummary = model.rows.first { $0.id == "prime-motion" }?.valueText ?? "—"
+        return "Tenney height summarizes the magnitude of prime-factor motion. Here: \(tenneyRow), with prime motion \(primeSummary)."
     }
 
     private func copyToPasteboard(_ text: String, message: String) {
@@ -398,6 +332,8 @@ struct DistanceDetailSheet: View {
 private struct RatioCard: View {
     let title: String
     let ratioText: String
+    let numerator: Int?
+    let denominator: Int?
     let pitchLabel: String?
     let tint: Color
     let onCopy: () -> Void
@@ -408,9 +344,7 @@ private struct RatioCard: View {
                 Text(title)
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(.secondary)
-                Text(ratioText)
-                    .font(.title2.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(tint)
+                ratioDisplay
                 if let pitchLabel {
                     Text(pitchLabel)
                         .font(.callout)
@@ -429,6 +363,30 @@ private struct RatioCard: View {
                     }
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var ratioDisplay: some View {
+        if let numerator, let denominator {
+            VStack(spacing: 4) {
+                Text("\(numerator)")
+                    .font(.title2.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(tint)
+                Rectangle()
+                    .fill(tint.opacity(0.4))
+                    .frame(height: 1)
+                    .frame(maxWidth: 120)
+                Text("\(denominator)")
+                    .font(.title2.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(tint)
+            }
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.vertical, 4)
+        } else {
+            Text(ratioText)
+                .font(.title2.weight(.semibold).monospacedDigit())
+                .foregroundStyle(tint)
         }
     }
 }

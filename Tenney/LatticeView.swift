@@ -4392,7 +4392,7 @@ struct LatticeView: View {
                     theme: activeTheme,
                     fromLabel: fromLabel,
                     toLabel: toLabel,
-                    referenceHz: app.rootHz,
+                    referenceA4Hz: concertA4Hz,
                     presentDetail: { activeDistanceDetail = $0 }
                 )
             }
@@ -5788,7 +5788,7 @@ struct LatticeView: View {
         let theme: LatticeTheme
         let fromLabel: String
         let toLabel: String
-        let referenceHz: Double?
+        let referenceA4Hz: Double?
         let presentDetail: (DistanceDetailSheet.Model) -> Void
 
         var body: some View {
@@ -5818,6 +5818,8 @@ struct LatticeView: View {
             let chips = makeChipMetrics(H: H, primeDeltas: primeDeltas)
             let endpoints = makeEndpoints()
             let rows = makeRows(delta: delta, H: H, endpoints: endpoints)
+            let melodicRatioText = melodicRatioDisplayText(delta: delta)
+            let melodicCentsValue = melodicCents(delta: delta)
 
             VStack(spacing: 6) {
                 // Total (always visible when not .off)
@@ -5828,7 +5830,9 @@ struct LatticeView: View {
                             chips: chips,
                             rows: rows,
                             primeDeltas: primeDeltas,
-                            endpoints: endpoints
+                            endpoints: endpoints,
+                            melodicRatioText: melodicRatioText,
+                            melodicCentsValue: melodicCentsValue
                         )
                     )
                 } label: {
@@ -5848,7 +5852,9 @@ struct LatticeView: View {
                                         chips: chips,
                                         rows: rows,
                                         primeDeltas: primeDeltas,
-                                        endpoints: endpoints
+                                        endpoints: endpoints,
+                                        melodicRatioText: melodicRatioText,
+                                        melodicCentsValue: melodicCentsValue
                                     )
                                 )
                             } label: {
@@ -5894,7 +5900,9 @@ struct LatticeView: View {
             chips: [DistanceDetailSheet.ChipMetric],
             rows: [DistanceDetailSheet.MetricRow],
             primeDeltas: [DistanceDetailSheet.PrimeDelta],
-            endpoints: (from: DistanceDetailSheet.Endpoint, to: DistanceDetailSheet.Endpoint)
+            endpoints: (from: DistanceDetailSheet.Endpoint, to: DistanceDetailSheet.Endpoint),
+            melodicRatioText: String,
+            melodicCentsValue: Double?
         ) -> DistanceDetailSheet.Model {
             DistanceDetailSheet.Model(
                 id: UUID(),
@@ -5904,7 +5912,9 @@ struct LatticeView: View {
                 chips: chips,
                 rows: rows,
                 primeDeltas: primeDeltas,
-                referenceHz: referenceHz,
+                referenceA4Hz: referenceA4Hz,
+                melodicRatioText: melodicRatioText,
+                melodicCentsValue: melodicCentsValue,
                 tint: .accentColor
             )
         }
@@ -5986,12 +5996,11 @@ struct LatticeView: View {
             H: Double,
             endpoints: (from: DistanceDetailSheet.Endpoint, to: DistanceDetailSheet.Endpoint)
         ) -> [DistanceDetailSheet.MetricRow] {
-            let melodicRatio = ratioFromMonzo(delta).map { "\($0.p)/\($0.q)" } ?? "—"
-            let centsValue = ratioFromMonzo(delta).map { RatioMath.centsForRatio($0.p, $0.q) } ?? .nan
+            let melodicRatio = melodicRatioDisplayText(delta: delta)
+            let centsValue = melodicCents(delta: delta)
             let centsText = centsValue.isFinite ? String(format: "%+.1f¢", centsValue) : "—"
             let primeSummary = makePrimeSummary(delta)
-            let freqText = frequencyDeltaText(endpoints: endpoints, referenceHz: referenceHz) ?? "—"
-            let freqFootnote: String? = (referenceHz == nil || freqText == "—") ? "Needs reference pitch" : nil
+            let freqText = frequencyDeltaText(endpoints: endpoints, referenceHz: referenceA4Hz) ?? "—"
 
             return [
                 DistanceDetailSheet.MetricRow(
@@ -6012,7 +6021,7 @@ struct LatticeView: View {
                     id: "freq-delta",
                     label: "Frequency Δ",
                     valueText: freqText,
-                    footnote: freqFootnote,
+                    footnote: nil,
                     copyText: freqText
                 ),
                 DistanceDetailSheet.MetricRow(
@@ -6039,6 +6048,14 @@ struct LatticeView: View {
                 return primeDeltaText(prime: prime, exp: exp)
             }
             return summary.isEmpty ? "—" : summary.joined(separator: " · ")
+        }
+
+        private func melodicRatioDisplayText(delta: [Int:Int]) -> String {
+            ratioFromMonzo(delta).map { "\($0.p) : \($0.q)" } ?? "—"
+        }
+
+        private func melodicCents(delta: [Int:Int]) -> Double {
+            ratioFromMonzo(delta).map { RatioMath.centsForRatio($0.p, $0.q) } ?? .nan
         }
 
         private func frequencyDeltaText(
