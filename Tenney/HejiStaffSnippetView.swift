@@ -137,7 +137,7 @@ struct HejiStaffSnippetView: View {
                 let markY = layout.clef == .treble
                     ? snap(topY - m.gap * 0.75)
                     : snap(bottomLineY + m.gap * 0.75)
-                let markX = m.noteX + m.gap * 0.9
+                let markX = snap(m.noteX + m.gap * 0.9 - (4 / displayScale))
                 ctx.draw(markText, at: CGPoint(x: markX, y: markY), anchor: .leading)
             }
 

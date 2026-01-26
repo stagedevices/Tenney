@@ -2622,7 +2622,7 @@ fileprivate enum RootStudioTab: String, CaseIterable, Identifiable { case calcul
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .calculator: return "Calculator"
+        case .calculator: return "Root (1/1) Hz"
         case .history:    return "History"
         case .favorites:  return "Favorites"
         case .a4:         return "A4"
@@ -2741,7 +2741,7 @@ private struct RootStudioSheet: View {
 
     // Compact calculator (bar + tokens)
         private var calculatorBar: some View {
-            glassCard("Calculator") {
+            glassCard("Root (1/1) Hz") {
                 HStack(spacing: 8) {
                     Image(systemName: "function").imageScale(.medium).foregroundStyle(.secondary)
                     TextField("415  ·  16/9  ·  16/9×220", text: $input)
@@ -2818,7 +2818,7 @@ private struct RootStudioSheet: View {
 
     // A4 card as theme-style tiles
         private var a4Card: some View {
-            glassCard("Concert Pitch (A4)") {
+            glassCard("A4 Reference Pitch") {
                 HStack(spacing: 12) {
                     GlassSelectTile(title: "440", isOn: a4Choice == "440") { a4Choice = "440" }
                     GlassSelectTile(title: "442", isOn: a4Choice == "442") { a4Choice = "442" }
@@ -2834,7 +2834,7 @@ private struct RootStudioSheet: View {
                         Spacer()
                     }
                 }
-                Text("Used for concert pitch behaviors. Root naming stays independent.")
+                Text("Used for calculating differences between JI and ET. Root naming stays independent.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
             .onChange(of: a4Choice) { _ in updateA4() }
@@ -2975,7 +2975,7 @@ private struct RootStudioSheet: View {
         }
 
     private var nameAsCard: some View {
-        glassCard("Name as") {
+        glassCard("Tonic note") {
             VStack(alignment: .leading, spacing: 10) {
                 Picker("Tonic naming", selection: $tonicNameModeRaw) {
                     Text("Auto").tag(TonicNameMode.auto.rawValue)
