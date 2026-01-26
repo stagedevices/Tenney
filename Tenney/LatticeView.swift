@@ -5879,6 +5879,7 @@ struct LatticeView: View {
                             chips: chips,
                             rows: rows,
                             primeDeltas: primeDeltas,
+                            monzoDelta: delta,
                             endpoints: endpoints,
                             melodicRatioText: melodicRatioText,
                             melodicCentsValue: melodicCentsValue
@@ -5901,6 +5902,7 @@ struct LatticeView: View {
                                         chips: chips,
                                         rows: rows,
                                         primeDeltas: primeDeltas,
+                                        monzoDelta: delta,
                                         endpoints: endpoints,
                                         melodicRatioText: melodicRatioText,
                                         melodicCentsValue: melodicCentsValue
@@ -5949,6 +5951,7 @@ struct LatticeView: View {
             chips: [DistanceDetailSheet.ChipMetric],
             rows: [DistanceDetailSheet.MetricRow],
             primeDeltas: [DistanceDetailSheet.PrimeDelta],
+            monzoDelta: [Int:Int],
             endpoints: (from: DistanceDetailSheet.Endpoint, to: DistanceDetailSheet.Endpoint),
             melodicRatioText: String,
             melodicCentsValue: Double?
@@ -5961,6 +5964,7 @@ struct LatticeView: View {
                 chips: chips,
                 rows: rows,
                 primeDeltas: primeDeltas,
+                monzoDelta: monzoDelta,
                 referenceA4Hz: referenceA4Hz,
                 melodicRatioText: melodicRatioText,
                 melodicCentsValue: melodicCentsValue,
