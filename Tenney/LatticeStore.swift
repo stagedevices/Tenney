@@ -301,13 +301,25 @@ final class LatticeStore: ObservableObject {
         let clamped = max(-5, min(5, newValue))
         var m = axisShift
         m[p] = clamped
+#if DEBUG
+        let before = axisShift
+#endif
         axisShift = m
+#if DEBUG
+        logAxisShiftChange(reason: "AXIS_SHIFT_SET", before: before, after: axisShift)
+#endif
     }
     
     func resetView(in size: CGSize) {
+        let beforePivot = pivot
+        let beforeShift = axisShift
         camera.center(in: size, scale: defaultZoomScale())
         pivot = LatticeCoord(e3: 0, e5: 0)
         resetShift() // resets all primes
+#if DEBUG
+        logAxisChange(reason: "RESET_VIEW_PIVOT", beforePivot: beforePivot, afterPivot: pivot)
+        logAxisShiftChange(reason: "RESET_VIEW_SHIFT", before: beforeShift, after: axisShift)
+#endif
     }
 
     func setDefaultZoomFromCurrentScale() {
@@ -334,7 +346,13 @@ final class LatticeStore: ObservableObject {
             } else {
                 var m = axisShift
                 for k in m.keys { m[k] = 0 }
+#if DEBUG
+                let before = axisShift
+#endif
                 axisShift = m
+#if DEBUG
+                logAxisShiftChange(reason: "AXIS_SHIFT_RESET", before: before, after: axisShift)
+#endif
             }
     }
     
@@ -754,10 +772,55 @@ final class LatticeStore: ObservableObject {
             "[LatticeSelection] \(reason) selected=\(selected.count) order=\(selectionOrder.count) ghosts=\(selectedGhosts.count) ghostOrder=\(selectionOrderGhosts.count) orderKeys=\(selectionOrderKeys.count)"
         )
     }
+
+    private func debugCameraState(_ cam: LatticeCamera? = nil) -> String {
+        let cam = cam ?? camera
+        let origin = cam.worldToScreen(.zero)
+        return String(
+            format: "cam=(tx:%.2f ty:%.2f scale:%.2f) origin=(%.1f, %.1f)",
+            cam.translation.x,
+            cam.translation.y,
+            cam.scale,
+            origin.x,
+            origin.y
+        )
+    }
+
+    private func logSelectionChange(
+        reason: SelectionChangeReason,
+        fromPlane: Set<LatticeCoord>,
+        toPlane: Set<LatticeCoord>,
+        fromGhosts: Set<GhostMonzo>,
+        toGhosts: Set<GhostMonzo>
+    ) {
+        guard LatticeDebug.gestureLoggingEnabled else { return }
+        let from = "plane=\(fromPlane.count) ghost=\(fromGhosts.count)"
+        let to = "plane=\(toPlane.count) ghost=\(toGhosts.count)"
+        print("[SEL] reason=\(reason.rawValue) from=\(from) to=\(to) \(debugCameraState())")
+    }
+
+    private func logAxisChange(reason: String, beforePivot: LatticeCoord, afterPivot: LatticeCoord) {
+        guard LatticeDebug.gestureLoggingEnabled else { return }
+        print("[CAM] reason=\(reason) selected=\(selected.count) before=pivot=\(beforePivot) after=pivot=\(afterPivot) \(debugCameraState())")
+    }
+
+    private func logAxisShiftChange(reason: String, before: [Int:Int], after: [Int:Int]) {
+        guard LatticeDebug.gestureLoggingEnabled else { return }
+        print("[CAM] reason=\(reason) selected=\(selected.count) before=axisShift=\(before) after=axisShift=\(after) \(debugCameraState())")
+    }
 #endif
 
     // MARK: - Selection (plane)
-    func toggleSelection(_ c: LatticeCoord, pushUndo: Bool = true) {
+    enum SelectionChangeReason: String {
+        case tap = "TAP"
+        case longPress = "LONGPRESS"
+        case drag = "DRAG"
+        case program = "PROGRAM"
+    }
+
+    func toggleSelection(_ c: LatticeCoord, reason: SelectionChangeReason = .program, pushUndo: Bool = true) {
+        let beforePlane = selected
+        let beforeGhosts = selectedGhosts
         let key: SelectionKey = .plane(c)
         
         if selected.contains(c) {
@@ -782,6 +845,13 @@ final class LatticeStore: ObservableObject {
         if pushUndo { pushUndoUserAction(.toggle(c: c)) }
         syncAuditionVoicesToSelection(reason: .selectionChange)
 #if DEBUG
+        logSelectionChange(
+            reason: reason,
+            fromPlane: beforePlane,
+            toPlane: selected,
+            fromGhosts: beforeGhosts,
+            toGhosts: selectedGhosts
+        )
         debugLogSelectionState(reason: "toggle selection \(c)")
 #endif
     }
@@ -863,7 +933,16 @@ final class LatticeStore: ObservableObject {
 
     // MARK: - Selection (overlay)
     /// Toggle selection for an overlay node identified by absolute monzo {3:e3,5:e5,p:eP}.
-    func toggleOverlay(prime p: Int, e3: Int, e5: Int, eP: Int, pushUndo: Bool = true) {
+    func toggleOverlay(
+        prime p: Int,
+        e3: Int,
+        e5: Int,
+        eP: Int,
+        reason: SelectionChangeReason = .program,
+        pushUndo: Bool = true
+    ) {
+        let beforePlane = selected
+        let beforeGhosts = selectedGhosts
         let g = GhostMonzo(e3: e3, e5: e5, p: p, eP: eP)
 
         let key: SelectionKey = .ghost(g)
@@ -890,14 +969,29 @@ final class LatticeStore: ObservableObject {
         if pushUndo { pushUndoUserAction(.toggleGhost(g: g)) }
         syncAuditionVoicesToSelection(reason: .selectionChange)
 #if DEBUG
+        logSelectionChange(
+            reason: reason,
+            fromPlane: beforePlane,
+            toPlane: selected,
+            fromGhosts: beforeGhosts,
+            toGhosts: selectedGhosts
+        )
         debugLogSelectionState(reason: "toggle ghost \(ratioStringGhost(g))")
 #endif
     }
 
-    func setPivot(_ c: LatticeCoord) { pivot = c }
+    func setPivot(_ c: LatticeCoord, reason: String = "PROGRAM") {
+        let before = pivot
+        pivot = c
+#if DEBUG
+        logAxisChange(reason: reason, beforePivot: before, afterPivot: c)
+#endif
+    }
 
     /// Clear all selections and fade out any sustaining tones.
-    func clearSelection() {
+    func clearSelection(reason: SelectionChangeReason = .program) {
+        let beforePlane = selected
+        let beforeGhosts = selectedGhosts
         for c in selected { startSelectionAnim(.plane(c), targetOn: false) }
             for g in selectedGhosts { startSelectionAnim(.ghost(g), targetOn: false) }
         selected.removeAll()
@@ -914,6 +1008,13 @@ final class LatticeStore: ObservableObject {
         voiceForCoord.removeAll()
         voiceForGhost.removeAll()
 #if DEBUG
+        logSelectionChange(
+            reason: reason,
+            fromPlane: beforePlane,
+            toPlane: selected,
+            fromGhosts: beforeGhosts,
+            toGhosts: selectedGhosts
+        )
         debugLogSelectionState(reason: "clear selection")
 #endif
     }
