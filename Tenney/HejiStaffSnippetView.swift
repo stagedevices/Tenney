@@ -25,6 +25,12 @@ struct HejiStaffSnippetView: View {
         let vInset: CGFloat
     }
 
+    private struct OctaveAssist {
+        let writtenStep: Int
+        let shiftOctaves: Int
+        let mark: String?
+    }
+
     private func metrics(for height: CGFloat) -> Metrics {
         let gap = height / 4
         let thickness = snap(1 / displayScale)
@@ -48,6 +54,25 @@ struct HejiStaffSnippetView: View {
         )
     }
 
+    private func octaveAssist(clef: HejiStaffLayout.Clef, originalStep: Int) -> OctaveAssist {
+        // Display-only octave assist for staff rendering (does not affect pitch identity).
+        let trebleMaxStep = HejiNotation.staffStepFromMiddleForRendering(letter: "A", octave: 5, clef: .treble)
+        let bassMinStep = HejiNotation.staffStepFromMiddleForRendering(letter: "G", octave: 2, clef: .bass)
+        let octaveSteps = HejiNotation.staffStepSpanForOctave(clef: clef)
+
+        switch clef {
+        case .treble:
+            if originalStep > trebleMaxStep {
+                return OctaveAssist(writtenStep: originalStep - octaveSteps, shiftOctaves: 1, mark: "8va")
+            }
+        case .bass:
+            if originalStep < bassMinStep {
+                return OctaveAssist(writtenStep: originalStep + octaveSteps, shiftOctaves: -1, mark: "8vb")
+            }
+        }
+
+        return OctaveAssist(writtenStep: originalStep, shiftOctaves: 0, mark: nil)
+    }
 
     var body: some View {
         let m = metrics(for: staffHeight)
@@ -63,7 +88,8 @@ struct HejiStaffSnippetView: View {
 
             let bottomLineY = topY + 4 * m.gap
             let middleLineY = bottomLineY - 2 * m.gap
-            let y = snap(middleLineY - CGFloat(layout.staffStepFromMiddle) * (m.gap / 2))
+            let assist = octaveAssist(clef: layout.clef, originalStep: layout.staffStepFromMiddle)
+            let y = snap(middleLineY - CGFloat(assist.writtenStep) * (m.gap / 2))
 
             let clefGlyph = layout.clef == .treble ? HejiGlyphs.gClef : HejiGlyphs.fClef
             if HejiGlyphs.glyphAvailable(clefGlyph, fontName: "Bravura") {
@@ -84,7 +110,16 @@ struct HejiStaffSnippetView: View {
             let headText = Text(layout.noteheadGlyph).font(.custom("Bravura", size: m.headSize * 2.1))
             ctx.draw(headText, at: CGPoint(x: m.noteX, y: y), anchor: .center)
 
-            drawLedgerLines(step: layout.staffStepFromMiddle, metrics: m, y: y, topY: topY, bottomY: bottomLineY, ctx: &ctx)
+            drawLedgerLines(step: assist.writtenStep, metrics: m, y: y, topY: topY, bottomY: bottomLineY, ctx: &ctx)
+
+            if let mark = assist.mark {
+                let markText = Text(mark).font(.caption2.weight(.semibold))
+                let markY = layout.clef == .treble
+                    ? snap(topY - m.gap * 0.75)
+                    : snap(bottomLineY + m.gap * 0.75)
+                let markX = m.noteX + m.gap * 0.9
+                ctx.draw(markText, at: CGPoint(x: markX, y: markY), anchor: .leading)
+            }
 
         }
         .frame(width: m.width, height: m.height)
@@ -110,3 +145,40 @@ struct HejiStaffSnippetView: View {
         return (value * scale).rounded(.toNearestOrEven) / scale
     }
 }
+
+#if DEBUG
+struct HejiStaffSnippetView_Previews: PreviewProvider {
+    static func previewLayout(letter: String, octave: Int, clef: HejiStaffLayout.Clef) -> HejiStaffLayout {
+        let step = HejiNotation.staffStepFromMiddleForRendering(letter: letter, octave: octave, clef: clef)
+        return HejiStaffLayout(
+            clef: clef,
+            staffStepFromMiddle: step,
+            noteheadGlyph: HejiGlyphs.noteheadBlack,
+            accidentalGlyphs: [],
+            ledgerLineCount: 0,
+            approxMarkerGlyph: nil
+        )
+    }
+
+    static var previews: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Treble")
+                .font(.caption.weight(.semibold))
+            HStack(spacing: 12) {
+                HejiStaffSnippetView(layout: previewLayout(letter: "C", octave: 5, clef: .treble))
+                HejiStaffSnippetView(layout: previewLayout(letter: "B", octave: 5, clef: .treble))
+                HejiStaffSnippetView(layout: previewLayout(letter: "G", octave: 5, clef: .treble))
+            }
+            Text("Bass")
+                .font(.caption.weight(.semibold))
+            HStack(spacing: 12) {
+                HejiStaffSnippetView(layout: previewLayout(letter: "D", octave: 3, clef: .bass))
+                HejiStaffSnippetView(layout: previewLayout(letter: "F", octave: 2, clef: .bass))
+                HejiStaffSnippetView(layout: previewLayout(letter: "A", octave: 2, clef: .bass))
+            }
+        }
+        .padding()
+        .previewLayout(.sizeThatFits)
+    }
+}
+#endif
