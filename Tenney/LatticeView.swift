@@ -3991,6 +3991,7 @@ struct LatticeView: View {
         ZStack {
             canvasLayer(viewRect: viewRect)
                 .allowsHitTesting(false)
+                .ignoresSafeArea(.container, edges: .top)
 #if os(macOS) || targetEnvironment(macCatalyst)
                 .overlay(alignment: .topLeading) {
                     LatticeTrackpadBridge(
@@ -4205,6 +4206,7 @@ struct LatticeView: View {
             )
             ZStack {
                 background
+                    .ignoresSafeArea(.container, edges: .top)
             
                 latticeStack(in: geo)
                     .sensoryFeedback(.selection, trigger: selectionHapticTick)
