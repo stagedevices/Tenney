@@ -2040,6 +2040,7 @@ private struct UtilityBar: View {
     @Namespace private var rootChipNS
 
     private let rootCorner: CGFloat = 12
+    private let tunerLockPillWidth: CGFloat = 136
     @State private var rootFeedbackToken: Int = 0
 
     init(
@@ -2198,35 +2199,6 @@ private struct UtilityBar: View {
     
     private var rimStroke: Color {
         Color.primary.opacity(theme.isDark ? 0.22 : 0.16)
-    }
-
-    private struct TunerLockPill: View {
-        @ObservedObject var store: TunerStore
-        @Environment(\.tenneyTheme) private var theme
-        @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-
-        var body: some View {
-            let isLocked = store.lockedTarget != nil
-            let tint = theme.inTuneHighlightColor(activeLimit: store.primeLimit)
-            let text: String? = {
-                if let r = store.lockedTarget { return tunerDisplayRatioString(r) }
-                if let r = store.selectedTarget { return tunerDisplayRatioString(r) }
-                return nil
-            }()
-
-            LockFieldPill(
-                size: .compact,
-                isLocked: isLocked,
-                displayText: text,
-                tint: tint,
-                placeholderShort: "Lock",
-                placeholderLong: "Lock target",
-                matchedGeometry: nil,
-                isExpanded: false
-            ) {
-                NotificationCenter.default.post(name: .tunerOpenLockSheet, object: nil)
-            }
-        }
     }
 
     private var rimStrokeMuted: Color {
@@ -2408,7 +2380,39 @@ private struct UtilityBar: View {
             .tenneyChromaShadow(true)
             .accessibilityLabel(app.latticeAuditionOn ? "Audition sound on" : "Audition sound off")
         } else if isPhoneLandscape, mode == .tuner, let tunerStore {
-            TunerLockPill(store: tunerStore)
+            let statusLabel = HStack(spacing: 6) {
+                Image(systemName: tunerStatusIcon)
+                    .imageScale(.large)
+                Text(tunerStatusText)
+            }
+            .lineLimit(1)
+            .minimumScaleFactor(0.75)
+            .allowsTightening(true)
+            .foregroundStyle(.secondary)
+            .layoutPriority(0)
+
+            let lockPill = LockPill(
+                isLocked: tunerStore.lockedTarget != nil,
+                displayText: tunerStore.lockedTarget.map(tunerDisplayRatioString)
+                    ?? tunerStore.selectedTarget.map(tunerDisplayRatioString),
+                tint: theme.inTuneHighlightColor(activeLimit: tunerStore.primeLimit),
+                width: tunerLockPillWidth,
+                matchedGeometry: nil
+            ) {
+                NotificationCenter.default.post(name: .tunerOpenLockSheet, object: nil)
+            }
+            .frame(width: tunerLockPillWidth)
+            .fixedSize(horizontal: true, vertical: false)
+            .layoutPriority(1)
+
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) {
+                    statusLabel
+                    lockPill
+                }
+                lockPill
+                statusLabel
+            }
         } else {
             HStack(spacing: 6) {
                 Image(systemName: tunerStatusIcon)
