@@ -4388,7 +4388,8 @@ struct LatticeView: View {
                         b: nodes[1],
                         mode: store.tenneyDistanceMode,
                         totalChip: totalChip,
-                        breakdownChips: breakdownChips
+                        breakdownChips: breakdownChips,
+                        presentDetail: presentDistanceDetailSheet
                     )
                     .allowsHitTesting(false)
 
