@@ -5861,15 +5861,6 @@ struct LatticeView: View {
                 melodicCentsValue: melodicCentsValue
             )
 
-#if DEBUG
-            debugValidateDirectedIntervals(
-                endpoints: endpoints,
-                melodic: melodic,
-                melodicCentsValue: melodicCentsValue,
-                referenceHz: referenceA4Hz
-            )
-#endif
-
             VStack(spacing: 6) {
                 // Total (always visible when not .off)
                 Button {
