@@ -11,6 +11,8 @@ enum HejiPitchSource: Hashable {
 }
 
 struct HejiPitchLabel: View {
+    var showsUnsupportedBadge: Bool = true
+
     let context: HejiContext
     let pitch: HejiPitchSource
     var modeOverride: HejiNotationMode? = nil
@@ -67,7 +69,8 @@ struct HejiPitchLabel: View {
                 Text(label)
             }
 
-            if !unsupported.isEmpty {
+            if showsUnsupportedBadge && !unsupported.isEmpty {
+
                 Text("Unsupported primes")
                     .font(.caption2.weight(.semibold))
                     .padding(.horizontal, 6)

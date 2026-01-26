@@ -46,6 +46,15 @@ enum LatticeGridMode: String, CaseIterable, Identifiable {
 
 
 struct LatticeView: View {
+    @State private var infoCardStaffWidth: CGFloat = 0
+
+    private struct InfoCardStaffWidthKey: PreferenceKey {
+        static var defaultValue: CGFloat = 0
+        static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+            value = max(value, nextValue())
+        }
+    }
+
     @AppStorage(SettingsKeys.latticeSoundEnabled)
     private var latticeSoundEnabled: Bool = true
     @State private var infoSwitchSeq: UInt64 = 0
@@ -4700,7 +4709,7 @@ struct LatticeView: View {
             if let f = focusedPoint {
                 if #available(iOS 26.0, *) {
                     infoCardBody(f)
-                        .glassEffect(.regular, in: .rect(cornerRadius: 12))
+                        .glassEffect(.regular, in: .rect(cornerRadius: 16))
                         .padding(.horizontal, 8)
                 } else {
                     GlassCard { infoCardBody(f) }
@@ -4741,141 +4750,369 @@ struct LatticeView: View {
     private func infoCardBody(
         _ f: (pos: CGPoint, label: String, etCents: Double, hz: Double, coord: LatticeCoord?, num: Int, den: Int)
     ) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            // Adjusted frequency for staff + metrics (unfolded for display)
-            let baseHz = foldToAudible(app.rootHz * (Double(f.num) / Double(f.den)), minHz: 20, maxHz: 5000)
-            let hzAdj = baseHz * pow(2.0, Double(infoOctaveOffset))
-            let pref = AccidentalPreference(rawValue: accidentalPreferenceRaw) ?? .auto
-            let mode = TonicNameMode(rawValue: tonicNameModeRaw) ?? .auto
-            let tonic = effectiveTonicSpelling(
-                rootHz: app.rootHz,
-                noteNameA4Hz: noteNameA4Hz,
-                tonicNameModeRaw: tonicNameModeRaw,
-                tonicE3: tonicE3,
-                accidentalPreference: pref
-            ) ?? TonicSpelling(e3: tonicE3)
-            let hejiPreference = (mode == .auto) ? pref : .auto
-            // Adjusted ratio string (NO FOLD to 1–2; preserves +/- octaves in ratio)
-            let (adjP, adjQ) = ratioWithOctaveOffsetNoFold(num: f.num, den: f.den, offset: infoOctaveOffset)
-            let jiText: String = "\(adjP)/\(adjQ)"
-            let ratioRef = RatioRef(p: f.num, q: f.den, octave: infoOctaveOffset, monzo: [:])
-            let hejiContext = HejiContext(
-                concertA4Hz: concertA4Hz,
-                noteNameA4Hz: noteNameA4Hz,
-                rootHz: app.rootHz,
-                rootRatio: nil,
-                preferred: hejiPreference,
-                // Important: lattice may show primes beyond the app’s “primeLimit” bucket;
-                           // labels still need to render them.
-                           maxPrime: effectiveMaxPrimeForLatticeLabels,
-                allowApproximation: false,
-                scaleDegreeHint: ratioRef,
-                tonicE3: tonic.e3
-            )
-            let noteLabelText: AttributedString = {
-                switch store.labelMode {
-                case .ratio, .heji:
-                    return HejiNotation.textLabel(
-                        for: ratioRef,
-                        context: hejiContext,
-                        showCents: false,
-                        textStyle: .title2,
-                        weight: .semibold,
-                        design: .default
-                    )
-                }
-            }()
-            
-            // Octave step availability (audible range)
-            let nextUpHz   = baseHz * pow(2.0, Double(infoOctaveOffset + 1))
-            let nextDownHz = baseHz * pow(2.0, Double(infoOctaveOffset - 1))
-            let canUp   = nextUpHz   >= 20 && nextUpHz   <= 5000
-            let canDown = nextDownHz >= 20 && nextDownHz <= 5000
-            
-            HStack(alignment: .top, spacing: 10) {
-                // Left: names/metrics
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 8) {
-                        if store.labelMode == .heji {
-                            HejiPitchLabel(context: hejiContext, pitch: .ratio(ratioRef))
-                        } else {
-                            Text(noteLabelText)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.9)
-                            Text(jiText)
-                                .font(.headline.monospaced())
-                                .opacity(0.9)
-                        }
-                        
-                        // ( +n oct ) badge while offset active
-                        if infoOctaveOffset != 0 {
-                            Text("(\(infoOctaveOffset > 0 ? "+\(infoOctaveOffset)" : "\(infoOctaveOffset)") oct)")
-                                .font(.caption2.weight(.semibold))
-                                .padding(.horizontal, 6).padding(.vertical, 3)
-                                .background(.thinMaterial, in: Capsule())
-                        }
-                    }
-                    HStack(spacing: 12) {
-                        // keep your ET text; use adjusted Hz for cents if desired
-                        Text(String(format: "%+.1f¢ vs ET", RatioMath.centsFromET(freqHz: hzAdj, refHz: app.rootHz)))
-                            .font(.footnote).foregroundStyle(.secondary)
-                        Text(String(format: "%.1f Hz", hzAdj))
-                            .font(.footnote).foregroundStyle(.secondary)
-                    }
-                }
-                
-                Spacer(minLength: 6)
-                
-                // Right: octave steppers at top-right + (optional) staff below
-                VStack(alignment: .trailing, spacing: 10) {
-                    HStack(spacing: 6) {
-                        GlassPuckButton(systemName: "chevron.down", isEnabled: canDown) {
-                            let newOffset = infoOctaveOffset - 1
-                                let raw = app.rootHz * (Double(f.num) / Double(f.den)) * pow(2.0, Double(newOffset))
-                                let hz2 = foldToAudible(raw, minHz: 20, maxHz: 5000)
-                                switchInfoTone(toHz: hz2, newOffset: newOffset)
-                            if let coord = f.coord, store.selected.contains(coord) {
-                                store.setOctaveOffset(for: coord, to: newOffset)
-                            }
-                        }
+        let staffWidthPad: CGFloat = 26
 
-                        GlassPuckButton(systemName: "chevron.up", isEnabled: canUp) {
-                            let newOffset = infoOctaveOffset + 1
-                                let raw = app.rootHz * (Double(f.num) / Double(f.den)) * pow(2.0, Double(newOffset))
-                                let hz2 = foldToAudible(raw, minHz: 20, maxHz: 5000)
-                                switchInfoTone(toHz: hz2, newOffset: newOffset)
-                            if let coord = f.coord, store.selected.contains(coord) {
-                                store.setOctaveOffset(for: coord, to: newOffset)
-                            }
-                        }
+        // Adjusted frequency for staff + metrics (unfolded for display)
+        let baseHz = foldToAudible(app.rootHz * (Double(f.num) / Double(f.den)), minHz: 20, maxHz: 5000)
+        let hzAdj  = baseHz * pow(2.0, Double(infoOctaveOffset))
+
+        let hzCompact: String = {
+            // shortest that still reads like a value
+            if hzAdj >= 1000 {
+                let khz = hzAdj / 1000
+                return khz >= 10 ? String(format: "%.1f kHz", khz) : String(format: "%.2f kHz", khz)
+            } else {
+                return hzAdj >= 100 ? String(format: "%.1f Hz", hzAdj) : String(format: "%.2f Hz", hzAdj)
+            }
+        }()
+
+        let pref = AccidentalPreference(rawValue: accidentalPreferenceRaw) ?? .auto
+        let mode = TonicNameMode(rawValue: tonicNameModeRaw) ?? .auto
+        let tonic = effectiveTonicSpelling(
+            rootHz: app.rootHz,
+            noteNameA4Hz: noteNameA4Hz,
+            tonicNameModeRaw: tonicNameModeRaw,
+            tonicE3: tonicE3,
+            accidentalPreference: pref
+        ) ?? TonicSpelling(e3: tonicE3)
+
+        let hejiPreference = (mode == .auto) ? pref : .auto
+
+        // Adjusted ratio string (NO FOLD to 1–2; preserves +/- octaves in ratio)
+        let (adjP, adjQ) = ratioWithOctaveOffsetNoFold(num: f.num, den: f.den, offset: infoOctaveOffset)
+        let jiText: String = "\(adjP)/\(adjQ)"
+
+        let ratioRef = RatioRef(p: f.num, q: f.den, octave: infoOctaveOffset, monzo: [:])
+
+        let hejiContext = HejiContext(
+            concertA4Hz: concertA4Hz,
+            noteNameA4Hz: noteNameA4Hz,
+            rootHz: app.rootHz,
+            rootRatio: nil,
+            preferred: hejiPreference,
+            // Important: lattice may show primes beyond the app’s “primeLimit” bucket;
+            // labels still need to render them.
+            maxPrime: effectiveMaxPrimeForLatticeLabels,
+            allowApproximation: false,
+            scaleDegreeHint: ratioRef,
+            tonicE3: tonic.e3
+        )
+
+        // Featured HEJI text (for copy + a11y label)
+        let hejiAttrTitle: AttributedString = HejiNotation.textLabel(
+            for: ratioRef,
+            context: hejiContext,
+            showCents: false,
+            textStyle: .title,
+            weight: .bold,
+            design: .default
+        )
+
+        let hejiAttrHeadline: AttributedString = HejiNotation.textLabel(
+            for: ratioRef,
+            context: hejiContext,
+            showCents: false,
+            textStyle: .headline,
+            weight: .semibold,
+            design: .default
+        )
+
+        let hejiPlain = String(hejiAttrTitle.characters)
+
+
+        // ET helper (note name + cents offset) — derived from noteNameA4Hz (which should track concertA4Hz).
+        let et = etNoteInfo(freqHz: hzAdj, a4Hz: noteNameA4Hz, accidentalPreference: pref)
+        func formatCents(_ v: Double) -> String {
+            let a = abs(v)
+            if a >= 100 { return String(format: "%+.0f¢", v) }
+            if a >= 10  { return String(format: "%+.1f¢", v) }
+            if a >= 1   { return String(format: "%+.2f¢", v) }
+            return String(format: "%+.3f¢", v)
+        }
+
+        // Featured HEJI text (for copy + a11y label) — make it *typographic*
+        let hejiAttrHero: AttributedString = HejiNotation.textLabel(
+            for: ratioRef,
+            context: hejiContext,
+            showCents: false,
+            textStyle: .title,
+            weight: .bold,
+            design: .default,
+            basePointSize: 30
+        )
+
+        let hejiAttrBig: AttributedString = HejiNotation.textLabel(
+            for: ratioRef,
+            context: hejiContext,
+            showCents: false,
+            textStyle: .headline,
+            weight: .semibold,
+            design: .default,
+            basePointSize: 24
+        )
+
+        let nominalET = et.name.replacingOccurrences(of: " ", with: "")
+
+        let centsFmt  = formatCents(et.cents)          // up to 3 decimals when it matters
+        let centsLine = "\(centsFmt) from \(nominalET)" // MUST be one line
+
+        let hzLong  = String(format: "%.1fHz", hzAdj)
+        let hzShort = String(format: "%.0fHz", hzAdj)
+
+
+        
+        // Octave step availability (audible range)
+        let nextUpHz   = baseHz * pow(2.0, Double(infoOctaveOffset + 1))
+        let nextDownHz = baseHz * pow(2.0, Double(infoOctaveOffset - 1))
+        let canUp   = nextUpHz   >= 20 && nextUpHz   <= 5000
+        let canDown = nextDownHz >= 20 && nextDownHz <= 5000
+
+        // Primes
+        let primes = NotationFormatter.primeBadges(p: f.num, q: f.den)
+
+        return VStack(alignment: .leading, spacing: 8) {
+
+            // LEFT content only (no reserved right column)
+            VStack(alignment: .leading, spacing: 0) {
+
+                // Header row: HEJI + ratio
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+
+                    Button { copyToPasteboard(hejiPlain) } label: {
+                        Text(hejiAttrHero)
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                            .allowsTightening(true)
+                            .minimumScaleFactor(0.25)     // ✅ never ellipsize
                     }
+                    .buttonStyle(.plain)
+                    .contentShape(Rectangle())
+                    .layoutPriority(3)
+                    
+                    Spacer(minLength: 4)
+
+                    Button { copyToPasteboard(jiText) } label: {
+                        Text(jiText)
+                            .font(.system(size: 24, weight: .bold, design: .monospaced))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                            .allowsTightening(true)
+                            .minimumScaleFactor(0.25)     // ✅ never ellipsize
+                    }
+                    .buttonStyle(.plain)
+                    .contentShape(Rectangle())
+                    .layoutPriority(3)
+                }
+
+                // Staff sits BETWEEN header and metrics
+                HejiPitchLabel(
+                    showsUnsupportedBadge: false,
+                    context: hejiContext,
+                    pitch: .ratio(ratioRef),
+                    modeOverride: .staff,
+                    showCentsWhenApproximate: false
+                )
+                .accessibilityHidden(true)
+                .layoutPriority(2)
+                .background(
+                    GeometryReader { proxy in
+                        Color.clear.preference(key: InfoCardStaffWidthKey.self, value: proxy.size.width)
+                    }
+                )
+
+
+                // Metrics: cents-from (1 line) + Hz (1 line under it)
+                VStack(alignment: .leading, spacing: 2) {
+                    ViewThatFits(in: .horizontal) {
+                        Text(centsLine)
+                            .font(.footnote.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .allowsTightening(true)
+                            .minimumScaleFactor(0.78)
+
+                        Text(centsLine)
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .allowsTightening(true)
+                            .minimumScaleFactor(0.78)
+                    }
+
+                    ViewThatFits(in: .horizontal) {
+                        Text(hzLong)
+                            .font(.footnote.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .allowsTightening(true)
+                            .minimumScaleFactor(0.78)
+
+                        Text(hzShort)
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .allowsTightening(true)
+                            .minimumScaleFactor(0.78)
+                    }
+                }
+                .accessibilityHidden(true)
+            }
+
+            // Prime chips row
+            HStack(spacing: 4) {
+                ForEach(primes, id: \.self) { pr in
+                    let tint = theme.primeTint(pr)
+                    Text("\(pr)")
+                        .font(.caption2.weight(.semibold))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(tint.opacity(theme.isDark ? 0.22 : 0.16), in: Capsule())
+                        .overlay(Capsule().stroke(tint.opacity(theme.isDark ? 0.38 : 0.25), lineWidth: 1))
+                }
+            }
+            .accessibilityHidden(true)
+
+            // Footer rail: full-width octave stepper (uses the space as content)
+            ZStack {
+                HStack(spacing: 0) {
+                    Button {
+                        guard canDown else { return }
+                        let newOffset = infoOctaveOffset - 1
+                        let raw = app.rootHz * (Double(f.num) / Double(f.den)) * pow(2.0, Double(newOffset))
+                        let hz2 = foldToAudible(raw, minHz: 20, maxHz: 5000)
+                        switchInfoTone(toHz: hz2, newOffset: newOffset)
+                        if let coord = f.coord, store.selected.contains(coord) {
+                            store.setOctaveOffset(for: coord, to: newOffset)
+                        }
+                    } label: {
+                        Image(systemName: "chevron.down")
+                            .font(.body.weight(.semibold))
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .contentShape(Rectangle())
+                            .opacity(canDown ? 1.0 : 0.35)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Octave down")
+
+                    Divider().opacity(0.25)
+
+                    Button {
+                        guard canUp else { return }
+                        let newOffset = infoOctaveOffset + 1
+                        let raw = app.rootHz * (Double(f.num) / Double(f.den)) * pow(2.0, Double(newOffset))
+                        let hz2 = foldToAudible(raw, minHz: 20, maxHz: 5000)
+                        switchInfoTone(toHz: hz2, newOffset: newOffset)
+                        if let coord = f.coord, store.selected.contains(coord) {
+                            store.setOctaveOffset(for: coord, to: newOffset)
+                        }
+                    } label: {
+                        Image(systemName: "chevron.up")
+                            .font(.body.weight(.semibold))
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .contentShape(Rectangle())
+                            .opacity(canUp ? 1.0 : 0.35)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Octave up")
+                }
+
+                // Optional: centered badge without stealing layout width or taps
+                if infoOctaveOffset != 0 {
+                    Text(infoOctaveOffset > 0 ? "+\(infoOctaveOffset) oct" : "\(infoOctaveOffset) oct")
+                        .font(.caption2.weight(.semibold))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .allowsHitTesting(false)
+                        .accessibilityLabel("Octave offset \(infoOctaveOffset)")
                 }
             }
             
-            
-            
-            // Bottom row: prime badges
-            let primes = NotationFormatter.primeBadges(p: f.num, q: f.den)
-            HStack(spacing: 6) {
-                ForEach(primes, id:\.self) { pr in
-                    // let col = theme.primeTint(pr)
-                    Text("\(pr)")
-                        .font(.caption2.weight(.semibold))
-                        .padding(.horizontal, 6).padding(.vertical, 3)
-                    //   .background(col.opacity(0.20))
-                        .clipShape(Capsule())
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(Color.secondary.opacity(0.14), lineWidth: 1)
+            )
+        }
+        .padding(12)
+        .onPreferenceChange(InfoCardStaffWidthKey.self) { w in
+            let target = w > 0 ? (w + staffWidthPad) : 0
+            if target > 0, abs(target - infoCardStaffWidth) > 0.5 { infoCardStaffWidth = target }
+        }
+        .frame(width: infoCardStaffWidth > 0 ? infoCardStaffWidth : nil, alignment: .leading)
+        .fixedSize(horizontal: true, vertical: false)
+
+        // Quick actions (long press anywhere on card content)
+        .contextMenu {
+            Button("Copy HEJI") { copyToPasteboard(hejiPlain) }
+            Button("Copy ratio") { copyToPasteboard(jiText) }
+            Button("Copy Hz") { copyToPasteboard(String(format: "%.2f", hzAdj)) }
+            Button("Reset octave offset") {
+                guard infoOctaveOffset != 0 else { return }
+                let newOffset = 0
+                let raw = app.rootHz * (Double(f.num) / Double(f.den))
+                let hz2 = foldToAudible(raw, minHz: 20, maxHz: 5000)
+                switchInfoTone(toHz: hz2, newOffset: newOffset)
+                if let coord = f.coord, store.selected.contains(coord) {
+                    store.setOctaveOffset(for: coord, to: newOffset)
                 }
             }
         }
-        .padding(8)
-        .frame(maxWidth: 320, alignment: .leading)
-        // Ensure octave changes always retune immediately (even if other gestures also fire while the card is up).
-                .onChange(of: infoOctaveOffset) { newOffset in
-                let baseHzLocal = foldToAudible(app.rootHz * (Double(f.num) / Double(f.den)), minHz: 20, maxHz: 5000)
-                let hzNew = baseHzLocal * pow(2.0, Double(newOffset))
-                    switchInfoTone(toHz: hzNew, newOffset: newOffset)
-                }
+
+        // VoiceOver: one combined label for the *pitch content*
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            "\(hejiPlain), ratio \(jiText), \(centsFmt) from \(nominalET), \(hzLong) hertz"
+        )
+
+        // Ensure octave changes always retune immediately
+        .onChange(of: infoOctaveOffset) { newOffset in
+            let baseHzLocal = foldToAudible(app.rootHz * (Double(f.num) / Double(f.den)), minHz: 20, maxHz: 5000)
+            let hzNew = baseHzLocal * pow(2.0, Double(newOffset))
+            switchInfoTone(toHz: hzNew, newOffset: newOffset)
+        }
     }
+    private func copyToPasteboard(_ s: String) {
+    #if canImport(UIKit)
+        UIPasteboard.general.string = s
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    #elseif canImport(AppKit)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(s, forType: .string)
+    #endif
+    }
+
+    private struct ETNoteInfo {
+        let name: String    // e.g. "C♯5"
+        let cents: Double   // signed cents offset from nearest ET note
+    }
+
+    private func etNoteInfo(
+        freqHz: Double,
+        a4Hz: Double,
+        accidentalPreference: AccidentalPreference
+    ) -> ETNoteInfo {
+        guard freqHz.isFinite, freqHz > 0, a4Hz.isFinite, a4Hz > 0 else {
+            return ETNoteInfo(name: "—", cents: .nan)
+        }
+
+        let semis = 69.0 + 12.0 * log2(freqHz / a4Hz)
+        let midi = Int(semis.rounded())
+        let nearestHz = a4Hz * pow(2.0, (Double(midi) - 69.0) / 12.0)
+        let cents = 1200.0 * log2(freqHz / nearestHz)
+
+        let useFlats: Bool = (accidentalPreference == .auto)
+
+        let namesSharps = ["C","C♯","D","D♯","E","F","F♯","G","G♯","A","A♯","B"]
+        let namesFlats  = ["C","D♭","D","E♭","E","F","G♭","G","A♭","A","B♭","B"]
+
+        let pc = ((midi % 12) + 12) % 12
+        let octave = (midi / 12) - 1
+
+        let name = "\(useFlats ? namesFlats[pc] : namesSharps[pc])\(octave)"
+        return ETNoteInfo(name: name, cents: cents)
+    }
+
     // Glass circle chevron (top-right octave stepper)
     private struct GlassPuckButton: View {
         let systemName: String

@@ -1278,7 +1278,7 @@ struct StudioConsoleView: View {
                         isOn: $showAxes
                     )
                 }
-
+                
                 IntStepperChip(title: "Grid divs", systemImage: "number", value: $gridDivs, range: 2...16)
 
                 Text("These affect both the Oscilloscope preview and Builder Lissajous.")
@@ -1939,6 +1939,7 @@ struct StudioConsoleView: View {
     
     private struct LatticeUIControlsPager: View {
         @State private var parallaxOffset: CGFloat = 0
+        @Binding var labelDefault: String
 
         @Binding var latticeConnectionModeRaw: String
         @Binding var soundOn: Bool   // ✅ add
@@ -2238,6 +2239,7 @@ struct StudioConsoleView: View {
                 )
 
                 VStack(alignment: .leading, spacing: 8) {
+                    ratioLabelsPicker
                     HStack {
                         Text("Label Density")
                         Spacer()
@@ -2432,7 +2434,7 @@ struct StudioConsoleView: View {
         private var gridPage: some View {
             
             VStack(alignment: .leading, spacing: 12) {
-                PageHeader(title: "View", systemImage: icon(for: .view))
+                PageHeader(title: "Grid", systemImage: icon(for: .grid))
 
                 gridModePicker
 
@@ -2479,6 +2481,61 @@ struct StudioConsoleView: View {
             }
         }
 
+        private func setLabelDefault(_ v: String) {
+            guard labelDefault != v else { return }
+            withAnimation(.snappy) { labelDefault = v }
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        }
+
+        @ViewBuilder private var ratioLabelsPicker: some View {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Ratio labels")
+                    .font(.subheadline.weight(.semibold))
+
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 10) {
+                        GridModeRadioChip(
+                            title: "Ratio",
+                            systemNameOff: "number.square",
+                            systemNameOn: "number.square.fill",
+                            selected: labelDefault == "ratio"
+                        ) { setLabelDefault("ratio") }
+
+                        GridModeRadioChip(
+                            title: "HEJI",
+                            systemNameOff: "tag",
+                            systemNameOn: "tag.fill",
+                            selected: labelDefault == "heji"
+                        ) { setLabelDefault("heji") }
+                    }
+
+                    LazyVGrid(
+                        columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)],
+                        spacing: 10
+                    ) {
+                        GridModeRadioChip(
+                            title: "Ratio",
+                            systemNameOff: "number.square",
+                            systemNameOn: "number.square.fill",
+                            selected: labelDefault == "ratio"
+                        ) { setLabelDefault("ratio") }
+
+                        GridModeRadioChip(
+                            title: "HEJI",
+                            systemNameOff: "tag",
+                            systemNameOn: "tag.fill",
+                            selected: labelDefault == "heji"
+                        ) { setLabelDefault("heji") }
+                    }
+                }
+
+                Text("Info cards always show staff + text. HEJI labels always include the ratio.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+
+        
         private var pagedPanel: some View {
                     ZStack(alignment: .topLeading) {
                         switch page {
@@ -3378,7 +3435,6 @@ struct StudioConsoleView: View {
         case .general:
             VStack(spacing: 14) {
                 quickSetupCard
-                 labelingSection
                 defaultViewSection
                // selectionTrayClearBehaviorSection /// HACK / Uncomment when you're ready to fix the selection tray Xmark
                 whatsNewSection
@@ -4224,6 +4280,15 @@ private struct GlassNavTile<Destination: View>: View {
     }
 
 
+    private func clampInfoCardLabelingPrefsIfNeeded() {
+        if showRatioAlong != true { showRatioAlong = true }
+        if infoCardNotationModeRaw != HejiNotationMode.combined.rawValue {
+            infoCardNotationModeRaw = HejiNotationMode.combined.rawValue
+        }
+        if accidentalPreferenceRaw != AccidentalPreference.auto.rawValue {
+            accidentalPreferenceRaw = AccidentalPreference.auto.rawValue
+        }
+    }
 
     @ViewBuilder private var latticeUISection: some View {
         glassCard(
@@ -4232,6 +4297,7 @@ private struct GlassNavTile<Destination: View>: View {
             subtitle: ""
         ) {
             LatticeUIControlsPager(
+                labelDefault: $labelDefault,
                 latticeConnectionModeRaw: $latticeConnectionModeRaw,
                 soundOn: latticeSoundBinding,
                 nodeSizeRaw: $nodeSize,
@@ -4244,43 +4310,13 @@ private struct GlassNavTile<Destination: View>: View {
                 gridMajorEnabled: $gridMajorEnabled,
                 gridMajorEvery: $gridMajorEvery,
                 tenneyDistanceModeRaw: $tenneyDistanceModeRaw,
-                previewToken: "\(tenneyThemeIDRaw)|\(effectiveIsDark ? "dark" : "light")"
+                previewToken: "\(tenneyThemeIDRaw)|\(effectiveIsDark ? "dark" : "light")|\(labelDefault)"
             )
-        }
-    }
+            .onAppear { clampInfoCardLabelingPrefsIfNeeded() }
+            .onChange(of: showRatioAlong) { _ in clampInfoCardLabelingPrefsIfNeeded() }
+            .onChange(of: infoCardNotationModeRaw) { _ in clampInfoCardLabelingPrefsIfNeeded() }
+            .onChange(of: accidentalPreferenceRaw) { _ in clampInfoCardLabelingPrefsIfNeeded() }
 
-
-    @ViewBuilder private var labelingSection: some View {
-        glassCard(
-            icon: "tag",
-            title: "Labeling",
-            subtitle: "Lattice labels and info cards"
-        ) {
-            Picker("Default", selection: $labelDefault) {
-                Text("Ratio").tag("ratio")
-                Text("HEJI").tag("heji")
-            }
-            .pickerStyle(.segmented)
-
-            Toggle("Show ratio alongside HEJI", isOn: $showRatioAlong)
-
-            Picker("Info card notation", selection: $infoCardNotationModeRaw) {
-                ForEach(HejiNotationMode.allCases) { mode in
-                    Text(mode.title).tag(mode.rawValue)
-                }
-            }
-            .pickerStyle(.segmented)
-
-            Picker("Accidental preference", selection: $accidentalPreferenceRaw) {
-                ForEach(AccidentalPreference.allCases) { pref in
-                    Text(pref.title).tag(pref.rawValue)
-                }
-            }
-            .pickerStyle(.segmented)
-
-            Text("Affects Lattice info cards and Builder labels.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
         }
     }
 
