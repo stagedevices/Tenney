@@ -205,6 +205,7 @@ struct LatticeView: View {
     private struct TenneyDistanceNode {
         let screen: CGPoint
         let exps: [Int:Int]   // prime -> exponent (absolute, includes axisShift where appropriate)
+        let octave: Int
     }
 #if targetEnvironment(macCatalyst)
     private struct ContextTarget {
@@ -238,14 +239,16 @@ struct LatticeView: View {
                 let e5 = c.e5 + store.pivot.e5 + (store.axisShift[5] ?? 0)
                 let world = layout.position(for: LatticeCoord(e3: e3, e5: e5))
                 let screen = store.camera.worldToScreen(world)
-                return TenneyDistanceNode(screen: screen, exps: [3: e3, 5: e5])
+                let octave = store.octaveOffset(for: c)
+                return TenneyDistanceNode(screen: screen, exps: [3: e3, 5: e5], octave: octave)
 
             case .ghost(let g):
                 // Ghosts already store absolute exponents in hitTest; include the higher prime.
                 let exps: [Int:Int] = [3: g.e3, 5: g.e5, g.p: g.eP]
                 let world = layout.position(monzo: exps)
                 let screen = store.camera.worldToScreen(world)
-                return TenneyDistanceNode(screen: screen, exps: exps)
+                let octave = store.octaveOffset(for: g)
+                return TenneyDistanceNode(screen: screen, exps: exps, octave: octave)
             }
         }
         guard keys.count == 2 else { return [] }
@@ -5817,9 +5820,9 @@ struct LatticeView: View {
             let primeDeltas = makePrimeDeltas(delta)
             let chips = makeChipMetrics(H: H, primeDeltas: primeDeltas)
             let endpoints = makeEndpoints()
-            let melodic = melodicPQ(from: endpoints.from, to: endpoints.to)
+            let melodic = melodicFromToPQ(from: endpoints.from, to: endpoints.to)
             let melodicRatioText = melodic.map { "\($0.p) : \($0.q)" } ?? "—"
-            let melodicCentsValue = melodic.map { RatioMath.centsForRatio($0.p, $0.q) }
+            let melodicCentsValue = intervalCents(from: endpoints.from, to: endpoints.to)
             let rows = makeRows(
                 delta: delta,
                 H: H,
@@ -5936,15 +5939,23 @@ struct LatticeView: View {
         }
 
         private func makeEndpoints() -> (from: DistanceDetailSheet.Endpoint, to: DistanceDetailSheet.Endpoint) {
-            let fromEndpoint = endpointModel(label: fromLabel, exps: a.exps)
-            let toEndpoint = endpointModel(label: toLabel, exps: b.exps)
+            let fromEndpoint = endpointModel(label: fromLabel, exps: a.exps, octave: a.octave)
+            let toEndpoint = endpointModel(label: toLabel, exps: b.exps, octave: b.octave)
             return (fromEndpoint, toEndpoint)
         }
 
-        private func endpointModel(label: String, exps: [Int:Int]) -> DistanceDetailSheet.Endpoint {
-            let ratioComponents = ratioFromMonzo(exps).map { reducePQ(p: $0.p, q: $0.q) }
+        private func endpointModel(label: String, exps: [Int:Int], octave: Int) -> DistanceDetailSheet.Endpoint {
+            let oddRatio = ratioFromMonzo(exps).map { reducePQ(p: $0.p, q: $0.q) }
+            let ratioComponents = oddRatio
+                .flatMap { applyOctaveToPQ(p: $0.p, q: $0.q, octaveExp2: octave) }
+                .map { reducePQ(p: $0.p, q: $0.q) }
             let ratioText = ratioComponents.map { RatioMath.unitLabel($0.p, $0.q) } ?? "—"
             let pitchLabel = label != ratioText ? label : nil
+#if DEBUG
+            if let odd = oddRatio, let full = ratioComponents, odd.p == 5, odd.q == 1, octave == -2 {
+                assert(full.p == 5 && full.q == 4)
+            }
+#endif
             return DistanceDetailSheet.Endpoint(
                 ratioText: ratioText,
                 pitchLabelText: pitchLabel,
@@ -5981,7 +5992,44 @@ struct LatticeView: View {
             return o ? nil : r
         }
 
-        private func melodicPQ(
+        private func pow2(_ exp: Int) -> Int? {
+            guard exp >= 0 else { return nil }
+            var result = 1
+            for _ in 0..<exp {
+                guard let next = safeMul(result, 2) else { return nil }
+                result = next
+            }
+            return result
+        }
+
+        private func applyOctaveToPQ(p: Int, q: Int, octaveExp2: Int) -> (p: Int, q: Int)? {
+            guard p > 0, q > 0 else { return nil }
+            if octaveExp2 == 0 { return (p, q) }
+            let exp = abs(octaveExp2)
+            guard let factor = pow2(exp) else { return nil }
+            if octaveExp2 > 0 {
+                guard let newP = safeMul(p, factor) else { return nil }
+                return reducePQ(p: newP, q: q)
+            } else {
+                guard let newQ = safeMul(q, factor) else { return nil }
+                return reducePQ(p: p, q: newQ)
+            }
+        }
+
+        private func melodicFromToPQ(
+            from: DistanceDetailSheet.Endpoint,
+            to: DistanceDetailSheet.Endpoint
+        ) -> (p: Int, q: Int)? {
+            guard let fromNum = from.num,
+                  let fromDen = from.den,
+                  let toNum = to.num,
+                  let toDen = to.den,
+                  let numerator = safeMul(fromNum, toDen),
+                  let denominator = safeMul(toNum, fromDen) else { return nil }
+            return reducePQ(p: numerator, q: denominator)
+        }
+
+        private func intervalToFromPQ(
             from: DistanceDetailSheet.Endpoint,
             to: DistanceDetailSheet.Endpoint
         ) -> (p: Int, q: Int)? {
@@ -5992,6 +6040,15 @@ struct LatticeView: View {
                   let numerator = safeMul(toNum, fromDen),
                   let denominator = safeMul(toDen, fromNum) else { return nil }
             return reducePQ(p: numerator, q: denominator)
+        }
+
+        private func intervalCents(
+            from: DistanceDetailSheet.Endpoint,
+            to: DistanceDetailSheet.Endpoint
+        ) -> Double? {
+            guard let interval = intervalToFromPQ(from: from, to: to) else { return nil }
+            let cents = RatioMath.centsForRatio(interval.p, interval.q)
+            return cents.isFinite ? cents : nil
         }
 
         private func makePrimeDeltas(_ delta: [Int:Int]) -> [DistanceDetailSheet.PrimeDelta] {
@@ -6111,8 +6168,8 @@ struct LatticeView: View {
                   let fromDen = endpoints.from.den,
                   let toNum = endpoints.to.num,
                   let toDen = endpoints.to.den else { return nil }
-            let fromHz = RatioMath.hz(rootHz: referenceHz, p: fromNum, q: fromDen, octave: endpoints.from.octave ?? 0, fold: false)
-            let toHz = RatioMath.hz(rootHz: referenceHz, p: toNum, q: toDen, octave: endpoints.to.octave ?? 0, fold: false)
+            let fromHz = RatioMath.hz(rootHz: referenceHz, p: fromNum, q: fromDen, octave: 0, fold: false)
+            let toHz = RatioMath.hz(rootHz: referenceHz, p: toNum, q: toDen, octave: 0, fold: false)
             guard fromHz.isFinite, toHz.isFinite else { return nil }
             return String(format: "%+.1f Hz", toHz - fromHz)
         }
@@ -6136,29 +6193,37 @@ struct LatticeView: View {
             }
 
             func hzDelta() -> Double? {
-                let fromHz = RatioMath.hz(rootHz: referenceHz, p: fromNum, q: fromDen, octave: endpoints.from.octave ?? 0, fold: false)
-                let toHz = RatioMath.hz(rootHz: referenceHz, p: toNum, q: toDen, octave: endpoints.to.octave ?? 0, fold: false)
+                let fromHz = RatioMath.hz(rootHz: referenceHz, p: fromNum, q: fromDen, octave: 0, fold: false)
+                let toHz = RatioMath.hz(rootHz: referenceHz, p: toNum, q: toDen, octave: 0, fold: false)
                 return (fromHz.isFinite && toHz.isFinite) ? (toHz - fromHz) : nil
             }
 
             let centsTol = 0.2
             let hzTol = 0.2
 
-            if matches(5, 4, fromNum, fromDen) && matches(5, 3, toNum, toDen) {
+            if matches(1, 1, fromNum, fromDen) && matches(5, 4, toNum, toDen) {
+                assert(melodic?.p == 4 && melodic?.q == 5)
+                if let cents = melodicCentsValue {
+                    assert(abs(cents - 386.3) <= centsTol)
+                }
+                if let delta = hzDelta() {
+                    assert(abs(delta - 110.0) <= hzTol)
+                }
+            } else if matches(5, 4, fromNum, fromDen) && matches(1, 1, toNum, toDen) {
+                assert(melodic?.p == 5 && melodic?.q == 4)
+                if let cents = melodicCentsValue {
+                    assert(abs(cents + 386.3) <= centsTol)
+                }
+                if let delta = hzDelta() {
+                    assert(abs(delta + 110.0) <= hzTol)
+                }
+            } else if matches(5, 4, fromNum, fromDen) && matches(5, 3, toNum, toDen) {
                 assert(melodic?.p == 4 && melodic?.q == 3)
                 if let cents = melodicCentsValue {
                     assert(abs(cents - 498.0) <= centsTol)
                 }
                 if let delta = hzDelta() {
                     assert(abs(delta - 183.3333333333) <= hzTol)
-                }
-            } else if matches(5, 4, fromNum, fromDen) && matches(1, 1, toNum, toDen) {
-                assert(melodic?.p == 4 && melodic?.q == 5)
-                if let cents = melodicCentsValue {
-                    assert(abs(cents + 386.3) <= centsTol)
-                }
-                if let delta = hzDelta() {
-                    assert(abs(delta + 110.0) <= hzTol)
                 }
             }
         }
