@@ -2868,6 +2868,7 @@ private struct ActionTile: View {
                     glassLayer
                 }
             }
+        .contentShape(shape)
         .overlay(
             shape.stroke(
                 resolved.isDestructive ? Color.white.opacity(0.35) : Color.secondary.opacity(0.15),
@@ -2896,6 +2897,37 @@ private struct ActionTile: View {
         }
     }
 }
+
+#if DEBUG
+struct ActionTileTapArea_Previews: PreviewProvider {
+    static var previews: some View {
+        VStack(spacing: 16) {
+            ActionTile(
+                title: "Open",
+                systemImage: "square.stack.3d.up.fill",
+                style: .standard(.accentColor)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(Color.red.opacity(0.6), lineWidth: 1)
+            )
+
+            ActionTile(
+                title: "Delete",
+                systemImage: "trash",
+                subtitle: "Destructive action",
+                style: .destructive
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(Color.red.opacity(0.6), lineWidth: 1)
+            )
+        }
+        .padding()
+        .previewLayout(.sizeThatFits)
+    }
+}
+#endif
 
 private struct RatioChip: View {
     let ratio: RatioRef
