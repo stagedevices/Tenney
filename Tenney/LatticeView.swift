@@ -48,11 +48,13 @@ enum LatticeGridMode: String, CaseIterable, Identifiable {
 struct LatticeView: View {
     @Environment(\.verticalSizeClass) private var vsc
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.utilityBarHeight) private var utilityBarHeight
 
     @State private var infoCardStaffWidth: CGFloat = 0
     @State private var infoCardHeight: CGFloat = 0
     @State private var chipsHUDHeight: CGFloat = 0
+    @State private var activeDistanceDetail: DistanceDetailSheet.Model? = nil
 
     private struct InfoCardStaffWidthKey: PreferenceKey {
         static var defaultValue: CGFloat = 0
@@ -4380,14 +4382,18 @@ struct LatticeView: View {
            store.tenneyDistanceMode != .off {
 
             let nodes = tenneyDistanceNodes()
-            if nodes.count == 2 {
+            if nodes.count == 2, let pair = store.selectedPair() {
+                let fromLabel = distanceLabel(for: pair.0)
+                let toLabel = distanceLabel(for: pair.1)
                 TenneyDistanceOverlay(
                     a: nodes[0],
                     b: nodes[1],
                     mode: store.tenneyDistanceMode,
-                    theme: activeTheme
+                    theme: activeTheme,
+                    fromLabel: fromLabel,
+                    toLabel: toLabel,
+                    presentDetail: { activeDistanceDetail = $0 }
                 )
-                .allowsHitTesting(false)
             }
         }
     }
@@ -4537,6 +4543,9 @@ struct LatticeView: View {
         .modifier(LandscapeSideUnsafe(isOn: isPhoneLandscape))
         .onPreferenceChange(ChipsHUDHeightKey.self) { chipsHUDHeight = $0 }
         .onPreferenceChange(InfoCardHeightKey.self) { infoCardHeight = $0 }
+        .sheet(item: $activeDistanceDetail) { model in
+            distanceDetailSheet(for: model)
+        }
     }
     
     
@@ -5776,6 +5785,9 @@ struct LatticeView: View {
         let b: TenneyDistanceNode
         let mode: TenneyDistanceMode
         let theme: LatticeTheme
+        let fromLabel: String
+        let toLabel: String
+        let presentDetail: (DistanceDetailSheet.Model) -> Void
 
         var body: some View {
             let A = a.screen
@@ -5799,21 +5811,55 @@ struct LatticeView: View {
                     guard d != 0 else { return nil }
                     return (p, labelFor(prime: p, exp: d))
                 }
+            let totalText = String(format: "H %.2f", H)
 
             VStack(spacing: 6) {
                 // Total (always visible when not .off)
-                GlassChip(text: String(format: "H %.2f", H))
+                Button {
+                    handleChipTap(
+                        DistanceDetailSheet.Model(
+                            fromLabel: fromLabel,
+                            toLabel: toLabel,
+                            metricText: totalText,
+                            tint: .accentColor
+                        )
+                    )
+                } label: {
+                    GlassChip(text: totalText)
+                }
+                .buttonStyle(.plain)
+                .contentShape(Capsule())
 
                 // Breakdown (only in .breakdown)
                 if mode == .breakdown, !parts.isEmpty {
                     HStack(spacing: 6) {
                         ForEach(parts, id: \.prime) { part in
-                            GlassChip(text: part.text, tint: theme.primeTint(part.prime))
+                            Button {
+                                handleChipTap(
+                                    DistanceDetailSheet.Model(
+                                        fromLabel: fromLabel,
+                                        toLabel: toLabel,
+                                        metricText: part.text,
+                                        tint: theme.primeTint(part.prime)
+                                    )
+                                )
+                            } label: {
+                                GlassChip(text: part.text, tint: theme.primeTint(part.prime))
+                            }
+                            .buttonStyle(.plain)
+                            .contentShape(Capsule())
                         }
                     }
                 }
             }
             .position(anchor)
+        }
+
+        private func handleChipTap(_ model: DistanceDetailSheet.Model) {
+#if canImport(UIKit) && !targetEnvironment(macCatalyst)
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+#endif
+            presentDetail(model)
         }
 
         private func tenneyDelta(_ a: [Int:Int], _ b: [Int:Int]) -> [Int:Int] {
@@ -5833,6 +5879,25 @@ struct LatticeView: View {
             }
             let sign = exp > 0 ? "+" : ""
             return "\(prime)^\(sign)\(exp)"
+        }
+    }
+
+    private func distanceLabel(for coord: LatticeCoord) -> String {
+        if let label = planeLabelText(for: coord) {
+            return String(label.characters)
+        }
+        return "(\(coord.e3), \(coord.e5))"
+    }
+
+    @ViewBuilder
+    private func distanceDetailSheet(for model: DistanceDetailSheet.Model) -> some View {
+        let sheet = DistanceDetailSheet(model: model)
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        if #available(iOS 16.4, macOS 13.3, *) {
+            sheet.presentationBackground(reduceTransparency ? .regularMaterial : .ultraThinMaterial)
+        } else {
+            sheet
         }
     }
 
