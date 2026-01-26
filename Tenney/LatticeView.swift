@@ -4392,6 +4392,7 @@ struct LatticeView: View {
                     theme: activeTheme,
                     fromLabel: fromLabel,
                     toLabel: toLabel,
+                    referenceHz: app.rootHz,
                     presentDetail: { activeDistanceDetail = $0 }
                 )
             }
@@ -5787,6 +5788,7 @@ struct LatticeView: View {
         let theme: LatticeTheme
         let fromLabel: String
         let toLabel: String
+        let referenceHz: Double?
         let presentDetail: (DistanceDetailSheet.Model) -> Void
 
         var body: some View {
@@ -5812,16 +5814,21 @@ struct LatticeView: View {
                     return (p, labelFor(prime: p, exp: d))
                 }
             let totalText = String(format: "H %.2f", H)
+            let primeDeltas = makePrimeDeltas(delta)
+            let chips = makeChipMetrics(H: H, primeDeltas: primeDeltas)
+            let endpoints = makeEndpoints()
+            let rows = makeRows(delta: delta, H: H, endpoints: endpoints)
 
             VStack(spacing: 6) {
                 // Total (always visible when not .off)
                 Button {
                     handleChipTap(
-                        DistanceDetailSheet.Model(
-                            fromLabel: fromLabel,
-                            toLabel: toLabel,
-                            metricText: totalText,
-                            tint: .accentColor
+                        detailModel(
+                            primaryMetricID: "H",
+                            chips: chips,
+                            rows: rows,
+                            primeDeltas: primeDeltas,
+                            endpoints: endpoints
                         )
                     )
                 } label: {
@@ -5836,11 +5843,12 @@ struct LatticeView: View {
                         ForEach(parts, id: \.prime) { part in
                             Button {
                                 handleChipTap(
-                                    DistanceDetailSheet.Model(
-                                        fromLabel: fromLabel,
-                                        toLabel: toLabel,
-                                        metricText: part.text,
-                                        tint: theme.primeTint(part.prime)
+                                    detailModel(
+                                        primaryMetricID: "prime-\(part.prime)",
+                                        chips: chips,
+                                        rows: rows,
+                                        primeDeltas: primeDeltas,
+                                        endpoints: endpoints
                                     )
                                 )
                             } label: {
@@ -5879,6 +5887,173 @@ struct LatticeView: View {
             }
             let sign = exp > 0 ? "+" : ""
             return "\(prime)^\(sign)\(exp)"
+        }
+
+        private func detailModel(
+            primaryMetricID: String,
+            chips: [DistanceDetailSheet.ChipMetric],
+            rows: [DistanceDetailSheet.MetricRow],
+            primeDeltas: [DistanceDetailSheet.PrimeDelta],
+            endpoints: (from: DistanceDetailSheet.Endpoint, to: DistanceDetailSheet.Endpoint)
+        ) -> DistanceDetailSheet.Model {
+            DistanceDetailSheet.Model(
+                id: UUID(),
+                from: endpoints.from,
+                to: endpoints.to,
+                primaryMetricID: primaryMetricID,
+                chips: chips,
+                rows: rows,
+                primeDeltas: primeDeltas,
+                referenceHz: referenceHz,
+                tint: .accentColor
+            )
+        }
+
+        private func makeEndpoints() -> (from: DistanceDetailSheet.Endpoint, to: DistanceDetailSheet.Endpoint) {
+            let fromEndpoint = endpointModel(label: fromLabel, exps: a.exps)
+            let toEndpoint = endpointModel(label: toLabel, exps: b.exps)
+            return (fromEndpoint, toEndpoint)
+        }
+
+        private func endpointModel(label: String, exps: [Int:Int]) -> DistanceDetailSheet.Endpoint {
+            let ratioComponents = ratioFromMonzo(exps)
+            let ratioText = ratioComponents.map { RatioMath.unitLabel($0.p, $0.q) } ?? "—"
+            let pitchLabel = label != ratioText ? label : nil
+            return DistanceDetailSheet.Endpoint(
+                ratioText: ratioText,
+                pitchLabelText: pitchLabel,
+                num: ratioComponents?.p,
+                den: ratioComponents?.q,
+                octave: 0
+            )
+        }
+
+        private func ratioFromMonzo(_ monzo: [Int:Int]) -> (p: Int, q: Int)? {
+            let pq = RatioMath.pq(fromMonzo: monzo)
+            guard pq.p > 0, pq.q > 0 else { return nil }
+            return pq
+        }
+
+        private func makePrimeDeltas(_ delta: [Int:Int]) -> [DistanceDetailSheet.PrimeDelta] {
+            delta.keys.sorted().compactMap { prime in
+                let exp = delta[prime, default: 0]
+                guard exp != 0 else { return nil }
+                let display = primeDeltaText(prime: prime, exp: exp)
+                return DistanceDetailSheet.PrimeDelta(
+                    id: "\(prime)",
+                    prime: prime,
+                    exp: exp,
+                    displayText: display,
+                    tint: theme.primeTint(prime)
+                )
+            }
+        }
+
+        private func primeDeltaText(prime: Int, exp: Int) -> String {
+            let sign = exp < 0 ? "−" : "+"
+            return "\(prime): \(sign)\(abs(exp))"
+        }
+
+        private func makeChipMetrics(
+            H: Double,
+            primeDeltas: [DistanceDetailSheet.PrimeDelta]
+        ) -> [DistanceDetailSheet.ChipMetric] {
+            var chips: [DistanceDetailSheet.ChipMetric] = [
+                DistanceDetailSheet.ChipMetric(
+                    id: "H",
+                    title: "Tenney height Δ",
+                    valueText: String(format: "H %.2f", H),
+                    meaningOneLiner: "Log-weighted distance through prime-factor space.",
+                    learnMore: "Tenney height sums |Δeₚ| × log₂(p). Higher values indicate larger prime motion and greater harmonic complexity.",
+                    tint: .accentColor
+                )
+            ]
+            chips.append(contentsOf: primeDeltas.map { delta in
+                DistanceDetailSheet.ChipMetric(
+                    id: "prime-\(delta.prime)",
+                    title: "Prime motion (\(delta.prime))",
+                    valueText: delta.displayText,
+                    meaningOneLiner: "Exponent change for prime \(delta.prime) from From → To.",
+                    learnMore: nil,
+                    tint: delta.tint
+                )
+            })
+            return chips
+        }
+
+        private func makeRows(
+            delta: [Int:Int],
+            H: Double,
+            endpoints: (from: DistanceDetailSheet.Endpoint, to: DistanceDetailSheet.Endpoint)
+        ) -> [DistanceDetailSheet.MetricRow] {
+            let melodicRatio = ratioFromMonzo(delta).map { "\($0.p)/\($0.q)" } ?? "—"
+            let centsValue = ratioFromMonzo(delta).map { RatioMath.centsForRatio($0.p, $0.q) } ?? .nan
+            let centsText = centsValue.isFinite ? String(format: "%+.1f¢", centsValue) : "—"
+            let primeSummary = makePrimeSummary(delta)
+            let freqText = frequencyDeltaText(endpoints: endpoints, referenceHz: referenceHz) ?? "—"
+            let freqFootnote: String? = (referenceHz == nil || freqText == "—") ? "Needs reference pitch" : nil
+
+            return [
+                DistanceDetailSheet.MetricRow(
+                    id: "melodic-ratio",
+                    label: "Melodic ratio",
+                    valueText: melodicRatio,
+                    footnote: nil,
+                    copyText: melodicRatio
+                ),
+                DistanceDetailSheet.MetricRow(
+                    id: "melodic-cents",
+                    label: "Melodic distance",
+                    valueText: centsText,
+                    footnote: nil,
+                    copyText: centsText
+                ),
+                DistanceDetailSheet.MetricRow(
+                    id: "freq-delta",
+                    label: "Frequency Δ",
+                    valueText: freqText,
+                    footnote: freqFootnote,
+                    copyText: freqText
+                ),
+                DistanceDetailSheet.MetricRow(
+                    id: "tenney-height",
+                    label: "Tenney height Δ",
+                    valueText: String(format: "H %.2f", H),
+                    footnote: nil,
+                    copyText: String(format: "H %.2f", H)
+                ),
+                DistanceDetailSheet.MetricRow(
+                    id: "prime-motion",
+                    label: "Prime motion",
+                    valueText: primeSummary,
+                    footnote: nil,
+                    copyText: primeSummary
+                )
+            ]
+        }
+
+        private func makePrimeSummary(_ delta: [Int:Int]) -> String {
+            let summary = delta.keys.sorted().compactMap { prime -> String? in
+                let exp = delta[prime, default: 0]
+                guard exp != 0 else { return nil }
+                return primeDeltaText(prime: prime, exp: exp)
+            }
+            return summary.isEmpty ? "—" : summary.joined(separator: " · ")
+        }
+
+        private func frequencyDeltaText(
+            endpoints: (from: DistanceDetailSheet.Endpoint, to: DistanceDetailSheet.Endpoint),
+            referenceHz: Double?
+        ) -> String? {
+            guard let referenceHz,
+                  let fromNum = endpoints.from.num,
+                  let fromDen = endpoints.from.den,
+                  let toNum = endpoints.to.num,
+                  let toDen = endpoints.to.den else { return nil }
+            let fromHz = RatioMath.hz(rootHz: referenceHz, p: fromNum, q: fromDen, octave: endpoints.from.octave ?? 0, fold: false)
+            let toHz = RatioMath.hz(rootHz: referenceHz, p: toNum, q: toDen, octave: endpoints.to.octave ?? 0, fold: false)
+            guard fromHz.isFinite, toHz.isFinite else { return nil }
+            return String(format: "%+.2f Hz", toHz - fromHz)
         }
     }
 
