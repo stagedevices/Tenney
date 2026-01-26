@@ -1704,6 +1704,8 @@ struct LatticeView: View {
     @State private var lastDrag: CGSize = .zero
     @State private var lastMag: CGFloat = 1
     @State private var magnify: CGFloat = 1
+    @State private var pressActive = false
+    @State private var panThresholdPassed = false
     @State private var focusedPoint: (pos: CGPoint, label: String, etCents: Double, hz: Double, coord: LatticeCoord?, num: Int, den: Int)? = nil
     @State private var lastTapPoint: CGPoint = .zero
     @State private var cometScreen: CGPoint? = nil
@@ -3970,7 +3972,23 @@ struct LatticeView: View {
     /// Long-press to set pivot (nearest plane node to last tap)
     private func longPresser(viewRect: CGRect) -> some Gesture {
         LongPressGesture(minimumDuration: 0.35)
+            .onChanged { _ in
+                guard !overlayPressActive else {
+#if DEBUG
+                    debugLog("[GUARD] overlayPressActive longPress begin \(debugPoint(lastTapPoint)) \(debugCameraState())")
+#endif
+                    return
+                }
+                if !pressActive {
+                    pressActive = true
+#if DEBUG
+                    let coord = hitTestCandidate(at: lastTapPoint, viewRect: viewRect)?.coord
+                    debugLog("[LONGPRESS] state=began pt=\(debugPoint(lastTapPoint)) coord=\(String(describing: coord)) \(debugCameraState())")
+#endif
+                }
+            }
             .onEnded { _ in
+                pressActive = false
                 guard !overlayPressActive else {
 #if DEBUG
                     debugLog("[GUARD] overlayPressActive longPress \(debugPoint(lastTapPoint)) \(debugCameraState())")
@@ -3980,7 +3998,7 @@ struct LatticeView: View {
                 if let cand = hitTestCandidate(at: lastTapPoint, viewRect: viewRect),
                    cand.isPlane, let c = cand.coord {
 #if DEBUG
-                    debugLog("[LATTICE_LONGPRESS] pt=\(debugPoint(lastTapPoint)) coord=\(c) \(debugCameraState())")
+                    debugLog("[LONGPRESS] state=ended pt=\(debugPoint(lastTapPoint)) coord=\(c) \(debugCameraState())")
 #endif
                     store.setPivot(c)
                 }
@@ -4132,7 +4150,7 @@ struct LatticeView: View {
                         },
                         onZoom: { factor in
                             let anchor = zoomAnchor(in: geo)
-                            applyZoom(by: factor, anchor: anchor)
+                            applyZoom(by: factor, anchor: anchor, reason: "TRACKPAD_ZOOM")
                         },
                         onHover: { hovering in
                             isHoveringLattice = hovering
@@ -4194,6 +4212,8 @@ struct LatticeView: View {
         let tap   = tapper(viewRect: viewRect)
         let press = longPresser(viewRect: viewRect)
         let brush = brushGesture(in: geo, viewRect: viewRect)
+        let pressOrTap = press.exclusively(before: tap)
+        let panOrPressTap = pan.exclusively(before: pressOrTap)
         
         let activeHeight = max(0, geo.size.height - bottomHUDHeight)
         
@@ -4201,10 +4221,8 @@ struct LatticeView: View {
             Color.clear
                 .frame(height: activeHeight)
                 .contentShape(Rectangle())
-                .simultaneousGesture(pan, including: .gesture)
+                .gesture(panOrPressTap, including: .gesture)
                 .simultaneousGesture(pinch, including: .gesture)
-                .simultaneousGesture(tap, including: .gesture)
-                .simultaneousGesture(press, including: .gesture)
                 .simultaneousGesture(brush, including: .gesture)
 
             
@@ -5545,9 +5563,12 @@ struct LatticeView: View {
     }
 
     private func applyTrackpadPan(delta: CGSize) {
-        let before = store.camera.translation
+        let before = store.camera
         store.camera.pan(by: delta)
-        logTrackpadPan(delta: delta, before: before, after: store.camera.translation)
+        logTrackpadPan(delta: delta, before: before.translation, after: store.camera.translation)
+#if DEBUG
+        logCameraChange(reason: "PAN_CHANGED", before: before, after: store.camera)
+#endif
     }
 
     private func zoomAnchor(in geo: GeometryProxy) -> CGPoint {
@@ -5556,17 +5577,24 @@ struct LatticeView: View {
         pointerInLattice ?? CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)
     }
 
-    private func applyZoom(by factor: CGFloat, anchor: CGPoint) {
+    private func applyZoom(by factor: CGFloat, anchor: CGPoint, reason: String) {
         let before = store.camera
         store.camera.zoom(by: factor, anchor: anchor)
         logZoom(factor: factor, anchor: anchor, before: before, after: store.camera)
+#if DEBUG
+        logCameraChange(reason: reason, before: before, after: store.camera)
+#endif
     }
 #else
     private func zoomAnchor(in geo: GeometryProxy) -> CGPoint {
         CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)
     }
-    private func applyZoom(by factor: CGFloat, anchor: CGPoint) {
+    private func applyZoom(by factor: CGFloat, anchor: CGPoint, reason: String) {
+        let before = store.camera
         store.camera.zoom(by: factor, anchor: anchor)
+#if DEBUG
+        logCameraChange(reason: reason, before: before, after: store.camera)
+#endif
     }
 #endif
 
@@ -5584,9 +5612,8 @@ struct LatticeView: View {
         String(format: "%.1f, %.1f", size.width, size.height)
     }
 
-    private func debugCameraState() -> String {
-        let cam = store.camera
-        return String(
+    private func debugCameraState(_ cam: LatticeCamera) -> String {
+        String(
             format: "cam=(tx:%.2f ty:%.2f scale:%.2f) origin=%@",
             cam.translation.x,
             cam.translation.y,
@@ -5594,12 +5621,21 @@ struct LatticeView: View {
             debugPoint(cam.worldToScreen(.zero))
         )
     }
+
+    private func debugCameraState() -> String {
+        debugCameraState(store.camera)
+    }
+
+    private func logCameraChange(reason: String, before: LatticeCamera, after: LatticeCamera) {
+        debugLog("[CAM] reason=\(reason) before=\(debugCameraState(before)) after=\(debugCameraState(after))")
+    }
 #endif
     
     // MARK: - Gestures
     
     private func panGesture() -> some Gesture {
-        DragGesture(minimumDistance: 2)
+        let threshold: CGFloat = 8
+        return DragGesture(minimumDistance: threshold)
             .onChanged { v in
 #if DEBUG
                 if overlayPressActive {
@@ -5607,23 +5643,53 @@ struct LatticeView: View {
                 }
 #endif
                 guard !overlayPressActive else { return }
+                let translation = v.translation
+                let distance = hypot(translation.width, translation.height)
+                let passedThreshold = distance >= threshold
+#if DEBUG
+                debugLog("[PAN] state=changed translation=\(debugSize(translation)) passedThreshold=\(passedThreshold)")
+#endif
+                if pressActive && !passedThreshold {
+#if DEBUG
+                    debugLog("[GUARD] pressActive pan \(debugPoint(v.location))")
+#endif
+                    return
+                }
+                guard passedThreshold else { return }
+                if pressActive {
+                    pressActive = false
+                }
+                if !panThresholdPassed {
+                    panThresholdPassed = true
+                }
+#if DEBUG
+                assert(!pressActive, "Press should not remain active while panning")
+#endif
 #if targetEnvironment(macCatalyst)
                 isMousePanning = true
 #endif
-                let dx = v.translation.width - lastDrag.width
-                let dy = v.translation.height - lastDrag.height
+                let before = store.camera
+                let dx = translation.width - lastDrag.width
+                let dy = translation.height - lastDrag.height
 #if DEBUG
                 debugLog("[LATTICE_DRAG] begin=\(debugPoint(v.startLocation)) delta=\(debugSize(v.translation)) \(debugCameraState())")
 #endif
                 store.camera.pan(by: CGSize(width: dx, height: dy))
+#if DEBUG
+                logCameraChange(reason: "PAN_CHANGED", before: before, after: store.camera)
+#endif
                 lastDrag = v.translation
             }
             .onEnded { v in
                 let pan = hypot(v.translation.width, v.translation.height)
-                if pan > 0.5 {
+#if DEBUG
+                debugLog("[PAN] state=ended translation=\(debugSize(v.translation)) passedThreshold=\(panThresholdPassed)")
+#endif
+                if panThresholdPassed, pan > 0.5 {
                     LearnEventBus.shared.send(.latticeCameraChanged(pan: Double(pan), zoom: 1.0))
                 }
                 lastDrag = .zero
+                panThresholdPassed = false
 #if targetEnvironment(macCatalyst)
                 isMousePanning = false
 #endif
@@ -5637,7 +5703,7 @@ struct LatticeView: View {
                 // apply *delta* zoom for smoothness
                 let factor = max(0.5, min(2.0, scale / max(0.01, lastMag)))
                 let anchor = zoomAnchor(in: geo)
-                applyZoom(by: factor, anchor: anchor)
+                applyZoom(by: factor, anchor: anchor, reason: "PINCH_CHANGED")
                 lastMag = scale
             }
             .onEnded { scale in
