@@ -33,6 +33,7 @@ struct LockTargetSheet: View {
 
     @FocusState private var focusedField: Field?
     @State private var showKeypad: Bool = false
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
 
     private enum Field {
         case numerator
@@ -69,6 +70,10 @@ struct LockTargetSheet: View {
 #endif
     }
 
+    private var isPhoneLandscape: Bool {
+        isPhone && verticalSizeClass == .compact
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -83,13 +88,27 @@ struct LockTargetSheet: View {
             }
             .navigationTitle("Lock Target")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(action: onCancel) {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Circle())
+                            .modifier(GlassBlueCircle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Done")
+                }
+            }
         }
     }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 12) {
             LockFieldPill(
-                size: .large,
+                size: isPhoneLandscape ? .compact : .large,
                 isLocked: lockedTarget != nil,
                 displayText: displayRatioText,
                 tint: tint,
@@ -116,16 +135,30 @@ struct LockTargetSheet: View {
     }
 
     private var sectionLayout: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .top, spacing: 16) {
-                enterSection
-                pickSection
-            }
-            .frame(minWidth: 680)
+        Group {
+            if isPhoneLandscape {
+                GeometryReader { proxy in
+                    HStack(alignment: .top, spacing: 16) {
+                        enterSection
+                            .frame(maxWidth: (proxy.size.width - 16) / 2)
+                        pickSection
+                            .frame(maxWidth: (proxy.size.width - 16) / 2)
+                    }
+                }
+                .frame(minHeight: 0)
+            } else {
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: 16) {
+                        enterSection
+                        pickSection
+                    }
+                    .frame(minWidth: 680)
 
-            VStack(alignment: .leading, spacing: 16) {
-                enterSection
-                pickSection
+                    VStack(alignment: .leading, spacing: 16) {
+                        enterSection
+                        pickSection
+                    }
+                }
             }
         }
     }
@@ -350,7 +383,7 @@ struct LockTargetSheet: View {
 #if os(iOS) && !targetEnvironment(macCatalyst)
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
 #endif
-                })
+                }, isDestructive: true)
                 .disabled(!isValid)
                 .opacity(isValid ? 1 : 0.6)
             }
@@ -508,16 +541,18 @@ private extension LockTargetSheet {
         fillsWidth: Bool = true,
         action: @escaping () -> Void
     ) -> some View {
-        Button(action: action) {
-            let label = HStack(spacing: 6) {
-                Image(systemName: systemImage)
-                Text(title)
-                    .font(.callout.weight(.semibold))
-            }
-            .frame(maxWidth: fillsWidth ? .infinity : nil, minHeight: minHeight)
-            .padding(.horizontal, horizontalPadding)
-            .foregroundStyle(isDestructive ? .white : (tint ?? .primary))
+        let roundedRect = RoundedRectangle(cornerRadius: 12, style: .continuous)
+        let label = HStack(spacing: 6) {
+            Image(systemName: systemImage)
+            Text(title)
+                .font(.callout.weight(.semibold))
+        }
+        .frame(maxWidth: fillsWidth ? .infinity : nil, minHeight: minHeight)
+        .padding(.horizontal, horizontalPadding)
+        .foregroundStyle(isDestructive ? .white : (tint ?? .primary))
+        .background(roundedRect.fill(Color.clear))
 
+        return Button(action: action) {
             Group {
                 if isDestructive {
                     label.modifier(GlassRedRoundedRect(corner: 12))
@@ -527,6 +562,7 @@ private extension LockTargetSheet {
             }
         }
         .buttonStyle(GlassPressFeedback())
+        .contentShape(roundedRect)
     }
 }
 
