@@ -83,6 +83,7 @@ private let libraryStore = ScaleLibraryStore.shared
         ]
     @State private var frozenBackdrop: UIImage? = nil // ← snapshot shown behind the wizard
     @State private var wizardTopY: CGFloat = .nan    // ← measured top of the wizard (global coords)
+    @State private var utilityBarHeight: CGFloat = 0
     // In ContentView.swift (top-level state)
     @AppStorage(SettingsKeys.lastSeenBuild) private var lastSeenBuild: String = ""
     @State private var showWhatsNew = false
@@ -376,6 +377,13 @@ private let libraryStore = ScaleLibraryStore.shared
         }
     }
 
+    private struct UtilityBarHeightPreferenceKey: PreferenceKey {
+        static var defaultValue: CGFloat = 0
+        static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+            value = max(value, nextValue())
+        }
+    }
+
     // MARK: Main content (tuner or lattice)
     private var mainContent: some View {
         let base = coreContent
@@ -385,6 +393,7 @@ private let libraryStore = ScaleLibraryStore.shared
             .onChange(of: stageActive) { on in updateIdleTimer(stageOn: on) }
             .onChange(of: stageKeepAwake) { keep in updateIdleTimer(keepAwake: keep) }
             .safeAreaInset(edge: .bottom) { if !stageActive { utilityBarInset } }
+            .onPreferenceChange(UtilityBarHeightPreferenceKey.self) { utilityBarHeight = $0 }
             .onChange(of: mode) { new in
                 if practiceActive {
                     if new != .lattice { mode = .lattice }
@@ -463,6 +472,7 @@ private let libraryStore = ScaleLibraryStore.shared
     private var latticeContent: some View {
         LatticeScreen()
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .environment(\.utilityBarHeight, utilityBarHeight)
     }
 
     private var tunerCardView: some View {
@@ -619,6 +629,11 @@ private let libraryStore = ScaleLibraryStore.shared
             showRootStudio: $showRootStudio,
             rootNS: rootNS,
             defaultView: defaultView
+        )
+        .background(
+            GeometryReader { proxy in
+                Color.clear.preference(key: UtilityBarHeightPreferenceKey.self, value: proxy.size.height)
+            }
         )
     }
     private var settingsSheet: some View {
@@ -2003,6 +2018,7 @@ private struct RailView: View {
 private struct UtilityBar: View {
 
     @EnvironmentObject private var app: AppModel
+    @Environment(\.verticalSizeClass) private var vsc
     @AppStorage(SettingsKeys.noteNameA4Hz) private var noteNameA4Hz: Double = 440
     @AppStorage(SettingsKeys.tonicNameMode) private var tonicNameModeRaw: String = TonicNameMode.auto.rawValue
     @AppStorage(SettingsKeys.tonicE3) private var tonicE3: Int = 0
@@ -2035,6 +2051,10 @@ private struct UtilityBar: View {
 
     private func nudgeRootHz(_ delta: Double) {
         setRootHz(app.rootHz + delta)
+    }
+
+    private var isPhoneLandscape: Bool {
+        UIDevice.current.userInterfaceIdiom == .phone && vsc == .compact
     }
 
 
@@ -2307,103 +2327,150 @@ private struct UtilityBar: View {
 
 
 
-    var body: some View {
-        HStack {
+    private var leadingCluster: some View {
+        Group {
             if practiceActive {
                 HStack(spacing: 8) {
                     Image(systemName: "graduationcap.fill").imageScale(.medium)
                     Text("Lattice Practice").font(.footnote.weight(.semibold))
                 }
                 .foregroundStyle(.secondary)
-                .padding(.trailing, 8)
             } else {
                 modeSwitch
-                    .padding(.trailing, 8)
             }
+        }
+        .padding(.trailing, isPhoneLandscape ? 0 : 8)
+    }
 
+    @ViewBuilder
+    private var auditionOrTuner: some View {
+        if mode == .lattice {
+            Button {
+                app.latticeAuditionOn.toggle()
+                LearnEventBus.shared.send(.latticeAuditionEnabledChanged(app.latticeAuditionOn))
+            } label: {
+                let on = app.latticeAuditionOn
 
-            // In lattice mode, show a clear, tappable Sound toggle for audition
-            if mode == .lattice {
-                Button {
-                    app.latticeAuditionOn.toggle()
-                    LearnEventBus.shared.send(.latticeAuditionEnabledChanged(app.latticeAuditionOn))
-                } label: {
-                    let on = app.latticeAuditionOn
-
-                    auditionPillLabel(on: on)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(auditionChrome(on: on))
-                        .contentShape(Capsule())
-                        .animation(.snappy(duration: 0.22), value: on)
-                        .sensoryFeedback(.success, trigger: on)
-                }
-                .buttonStyle(.plain)
-                .tenneyChromaShadow(true)
-                .accessibilityLabel(app.latticeAuditionOn ? "Audition sound on" : "Audition sound off")
-            } else {
+                auditionPillLabel(on: on)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(auditionChrome(on: on))
+                    .contentShape(Capsule())
+                    .animation(.snappy(duration: 0.22), value: on)
+                    .sensoryFeedback(.success, trigger: on)
+            }
+            .buttonStyle(.plain)
+            .tenneyChromaShadow(true)
+            .accessibilityLabel(app.latticeAuditionOn ? "Audition sound on" : "Audition sound off")
+        } else {
+            HStack(spacing: 6) {
                 Image(systemName: tunerStatusIcon)
                     .imageScale(.large)
                 Text(tunerStatusText)
             }
-            Spacer()
-
-            Button {
-                showRootStudio = true
-            } label: {
-                let isEditing = showRootStudio
-                let rr = RoundedRectangle(cornerRadius: rootCorner, style: .continuous)
-
-                rootChipLabel
-                    .foregroundStyle(Color.primary)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background { rootChipBackground(isEditing: isEditing) }
-                    .overlay(rootChipStroke(isEditing: isEditing))
-                    .clipShape(rr)
-                    .contentShape(rr)
-                    .animation(.snappy(duration: 0.22), value: isEditing)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Root pitch")
-            .accessibilityValue(String(format: "%.1f hertz", app.rootHz))
-            .sensoryFeedback(.selection, trigger: rootFeedbackToken)
-            .onChange(of: app.rootHz) { _ in
-                rootFeedbackToken &+= 1
-            }
-            .contextMenu {
-                Button("415.0 Hz") { setRootHz(415.0) }
-                Button("432.0 Hz") { setRootHz(432.0) }
-                Button("440.0 Hz") { setRootHz(440.0) }
-
-                Divider()
-
-                Button("−0.1") { nudgeRootHz(-0.1) }
-                Button("+0.1") { nudgeRootHz(0.1) }
-                Button("−1.0") { nudgeRootHz(-1.0) }
-                Button("+1.0") { nudgeRootHz(1.0) }
-
-                Divider()
-
-                Button("Reset to default") { setRootHz(440.0) }
-            }
-
-            // Gear
-            Button {
-                showSettings = true
-            } label: {
-                Image(systemName: "gearshape.fill")
-                    .imageScale(.large)
-                    .symbolRenderingMode(.hierarchical)
-                    .padding(.leading, 10)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Settings")
         }
-        .frame(height: 38)  // slimmer bar
-        .font(.footnote)
-        .padding(.horizontal, 12).padding(.vertical, 6)
-        .background(.ultraThinMaterial)
+    }
+
+    private var rootChipButton: some View {
+        Button {
+            showRootStudio = true
+        } label: {
+            let isEditing = showRootStudio
+            let rr = RoundedRectangle(cornerRadius: rootCorner, style: .continuous)
+
+            rootChipLabel
+                .foregroundStyle(Color.primary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background { rootChipBackground(isEditing: isEditing) }
+                .overlay(rootChipStroke(isEditing: isEditing))
+                .clipShape(rr)
+                .contentShape(rr)
+                .animation(.snappy(duration: 0.22), value: isEditing)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Root pitch")
+        .accessibilityValue(String(format: "%.1f hertz", app.rootHz))
+        .sensoryFeedback(.selection, trigger: rootFeedbackToken)
+        .onChange(of: app.rootHz) { _ in
+            rootFeedbackToken &+= 1
+        }
+        .contextMenu {
+            Button("415.0 Hz") { setRootHz(415.0) }
+            Button("432.0 Hz") { setRootHz(432.0) }
+            Button("440.0 Hz") { setRootHz(440.0) }
+
+            Divider()
+
+            Button("−0.1") { nudgeRootHz(-0.1) }
+            Button("+0.1") { nudgeRootHz(0.1) }
+            Button("−1.0") { nudgeRootHz(-1.0) }
+            Button("+1.0") { nudgeRootHz(1.0) }
+
+            Divider()
+
+            Button("Reset to default") { setRootHz(440.0) }
+        }
+    }
+
+    private var gearButton: some View {
+        Button {
+            showSettings = true
+        } label: {
+            Image(systemName: "gearshape.fill")
+                .imageScale(.large)
+                .symbolRenderingMode(.hierarchical)
+                .padding(.leading, isPhoneLandscape ? 0 : 10)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Settings")
+    }
+
+    @ViewBuilder
+    private var barContent: some View {
+        if isPhoneLandscape {
+            HStack(spacing: 10) {
+                leadingCluster
+                auditionOrTuner
+                rootChipButton
+                gearButton
+            }
+        } else {
+            HStack {
+                leadingCluster
+                auditionOrTuner
+                Spacer()
+                rootChipButton
+                gearButton
+            }
+        }
+    }
+
+    var body: some View {
+        let base = barContent
+            .frame(height: 38)  // slimmer bar
+            .font(.footnote)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+
+        if isPhoneLandscape {
+            Group {
+                if #available(iOS 26.0, *) {
+                    base.glassEffect(.regular, in: Capsule())
+                } else {
+                    base.background(reduceTransparency ? .thinMaterial : .ultraThinMaterial, in: Capsule())
+                }
+            }
+            .overlay(Capsule().stroke(Color.secondary.opacity(0.12), lineWidth: 1))
+            .shadow(
+                color: Color.black.opacity(reduceTransparency ? 0.06 : 0.12),
+                radius: 8,
+                y: 3
+            )
+            .fixedSize(horizontal: true, vertical: true)
+        } else {
+            base.background(.ultraThinMaterial)
+        }
     }
 }
 // Small helper to apply glass on iOS 26 only
