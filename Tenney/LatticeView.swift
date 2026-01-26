@@ -4382,6 +4382,39 @@ struct LatticeView: View {
                     )
                 }
 
+                TenneyDistanceOverlay(
+                    a: nodes[0],
+                    b: nodes[1],
+                    mode: store.tenneyDistanceMode,
+                    totalChip: totalChip,
+                    breakdownChips: breakdownChips
+                )
+
+                let totalChip = DistanceChipDetail(
+                    text: totalText,
+                    tint: .accentColor,
+                    model: base.map { baseModel in
+                        distanceDetailModel(
+                            base: baseModel,
+                            heroTitle: "Tenney distance",
+                            heroValue: totalText
+                        )
+                    }
+                )
+                let breakdownChips = parts.map { part in
+                    DistanceChipDetail(
+                        text: part.text,
+                        tint: activeTheme.primeTint(part.prime),
+                        model: base.map { baseModel in
+                            distanceDetailModel(
+                                base: baseModel,
+                                heroTitle: "Prime delta",
+                                heroValue: part.text
+                            )
+                        }
+                    )
+                }
+
                 ZStack {
                     TenneyDistanceOverlay(
                         a: nodes[0],
@@ -4402,6 +4435,65 @@ struct LatticeView: View {
                         presentDetail: presentDistanceDetailSheet
                     )
                 }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var tenneyOverlayHitTargets: some View {
+        if !latticePreviewMode &&
+           !latticePreviewHideDistance &&
+           store.tenneyDistanceMode != .off {
+
+            let nodes = tenneyDistanceNodes()
+            if nodes.count == 2 {
+                let delta = tenneyDelta(nodes[0].exps, nodes[1].exps)
+                let totalText = String(format: "H %.2f", tenneyHeightDelta(delta))
+                let parts: [(prime: Int, text: String)] =
+                    delta.keys.sorted().compactMap { p in
+                        let d = delta[p, default: 0]
+                        guard d != 0 else { return nil }
+                        return (p, tenneyPartLabel(prime: p, exp: d))
+                    }
+                let monzoDeltaText = parts.isEmpty ? nil : parts.map(\.text).joined(separator: " ")
+                let base = distanceDetailBase(
+                    tenneyDistanceText: totalText,
+                    monzoDeltaText: monzoDeltaText
+                )
+
+                let totalChip = DistanceChipDetail(
+                    text: totalText,
+                    tint: .accentColor,
+                    model: base.map { baseModel in
+                        distanceDetailModel(
+                            base: baseModel,
+                            heroTitle: "Tenney distance",
+                            heroValue: totalText
+                        )
+                    }
+                )
+                let breakdownChips = parts.map { part in
+                    DistanceChipDetail(
+                        text: part.text,
+                        tint: activeTheme.primeTint(part.prime),
+                        model: base.map { baseModel in
+                            distanceDetailModel(
+                                base: baseModel,
+                                heroTitle: "Prime delta",
+                                heroValue: part.text
+                            )
+                        }
+                    )
+                }
+
+                TenneyDistanceOverlayHitTargets(
+                    a: nodes[0],
+                    b: nodes[1],
+                    mode: store.tenneyDistanceMode,
+                    totalChip: totalChip,
+                    breakdownChips: breakdownChips,
+                    presentDetail: presentDistanceDetailSheet
+                )
             }
         }
     }
@@ -4489,6 +4581,7 @@ struct LatticeView: View {
                 }
             
                 .overlay { tenneyOverlay }
+                .overlay { tenneyOverlayHitTargets }
                 .onChange(of: latticePreviewMode) { isPreview in
                     if isPreview { bottomHUDHeight = 0 }
                 }
@@ -5688,7 +5781,6 @@ struct LatticeView: View {
         let mode: TenneyDistanceMode
         let totalChip: DistanceChipDetail
         let breakdownChips: [DistanceChipDetail]
-        let presentDetail: (DistanceDetailSheet.Model) -> Void
 
         var body: some View {
             let A = a.screen
