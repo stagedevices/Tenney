@@ -4390,30 +4390,6 @@ struct LatticeView: View {
                     breakdownChips: breakdownChips
                 )
 
-                let totalChip = DistanceChipDetail(
-                    text: totalText,
-                    tint: .accentColor,
-                    model: base.map { baseModel in
-                        distanceDetailModel(
-                            base: baseModel,
-                            heroTitle: "Tenney distance",
-                            heroValue: totalText
-                        )
-                    }
-                )
-                let breakdownChips = parts.map { part in
-                    DistanceChipDetail(
-                        text: part.text,
-                        tint: activeTheme.primeTint(part.prime),
-                        model: base.map { baseModel in
-                            distanceDetailModel(
-                                base: baseModel,
-                                heroTitle: "Prime delta",
-                                heroValue: part.text
-                            )
-                        }
-                    )
-                }
 
                 ZStack {
                     TenneyDistanceOverlay(
@@ -4422,7 +4398,6 @@ struct LatticeView: View {
                         mode: store.tenneyDistanceMode,
                         totalChip: totalChip,
                         breakdownChips: breakdownChips,
-                        presentDetail: presentDistanceDetailSheet
                     )
                     .allowsHitTesting(false)
 
