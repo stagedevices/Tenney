@@ -513,6 +513,18 @@ enum HejiNotation {
 
     // MARK: - Staff layout helpers
 
+    /// Shared staff-step mapping for renderer-only helpers.
+    static func staffStepFromMiddleForRendering(letter: String, octave: Int, clef: HejiStaffLayout.Clef) -> Int {
+        staffStepFromMiddle(letter: letter, octave: octave, clef: clef)
+    }
+
+    /// Staff-step span for one octave, based on the same diatonic mapping used by staff layout.
+    static func staffStepSpanForOctave(clef: HejiStaffLayout.Clef, referenceLetter: String = "C", referenceOctave: Int = 4) -> Int {
+        let base = staffStepFromMiddle(letter: referenceLetter, octave: referenceOctave, clef: clef)
+        let upper = staffStepFromMiddle(letter: referenceLetter, octave: referenceOctave + 1, clef: clef)
+        return upper - base
+    }
+
     private static func autoClef(forOctave octave: Int) -> HejiStaffLayout.Clef {
         // Heuristic: treble at middle C (C4) and above; bass below.
         return octave >= 4 ? .treble : .bass
