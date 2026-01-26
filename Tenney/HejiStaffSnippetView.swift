@@ -62,16 +62,36 @@ struct HejiStaffSnippetView: View {
 
         switch clef {
         case .treble:
-            if originalStep > trebleMaxStep {
-                return OctaveAssist(writtenStep: originalStep - octaveSteps, shiftOctaves: 1, mark: "8va")
+            var writtenStep = originalStep
+            var shifts = 0
+            while writtenStep > trebleMaxStep && shifts < 3 {
+                writtenStep -= octaveSteps
+                shifts += 1
             }
+            let mark: String?
+            switch shifts {
+            case 1: mark = "8va"
+            case 2: mark = "15ma"
+            case 3: mark = "22ma"
+            default: mark = nil
+            }
+            return OctaveAssist(writtenStep: writtenStep, shiftOctaves: shifts, mark: mark)
         case .bass:
-            if originalStep < bassMinStep {
-                return OctaveAssist(writtenStep: originalStep + octaveSteps, shiftOctaves: -1, mark: "8vb")
+            var writtenStep = originalStep
+            var shifts = 0
+            while writtenStep < bassMinStep && shifts < 3 {
+                writtenStep += octaveSteps
+                shifts += 1
             }
+            let mark: String?
+            switch shifts {
+            case 1: mark = "8vb"
+            case 2: mark = "15mb"
+            case 3: mark = "22mb"
+            default: mark = nil
+            }
+            return OctaveAssist(writtenStep: writtenStep, shiftOctaves: -shifts, mark: mark)
         }
-
-        return OctaveAssist(writtenStep: originalStep, shiftOctaves: 0, mark: nil)
     }
 
     var body: some View {
@@ -165,16 +185,18 @@ struct HejiStaffSnippetView_Previews: PreviewProvider {
             Text("Treble")
                 .font(.caption.weight(.semibold))
             HStack(spacing: 12) {
-                HejiStaffSnippetView(layout: previewLayout(letter: "C", octave: 5, clef: .treble))
-                HejiStaffSnippetView(layout: previewLayout(letter: "B", octave: 5, clef: .treble))
-                HejiStaffSnippetView(layout: previewLayout(letter: "G", octave: 5, clef: .treble))
+                HejiStaffSnippetView(layout: previewLayout(letter: "A", octave: 5, clef: .treble))
+                HejiStaffSnippetView(layout: previewLayout(letter: "C", octave: 6, clef: .treble))
+                HejiStaffSnippetView(layout: previewLayout(letter: "E", octave: 7, clef: .treble))
+                HejiStaffSnippetView(layout: previewLayout(letter: "G", octave: 8, clef: .treble))
             }
             Text("Bass")
                 .font(.caption.weight(.semibold))
             HStack(spacing: 12) {
-                HejiStaffSnippetView(layout: previewLayout(letter: "D", octave: 3, clef: .bass))
-                HejiStaffSnippetView(layout: previewLayout(letter: "F", octave: 2, clef: .bass))
-                HejiStaffSnippetView(layout: previewLayout(letter: "A", octave: 2, clef: .bass))
+                HejiStaffSnippetView(layout: previewLayout(letter: "G", octave: 2, clef: .bass))
+                HejiStaffSnippetView(layout: previewLayout(letter: "E", octave: 2, clef: .bass))
+                HejiStaffSnippetView(layout: previewLayout(letter: "C", octave: 1, clef: .bass))
+                HejiStaffSnippetView(layout: previewLayout(letter: "A", octave: 0, clef: .bass))
             }
         }
         .padding()
