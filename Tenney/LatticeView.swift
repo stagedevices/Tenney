@@ -143,6 +143,12 @@ struct LatticeView: View {
 
     // Hold-to-toggle-all for overlay prime chips (7+)
     @State private var overlayPrimeHoldConsumedTap = false
+    @State private var overlayPressActive = false
+
+    private let latticeCoordinateSpaceName = "LatticeSpace"
+#if DEBUG
+    private let latticeGestureDebugEnabled = false
+#endif
 
     private var overlayChipPrimes: [Int] {
         PrimeConfig.primes.filter { $0 != 2 && $0 != 3 && $0 != 5 }
@@ -3965,8 +3971,17 @@ struct LatticeView: View {
     private func longPresser(viewRect: CGRect) -> some Gesture {
         LongPressGesture(minimumDuration: 0.35)
             .onEnded { _ in
+                guard !overlayPressActive else {
+#if DEBUG
+                    debugLog("[GUARD] overlayPressActive longPress \(debugPoint(lastTapPoint)) \(debugCameraState())")
+#endif
+                    return
+                }
                 if let cand = hitTestCandidate(at: lastTapPoint, viewRect: viewRect),
                    cand.isPlane, let c = cand.coord {
+#if DEBUG
+                    debugLog("[LATTICE_LONGPRESS] pt=\(debugPoint(lastTapPoint)) coord=\(c) \(debugCameraState())")
+#endif
                     store.setPivot(c)
                 }
             }
@@ -4374,6 +4389,7 @@ struct LatticeView: View {
                     .onPreferenceChange(SelectionTrayHeightKey.self) { trayHeight = $0 }
                     .onPreferenceChange(BottomHUDHeightKey.self) { bottomHUDHeight = $0 }
             }
+            .coordinateSpace(name: latticeCoordinateSpaceName)
             .onAppear { viewSize = geo.size }
             .onChange(of: geo.size) { viewSize = $0 }
 #if targetEnvironment(macCatalyst)
@@ -4846,6 +4862,25 @@ struct LatticeView: View {
             }
             .padding(8)
         }
+        .contentShape(Rectangle())
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0, coordinateSpace: .named(latticeCoordinateSpaceName))
+                .onChanged { value in
+                    if !overlayPressActive {
+                        overlayPressActive = true
+#if DEBUG
+                        debugLog("[CHIP_PRESS] kind=overlay begin pt=\(debugPoint(value.location)) \(debugCameraState())")
+#endif
+                    }
+                }
+                .onEnded { value in
+                    overlayPressActive = false
+#if DEBUG
+                    debugLog("[CHIP_PRESS] kind=overlay end pt=\(debugPoint(value.location)) \(debugCameraState())")
+#endif
+                }
+        )
+        .onDisappear { overlayPressActive = false }
         // iOS 26-ish depth: shadow each chip, not the whole rail
         .compositingGroup()
         .shadow(color: Color.black.opacity(theme.isDark ? 0.22 : 0.14), radius: 6, x: 0, y: 2)
@@ -5534,17 +5569,52 @@ struct LatticeView: View {
         store.camera.zoom(by: factor, anchor: anchor)
     }
 #endif
+
+#if DEBUG
+    private func debugLog(_ message: @autoclosure () -> String) {
+        guard latticeGestureDebugEnabled else { return }
+        print(message())
+    }
+
+    private func debugPoint(_ point: CGPoint) -> String {
+        String(format: "%.1f, %.1f", point.x, point.y)
+    }
+
+    private func debugSize(_ size: CGSize) -> String {
+        String(format: "%.1f, %.1f", size.width, size.height)
+    }
+
+    private func debugCameraState() -> String {
+        let cam = store.camera
+        return String(
+            format: "cam=(tx:%.2f ty:%.2f scale:%.2f) origin=%@",
+            cam.translation.x,
+            cam.translation.y,
+            cam.scale,
+            debugPoint(cam.worldToScreen(.zero))
+        )
+    }
+#endif
     
     // MARK: - Gestures
     
     private func panGesture() -> some Gesture {
         DragGesture(minimumDistance: 2)
             .onChanged { v in
+#if DEBUG
+                if overlayPressActive {
+                    debugLog("[GUARD] overlayPressActive pan \(debugPoint(v.location))")
+                }
+#endif
+                guard !overlayPressActive else { return }
 #if targetEnvironment(macCatalyst)
                 isMousePanning = true
 #endif
                 let dx = v.translation.width - lastDrag.width
                 let dy = v.translation.height - lastDrag.height
+#if DEBUG
+                debugLog("[LATTICE_DRAG] begin=\(debugPoint(v.startLocation)) delta=\(debugSize(v.translation)) \(debugCameraState())")
+#endif
                 store.camera.pan(by: CGSize(width: dx, height: dy))
                 lastDrag = v.translation
             }
@@ -5563,6 +5633,7 @@ struct LatticeView: View {
     private func pinchGesture(in geo: GeometryProxy) -> some Gesture {
         MagnificationGesture()
             .onChanged { scale in
+                guard !overlayPressActive else { return }
                 // apply *delta* zoom for smoothness
                 let factor = max(0.5, min(2.0, scale / max(0.01, lastMag)))
                 let anchor = zoomAnchor(in: geo)
@@ -5578,6 +5649,7 @@ struct LatticeView: View {
     private func brushGesture(in geo: GeometryProxy, viewRect: CGRect) -> some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { v in
+                guard !overlayPressActive else { return }
                 guard store.mode == .select else { return }
                 // world-space sample
                 let world = store.camera.screenToWorld(v.location)
@@ -5673,6 +5745,10 @@ struct LatticeView: View {
         at point: CGPoint,
         viewRect: CGRect
     ) -> (pos: CGPoint, label: String, isPlane: Bool, coord: LatticeCoord?, p: Int, q: Int, ghost: (prime:Int, e3:Int, e5:Int, eP:Int)?)? {
+
+#if DEBUG
+    debugLog("[HITTEST] pt=\(debugPoint(point)) pivot=\(store.pivot) axisShift=\(store.axisShift) \(debugCameraState())")
+#endif
 
     // Screen-space radii so overlays can't steal taps from plane nodes.
     let screenRadiusPlane:   CGFloat = 18
