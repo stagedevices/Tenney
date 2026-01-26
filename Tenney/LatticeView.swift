@@ -4476,7 +4476,7 @@ struct LatticeView: View {
                     }
                 }
             
-                .overlay { tenneyOverlay }
+                .overlay(alignment: .topLeading) { tenneyOverlay }
                 .onChange(of: latticePreviewMode) { isPreview in
                     if isPreview { bottomHUDHeight = 0 }
                 }
@@ -5670,6 +5670,13 @@ struct LatticeView: View {
         let model: DistanceDetailSheet.Model?
     }
 
+    private struct TenneyDistanceChipStackSizeKey: PreferenceKey {
+        static var defaultValue: CGSize = .zero
+        static func reduce(value: inout CGSize, nextValue: () -> CGSize) {
+            value = nextValue()
+        }
+    }
+
     private struct TenneyDistanceOverlay: View {
         let a: TenneyDistanceNode
         let b: TenneyDistanceNode
@@ -5677,6 +5684,8 @@ struct LatticeView: View {
         let totalChip: DistanceChipDetail
         let breakdownChips: [DistanceChipDetail]
         let presentDetail: (DistanceDetailSheet.Model) -> Void
+
+        @State private var chipStackSize: CGSize = .zero
 
         var body: some View {
             let A = a.screen
@@ -5691,7 +5700,7 @@ struct LatticeView: View {
             let ny =  vx / len
             let anchor = CGPoint(x: mid.x + nx * 16, y: mid.y + ny * 16)
 
-            VStack(spacing: 6) {
+            let chipStack = VStack(spacing: 6) {
                 tappableChip(totalChip)
 
                 if mode == .breakdown, !breakdownChips.isEmpty {
@@ -5703,7 +5712,21 @@ struct LatticeView: View {
                 }
             }
             .fixedSize()
-            .position(anchor)
+            .background(
+                GeometryReader { proxy in
+                    Color.clear.preference(
+                        key: TenneyDistanceChipStackSizeKey.self,
+                        value: proxy.size
+                    )
+                }
+            )
+            .onPreferenceChange(TenneyDistanceChipStackSizeKey.self) { chipStackSize = $0 }
+
+            chipStack
+                .offset(
+                    x: anchor.x - chipStackSize.width * 0.5,
+                    y: anchor.y - chipStackSize.height * 0.5
+                )
         }
 
         @ViewBuilder
