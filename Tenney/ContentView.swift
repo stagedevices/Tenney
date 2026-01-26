@@ -628,7 +628,8 @@ private let libraryStore = ScaleLibraryStore.shared
             showSettings: $showSettings,
             showRootStudio: $showRootStudio,
             rootNS: rootNS,
-            defaultView: defaultView
+            defaultView: defaultView,
+            tunerStore: tunerStore
         )
         .background(
             GeometryReader { proxy in
@@ -730,6 +731,7 @@ extension Notification.Name {
     static let tenneyBuilderDidFinish = Notification.Name("tenney.builder.didFinish")
         static let tenneyStepPadOctave = Notification.Name("tenney.stepPadOctave")
     static let tenneyOpenLibraryInBuilder = Notification.Name("tenney.open.library.in.builder")
+    static let tunerOpenLockSheet = Notification.Name("tunerOpenLockSheet")
 }
 private struct LiquidGlassArrival: ViewModifier {
     @State private var t: CGFloat = 0
@@ -1476,6 +1478,9 @@ extension Notification.Name {
                     prepareLockSheetDefaults()
                 }
             }
+            .onReceive(NotificationCenter.default.publisher(for: .tunerOpenLockSheet)) { _ in
+                showLockSheet = true
+            }
             .sheet(isPresented: $showLockSheet) {
                 LockTargetSheet(
                     numeratorText: $lockNumeratorText,
@@ -1810,49 +1815,43 @@ extension Notification.Name {
                         currentNearest = ratioResultFromText(txt)
                     }
 
-// Prime limit chips (still “under” the dial visually),
+                        // Prime limit chips (still “under” the dial visually),
                         // but they no longer constrain the dial’s size.
                         ViewThatFits(in: .horizontal) {
-                            ZStack(alignment: .trailing) {
-                                HStack(spacing: 8) {
-                                    Text("Limit").font(.caption).foregroundStyle(.secondary)
-                                    ForEach([3,5,7,11,13], id:\.self) { p in
-                                        let selected = (store.primeLimit == p)
-                                        if theme.accessibilityEncoding.enabled {
-                                            TenneyPrimeLimitChip(
-                                                prime: p,
-                                                isOn: selected,
-                                                tint: theme.primeTint(p),
-                                                encoding: theme.accessibilityEncoding
-                                            ) {
-                                                withAnimation(.snappy) { store.primeLimit = p }
-                                            }
-                                        } else {
-                                            Button {
-                                                withAnimation(.snappy) { store.primeLimit = p }
-                                            } label: {
-                                                Text("\(p)")
-                                                    .font(.footnote.weight(selected ? .semibold : .regular))
-                                                    .foregroundStyle(selected ? (theme.isDark ? .white : .black) : .secondary)
-                                                    .padding(.horizontal, 8)
-                                                    .padding(.vertical, 5)
-                                                    .background(selected ? AnyShapeStyle(.thinMaterial) : AnyShapeStyle(.ultraThinMaterial), in: Capsule())
-                                                    .overlay(
-                                                        Capsule().stroke(
-                                                            selected ? AnyShapeStyle(theme.primeTint(p)) : AnyShapeStyle(Color.secondary.opacity(0.12)),
-                                                            lineWidth: 1
-                                                        )
-                                                    )
-                                            }
-                                            .buttonStyle(.plain)
+                            HStack(spacing: 8) {
+                                Text("Limit").font(.caption).foregroundStyle(.secondary)
+                                ForEach([3,5,7,11,13], id:\.self) { p in
+                                    let selected = (store.primeLimit == p)
+                                    if theme.accessibilityEncoding.enabled {
+                                        TenneyPrimeLimitChip(
+                                            prime: p,
+                                            isOn: selected,
+                                            tint: theme.primeTint(p),
+                                            encoding: theme.accessibilityEncoding
+                                        ) {
+                                            withAnimation(.snappy) { store.primeLimit = p }
                                         }
+                                    } else {
+                                        Button {
+                                            withAnimation(.snappy) { store.primeLimit = p }
+                                        } label: {
+                                            Text("\(p)")
+                                                .font(.footnote.weight(selected ? .semibold : .regular))
+                                                .foregroundStyle(selected ? (theme.isDark ? .white : .black) : .secondary)
+                                                .padding(.horizontal, 8)
+                                                .padding(.vertical, 5)
+                                                .background(selected ? AnyShapeStyle(.thinMaterial) : AnyShapeStyle(.ultraThinMaterial), in: Capsule())
+                                                .overlay(
+                                                    Capsule().stroke(
+                                                        selected ? AnyShapeStyle(theme.primeTint(p)) : AnyShapeStyle(Color.secondary.opacity(0.12)),
+                                                        lineWidth: 1
+                                                    )
+                                                )
+                                        }
+                                        .buttonStyle(.plain)
                                     }
-                                    Spacer(minLength: 0)
                                 }
-                                .padding(.trailing, lockButtonWidth + lockButtonSpacing)
-
-                                lockField
-                                    .frame(width: lockButtonWidth)
+                                Spacer(minLength: 0)
                             }
                             .padding(8)
                             .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -2029,6 +2028,7 @@ private struct UtilityBar: View {
     let rootNS: Namespace.ID
     /// Reorders the segmented picker so the user's default view appears on the **left**.
     let defaultView: String
+    let tunerStore: TunerStore?
 
     @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
     @Environment(\.tenneyPracticeActive) private var practiceActive
@@ -2041,6 +2041,22 @@ private struct UtilityBar: View {
 
     private let rootCorner: CGFloat = 12
     @State private var rootFeedbackToken: Int = 0
+
+    init(
+        mode: Binding<AppScreenMode>,
+        showSettings: Binding<Bool>,
+        showRootStudio: Binding<Bool>,
+        rootNS: Namespace.ID,
+        defaultView: String,
+        tunerStore: TunerStore? = nil
+    ) {
+        _mode = mode
+        _showSettings = showSettings
+        _showRootStudio = showRootStudio
+        self.rootNS = rootNS
+        self.defaultView = defaultView
+        self.tunerStore = tunerStore
+    }
 
     private func setRootHz(_ hz: Double) {
         // clamp if you have preferred bounds; otherwise keep as-is
@@ -2182,6 +2198,35 @@ private struct UtilityBar: View {
     
     private var rimStroke: Color {
         Color.primary.opacity(theme.isDark ? 0.22 : 0.16)
+    }
+
+    private struct TunerLockPill: View {
+        @ObservedObject var store: TunerStore
+        @Environment(\.tenneyTheme) private var theme
+        @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+        var body: some View {
+            let isLocked = store.lockedTarget != nil
+            let tint = theme.inTuneHighlightColor(activeLimit: store.primeLimit)
+            let text: String? = {
+                if let r = store.lockedTarget { return tunerDisplayRatioString(r) }
+                if let r = store.selectedTarget { return tunerDisplayRatioString(r) }
+                return nil
+            }()
+
+            LockFieldPill(
+                size: .compact,
+                isLocked: isLocked,
+                displayText: text,
+                tint: tint,
+                placeholderShort: "Lock",
+                placeholderLong: "Lock target",
+                matchedGeometry: nil,
+                isExpanded: false
+            ) {
+                NotificationCenter.default.post(name: .tunerOpenLockSheet, object: nil)
+            }
+        }
     }
 
     private var rimStrokeMuted: Color {
@@ -2362,6 +2407,8 @@ private struct UtilityBar: View {
             .buttonStyle(.plain)
             .tenneyChromaShadow(true)
             .accessibilityLabel(app.latticeAuditionOn ? "Audition sound on" : "Audition sound off")
+        } else if isPhoneLandscape, mode == .tuner, let tunerStore {
+            TunerLockPill(store: tunerStore)
         } else {
             HStack(spacing: 6) {
                 Image(systemName: tunerStatusIcon)
