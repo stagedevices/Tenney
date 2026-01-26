@@ -47,6 +47,7 @@ enum LatticeGridMode: String, CaseIterable, Identifiable {
 
 struct LatticeView: View {
     @State private var infoCardStaffWidth: CGFloat = 0
+    @State private var activeDistanceDetail: DistanceDetailSheet.Model? = nil
 
     private struct InfoCardStaffWidthKey: PreferenceKey {
         static var defaultValue: CGFloat = 0
@@ -149,6 +150,21 @@ struct LatticeView: View {
         }
         LearnEventBus.shared.send(.latticePrimeChipHiToggle(target))
 
+    }
+    
+    private func presentDistanceDetailSheet(_ model: DistanceDetailSheet.Model) {
+        #if canImport(UIKit)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        #endif
+
+        // Spring the presentation (sheet will animate in; this makes state change feel “alive”)
+        if UIAccessibility.isReduceMotionEnabled {
+            activeDistanceDetail = model
+        } else {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
+                activeDistanceDetail = model
+            }
+        }
     }
 
     @Environment(\.latticePreviewMode) private var latticePreviewMode
@@ -4324,6 +4340,17 @@ struct LatticeView: View {
 #if os(macOS) || targetEnvironment(macCatalyst)
                 .scrollDisabled(isHoveringLattice)
 #endif
+                .sheet(item: $activeDistanceDetail) { model in
+                    DistanceDetailSheet(
+                        model: model,
+                        copyToPasteboard: { s in copyToPasteboard(s) },   // reuse your existing helper
+                        auditionAtoB: nil,                                // wire only if you already have a safe audition path
+                        swapAandB: nil                                    // optional; wire if you want “Swap”
+                    )
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
+                    .modifier(DistanceSheetBackgroundFix())               // see helper below
+                }
 
         }
     }
@@ -5723,4 +5750,15 @@ extension LatticeView {
 private extension View {
     func erased() -> AnyView { AnyView(self) }
     
+}
+private struct DistanceSheetBackgroundFix: ViewModifier {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    func body(content: Content) -> some View {
+        if #available(iOS 16.4, macOS 13.3, *) {
+            content.presentationBackground(reduceTransparency ? .thinMaterial : .ultraThinMaterial)
+        } else {
+            content
+        }
+    }
 }
