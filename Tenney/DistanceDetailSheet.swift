@@ -111,7 +111,7 @@ struct DistanceDetailSheet: View {
         }
     }
 
-    private func endpointCapsule(title: String, ep: Model.Endpoint) -> some View {
+    private func endpointCapsule(title: String, ep: Endpoint) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Text(title)
