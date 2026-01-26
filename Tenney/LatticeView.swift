@@ -4387,85 +4387,6 @@ struct LatticeView: View {
                     b: nodes[1],
                     mode: store.tenneyDistanceMode,
                     totalChip: totalChip,
-                    breakdownChips: breakdownChips
-                )
-
-
-                ZStack {
-                    TenneyDistanceOverlay(
-                        a: nodes[0],
-                        b: nodes[1],
-                        mode: store.tenneyDistanceMode,
-                        totalChip: totalChip,
-                        breakdownChips: breakdownChips,
-                    )
-                    .allowsHitTesting(false)
-
-                    TenneyDistanceOverlayHitTargets(
-                        a: nodes[0],
-                        b: nodes[1],
-                        mode: store.tenneyDistanceMode,
-                        totalChip: totalChip,
-                        breakdownChips: breakdownChips,
-                        presentDetail: presentDistanceDetailSheet
-                    )
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var tenneyOverlayHitTargets: some View {
-        if !latticePreviewMode &&
-           !latticePreviewHideDistance &&
-           store.tenneyDistanceMode != .off {
-
-            let nodes = tenneyDistanceNodes()
-            if nodes.count == 2 {
-                let delta = tenneyDelta(nodes[0].exps, nodes[1].exps)
-                let totalText = String(format: "H %.2f", tenneyHeightDelta(delta))
-                let parts: [(prime: Int, text: String)] =
-                    delta.keys.sorted().compactMap { p in
-                        let d = delta[p, default: 0]
-                        guard d != 0 else { return nil }
-                        return (p, tenneyPartLabel(prime: p, exp: d))
-                    }
-                let monzoDeltaText = parts.isEmpty ? nil : parts.map(\.text).joined(separator: " ")
-                let base = distanceDetailBase(
-                    tenneyDistanceText: totalText,
-                    monzoDeltaText: monzoDeltaText
-                )
-
-                let totalChip = DistanceChipDetail(
-                    text: totalText,
-                    tint: .accentColor,
-                    model: base.map { baseModel in
-                        distanceDetailModel(
-                            base: baseModel,
-                            heroTitle: "Tenney distance",
-                            heroValue: totalText
-                        )
-                    }
-                )
-                let breakdownChips = parts.map { part in
-                    DistanceChipDetail(
-                        text: part.text,
-                        tint: activeTheme.primeTint(part.prime),
-                        model: base.map { baseModel in
-                            distanceDetailModel(
-                                base: baseModel,
-                                heroTitle: "Prime delta",
-                                heroValue: part.text
-                            )
-                        }
-                    )
-                }
-
-                TenneyDistanceOverlayHitTargets(
-                    a: nodes[0],
-                    b: nodes[1],
-                    mode: store.tenneyDistanceMode,
-                    totalChip: totalChip,
                     breakdownChips: breakdownChips,
                     presentDetail: presentDistanceDetailSheet
                 )
@@ -4556,7 +4477,6 @@ struct LatticeView: View {
                 }
             
                 .overlay { tenneyOverlay }
-                .overlay { tenneyOverlayHitTargets }
                 .onChange(of: latticePreviewMode) { isPreview in
                     if isPreview { bottomHUDHeight = 0 }
                 }
@@ -5756,41 +5676,6 @@ struct LatticeView: View {
         let mode: TenneyDistanceMode
         let totalChip: DistanceChipDetail
         let breakdownChips: [DistanceChipDetail]
-
-        var body: some View {
-            let A = a.screen
-            let B = b.screen
-            let mid = CGPoint(x: (A.x + B.x) * 0.5, y: (A.y + B.y) * 0.5)
-
-            // Offset the label stack slightly off the segment so it doesn’t sit on top of nodes/line
-            let vx = B.x - A.x
-            let vy = B.y - A.y
-            let len = max(1, hypot(vx, vy))
-            let nx = -vy / len
-            let ny =  vx / len
-            let anchor = CGPoint(x: mid.x + nx * 16, y: mid.y + ny * 16)
-
-            VStack(spacing: 6) {
-                GlassChip(text: totalChip.text, tint: totalChip.tint)
-
-                if mode == .breakdown, !breakdownChips.isEmpty {
-                    HStack(spacing: 6) {
-                        ForEach(breakdownChips) { part in
-                            GlassChip(text: part.text, tint: part.tint)
-                        }
-                    }
-                }
-            }
-            .position(anchor)
-        }
-    }
-
-    private struct TenneyDistanceOverlayHitTargets: View {
-        let a: TenneyDistanceNode
-        let b: TenneyDistanceNode
-        let mode: TenneyDistanceMode
-        let totalChip: DistanceChipDetail
-        let breakdownChips: [DistanceChipDetail]
         let presentDetail: (DistanceDetailSheet.Model) -> Void
 
         var body: some View {
@@ -5807,31 +5692,29 @@ struct LatticeView: View {
             let anchor = CGPoint(x: mid.x + nx * 16, y: mid.y + ny * 16)
 
             VStack(spacing: 6) {
-                chipButton(totalChip)
+                tappableChip(totalChip)
 
                 if mode == .breakdown, !breakdownChips.isEmpty {
                     HStack(spacing: 6) {
                         ForEach(breakdownChips) { part in
-                            chipButton(part)
+                            tappableChip(part)
                         }
                     }
                 }
             }
+            .fixedSize()
             .position(anchor)
         }
 
         @ViewBuilder
-        private func chipButton(_ chip: DistanceChipDetail) -> some View {
-            Button {
-                guard let model = chip.model else { return }
-                presentDetail(model)
-            } label: {
-                GlassChip(text: chip.text, tint: chip.tint)
-                    .opacity(0.01)
-            }
-            .buttonStyle(.plain)
-            .contentShape(Capsule())
-            .accessibilityHidden(true)
+        private func tappableChip(_ chip: DistanceChipDetail) -> some View {
+            GlassChip(text: chip.text, tint: chip.tint)
+                .contentShape(Capsule())
+                .onTapGesture {
+                    guard let model = chip.model else { return }
+                    presentDetail(model)
+                }
+                .accessibilityAddTraits(.isButton)
         }
     }
 
