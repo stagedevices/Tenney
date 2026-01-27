@@ -5024,25 +5024,12 @@ struct LatticeView: View {
         .shadow(color: Color.black.opacity(0.10), radius: 6,  x: 0, y: 2)
      }
     
-#if canImport(UIKit)
-private func keyWindowSafeAreaInsets() -> UIEdgeInsets {
-    // Works even if SwiftUI subtree ignores safe area.
-    let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-    let window = scenes.flatMap(\.windows).first(where: { $0.isKeyWindow })
-    return window?.safeAreaInsets ?? .zero
-}
-#endif
-
     private enum IslandSide {
         case leading
         case trailing
     }
 
-#if DEBUG
-    private static var infoCardIslandDebugExtra: CGFloat = 0
-#endif
-
-    private func islandSideForLandscapePhone() -> IslandSide? {
+    private func landscapeUnsafeSide() -> IslandSide? {
 #if canImport(UIKit)
         let isPhone = UIDevice.current.userInterfaceIdiom == .phone
 #else
@@ -5051,40 +5038,39 @@ private func keyWindowSafeAreaInsets() -> UIEdgeInsets {
         guard isPhone, isPhoneLandscape else { return nil }
 
 #if canImport(UIKit)
-        let insets = keyWindowSafeAreaInsets()
-        let left = insets.left
-        let right = insets.right
-#else
-        let left: CGFloat = 0
-        let right: CGFloat = 0
-#endif
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let keyWindow = scenes.flatMap(\.windows).first(where: { $0.isKeyWindow })
+        let window = keyWindow ?? scenes.first?.windows.first(where: { !$0.isHidden && $0.alpha > 0 })
+        guard let window else { return nil }
+
+        let bounds = window.bounds
+        let frame = window.safeAreaLayoutGuide.layoutFrame
+        let leftGap = frame.minX - bounds.minX
+        let rightGap = bounds.maxX - frame.maxX
+
+        let interfaceOrientation = window.windowScene?.interfaceOrientation
+        let deviceOrientation = UIDevice.current.orientation
         let side: IslandSide?
-        if abs(left - right) > 1 {
-            side = left > right ? .leading : .trailing
+        if abs(leftGap - rightGap) > 1 {
+            side = leftGap > rightGap ? .leading : .trailing
+        } else if interfaceOrientation == .landscapeLeft {
+            side = .leading
+        } else if interfaceOrientation == .landscapeRight {
+            side = .trailing
+        } else if deviceOrientation == .landscapeLeft {
+            side = .leading
+        } else if deviceOrientation == .landscapeRight {
+            side = .trailing
         } else {
-#if canImport(UIKit)
-            let keyWindowScene = UIApplication.shared.connectedScenes
-                .compactMap { $0 as? UIWindowScene }
-                .first(where: { $0.windows.contains(where: { $0.isKeyWindow }) })
-            let scene = keyWindowScene
-                ?? UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
-            switch scene?.interfaceOrientation {
-            case .landscapeLeft:
-                side = .leading
-            case .landscapeRight:
-                side = .trailing
-            default:
-                side = nil
-            }
-#else
             side = nil
-#endif
         }
 #if DEBUG
-        let extra = Self.infoCardIslandDebugExtra
-        print("[InfoCardIslandPad] phone=\(isPhone) landscape=\(isPhoneLandscape) side=\(String(describing: side)) L=\(left) R=\(right) extra=\(extra)")
+        print("[InfoCardIslandPad] bounds=\(bounds) frame=\(frame) L=\(leftGap) R=\(rightGap) interface=\(String(describing: interfaceOrientation)) device=\(deviceOrientation) side=\(String(describing: side))")
 #endif
         return side
+#else
+        return nil
+#endif
     }
 
 
@@ -5094,11 +5080,8 @@ private func keyWindowSafeAreaInsets() -> UIEdgeInsets {
         extra: CGFloat,
         info: InfoCardSafeAreaInfo
     ) -> EdgeInsets {
-#if DEBUG
-        Self.infoCardIslandDebugExtra = extra
-#endif
         _ = info
-        let side = islandSideForLandscapePhone()
+        let side = landscapeUnsafeSide()
         let leadingExtra: CGFloat
         let trailingExtra: CGFloat
         switch side {
