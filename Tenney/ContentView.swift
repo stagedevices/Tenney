@@ -794,6 +794,14 @@ extension Notification.Name {
     @State private var lockPulse: Bool = false
     @State private var lockFieldDim: Bool = false
     @State private var wasLocked: Bool = false
+    @State private var hejiCommittedKey: String? = nil
+    @State private var hejiCommittedLabel: AttributedString? = nil
+    @State private var hejiCandidateKey: String? = nil
+    @State private var hejiCommitTask: Task<Void, Never>? = nil
+    @State private var hejiHeroFrozenWidth: CGFloat? = nil
+    @State private var hejiHeroFrozenHeight: CGFloat? = nil
+    @State private var readabilityMode: Bool = false
+    @State private var readabilitySecondary: ReadabilitySecondary = .cents
     @Binding var stageActive: Bool
 
     @Environment(\.tenneyTheme) private var theme: ResolvedTenneyTheme
@@ -802,6 +810,19 @@ extension Notification.Name {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.learnGate) private var learnGate
+
+    private enum ReadabilitySecondary: String, CaseIterable {
+        case cents
+        case hz
+    }
+
+    private struct HejiHeroSizeKey: PreferenceKey {
+        static var defaultValue: CGSize = .zero
+        static func reduce(value: inout CGSize, nextValue: () -> CGSize) {
+            let next = nextValue()
+            value = CGSize(width: max(value.width, next.width), height: max(value.height, next.height))
+        }
+    }
      
     private var accentStyle: AnyShapeStyle {
         ThemeAccent.shapeStyle(base: theme.accent, reduceTransparency: reduceTransparency)
@@ -903,6 +924,67 @@ extension Notification.Name {
         )
     }
 
+    private func hejiHeroCandidateLabel(
+        showCents: Bool,
+        textStyle: Font.TextStyle,
+        weight: Font.Weight
+    ) -> AttributedString? {
+        guard store.viewStyle != .posterFraction else { return nil }
+        guard liveHz.isFinite else { return nil }
+        let pref = AccidentalPreference(rawValue: accidentalPreferenceRaw) ?? .auto
+        let mode = TonicNameMode(rawValue: tonicNameModeRaw) ?? .auto
+        let tonic = effectiveTonicSpelling(
+            rootHz: model.effectiveRootHz,
+            noteNameA4Hz: noteNameA4Hz,
+            tonicNameModeRaw: tonicNameModeRaw,
+            tonicE3: tonicE3,
+            accidentalPreference: pref
+        ) ?? TonicSpelling(e3: tonicE3)
+        let hejiPreference = (mode == .auto) ? pref : .auto
+        let ratioHint = store.lockedTarget ?? liveNearest
+        if let ratioHint {
+            let ratioRef = RatioRef(p: ratioHint.num, q: ratioHint.den, octave: ratioHint.octave, monzo: [:])
+            return spellHejiRatioDisplay(
+                ratio: ratioRef,
+                tonic: tonic,
+                rootHz: model.effectiveRootHz,
+                noteNameA4Hz: noteNameA4Hz,
+                concertA4Hz: concertA4Hz,
+                accidentalPreference: pref,
+                maxPrime: max(3, store.primeLimit),
+                allowApproximation: true,
+                showCents: showCents,
+                applyAccidentalPreference: mode == .auto
+            )
+        }
+        let context = HejiContext(
+            concertA4Hz: concertA4Hz,
+            noteNameA4Hz: noteNameA4Hz,
+            rootHz: model.effectiveRootHz,
+            rootRatio: nil,
+            preferred: hejiPreference,
+            maxPrime: max(3, store.primeLimit),
+            allowApproximation: true,
+            scaleDegreeHint: nil,
+            tonicE3: tonic.e3
+        )
+        let spelling = HejiNotation.spelling(forFrequency: liveHz, context: context)
+        return HejiNotation.textLabel(
+            spelling,
+            showCents: showCents,
+            textStyle: textStyle,
+            weight: weight,
+            design: .default
+        )
+    }
+
+    private func hejiKey(_ label: AttributedString?) -> String? {
+        guard let label else { return nil }
+        let raw = String(label.characters)
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
     private var prefersStackedHejiLabel: Bool {
         dynamicTypeSize.isAccessibilitySize && !isPhoneLandscapeCompact
     }
@@ -915,6 +997,135 @@ extension Notification.Name {
             .minimumScaleFactor(0.6)
             .allowsTightening(true)
             .allowsHitTesting(false)
+    }
+
+    @ViewBuilder
+    private func hejiHeroSection(rawCents: Double, held: Bool) -> some View {
+        let candidateLabel = hejiHeroCandidateLabel(showCents: true, textStyle: .largeTitle, weight: .semibold)
+        let candidateKey = hejiKey(candidateLabel)
+        let commitLabel = hejiCommittedLabel ?? candidateLabel ?? AttributedString("—")
+        let commitKey = hejiCommittedKey ?? candidateKey ?? "—"
+        let showCandidate = candidateKey != nil && hejiCommittedKey != nil && candidateKey != hejiCommittedKey
+        let stable = held || (abs(rawCents) <= 5 && liveConf >= 0.35)
+        let heroFont = Font.system(size: readabilityMode ? 58 : 42, weight: .semibold, design: .rounded)
+        let secondaryText: String = {
+            switch readabilitySecondary {
+            case .cents:
+                return rawCents.isFinite ? String(format: "%+.1f¢", rawCents) : "—"
+            case .hz:
+                return liveHz.isFinite ? String(format: "%.1f Hz", liveHz) : "—"
+            }
+        }()
+
+        VStack(alignment: .leading, spacing: readabilityMode ? 6 : 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                ZStack(alignment: .leading) {
+                    Text(commitLabel)
+                        .font(heroFont)
+                        .monospacedDigit()
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .allowsTightening(true)
+                        .id(commitKey)
+                        .transition(.opacity)
+                        .frame(width: hejiHeroFrozenWidth, height: hejiHeroFrozenHeight, alignment: .leading)
+
+                    Text(commitLabel)
+                        .font(heroFont)
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: true)
+                        .opacity(0.001)
+                        .background(
+                            GeometryReader { proxy in
+                                Color.clear.preference(key: HejiHeroSizeKey.self, value: proxy.size)
+                            }
+                        )
+                }
+                .onPreferenceChange(HejiHeroSizeKey.self) { size in
+                    let width = hejiHeroFrozenWidth ?? 0
+                    let height = hejiHeroFrozenHeight ?? 0
+                    if size.width > width || size.height > height {
+                        hejiHeroFrozenWidth = max(width, size.width)
+                        hejiHeroFrozenHeight = max(height, size.height)
+                    }
+                }
+
+                Text(stable ? "STABLE" : "DRIFT")
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(
+                        Capsule().fill(stable ? theme.inTuneHighlightColor(activeLimit: store.primeLimit).opacity(0.18) : Color.secondary.opacity(0.14))
+                    )
+                    .foregroundStyle(stable ? theme.inTuneHighlightColor(activeLimit: store.primeLimit) : .secondary)
+            }
+
+            if showCandidate, let candidateLabel {
+                Text(candidateLabel)
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .allowsTightening(true)
+                    .transition(.opacity)
+            }
+
+            if !readabilityMode {
+                Text(secondaryText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .contextMenu {
+            Button {
+                readabilityMode.toggle()
+            } label: {
+                Label(readabilityMode ? "Exit Readability Mode" : "Readability Mode", systemImage: "textformat.size")
+            }
+            Divider()
+            Button {
+                readabilitySecondary = .cents
+            } label: {
+                Label("Secondary: Cents", systemImage: readabilitySecondary == .cents ? "checkmark" : "circle")
+            }
+            Button {
+                readabilitySecondary = .hz
+            } label: {
+                Label("Secondary: Hz", systemImage: readabilitySecondary == .hz ? "checkmark" : "circle")
+            }
+        }
+        .onAppear {
+            if hejiCommittedKey == nil, let candidateKey {
+                hejiCommittedKey = candidateKey
+                hejiCommittedLabel = candidateLabel
+            }
+            hejiCandidateKey = candidateKey
+        }
+        .onChange(of: candidateKey) { newKey in
+            hejiCandidateKey = newKey
+            hejiCommitTask?.cancel()
+            guard let newKey, !newKey.isEmpty else { return }
+            guard newKey != hejiCommittedKey else { return }
+            hejiCommitTask = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 180_000_000)
+                guard hejiCandidateKey == newKey else { return }
+                let update = {
+                    hejiCommittedKey = newKey
+                    hejiCommittedLabel = candidateLabel
+                }
+                if reduceMotion {
+                    update()
+                } else {
+                    withAnimation(.easeInOut(duration: 0.12)) {
+                        update()
+                    }
+                }
+            }
+        }
+        .onDisappear {
+            hejiCommitTask?.cancel()
+        }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.12), value: commitKey)
     }
 
     @ViewBuilder
@@ -948,7 +1159,8 @@ extension Notification.Name {
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 10) {
                     Text(label)
-                        .font(.system(size: 34, weight: .semibold, design: .monospaced))
+                        .font(.system(size: 28, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(.secondary)
                         .opacity(showRatioText ? 1 : 0)
                         .accessibilityHidden(!showRatioText)
                     HStack(spacing: 6) {
@@ -970,7 +1182,8 @@ extension Notification.Name {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 10) {
                         Text(label)
-                            .font(.system(size: 34, weight: .semibold, design: .monospaced))
+                            .font(.system(size: 28, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(.secondary)
                             .opacity(showRatioText ? 1 : 0)
                             .accessibilityHidden(!showRatioText)
                         HStack(spacing: 6) {
@@ -1604,66 +1817,70 @@ extension Notification.Name {
                 .learnTarget(id: "tuner_lock")
                 .gated("tuner_lock", gate: learnGate)
 
+                hejiHeroSection(rawCents: rawCents, held: held)
+
                 // Complications (12/3/6/9 o’clock grammar)
-                VStack(spacing: 8) {
-                    // 12 o’clock: Ratio + prime badges
-                    let label = ratioDisplayText
-                    ratioReadoutRow(label: label, hejiLabel: hejiLabelText)
-                    // 3 & 6 o’clock: ET cents and JI delta (mode-aware)
-                    HStack(spacing: 12) {
+                if !readabilityMode {
+                    VStack(spacing: 8) {
+                        // 12 o’clock: Ratio + prime badges
+                        let label = ratioDisplayText
+                        ratioReadoutRow(label: label, hejiLabel: nil)
+                        // 3 & 6 o’clock: ET cents and JI delta (mode-aware)
                         HStack(spacing: 12) {
-                            StatTile(label: "ET", value: model.display.cents.isFinite ? String(format: "%+.1f¢", model.display.cents) : "—")
-                            if store.mode == .live, store.lockedTarget == nil {
-                                StatTile(label: "vs JI", value: String(format: "%+.1f¢", model.display.cents))
-                            } else if let lock = store.lockedTarget {
-                                let vsValue: String = {
-                                    guard rawCents.isFinite else { return "—" }
-                                    if rawCents < -200 { return "LOW" }
-                                    if rawCents >  200 { return "HIGH" }
-                                    return String(format: "%+.1f¢", centsShown)
-                                }()
-                                StatTile(label: "vs \(lock.num)/\(lock.den)", value: vsValue)
-                            }
-                        } // .strict hides the extra JI label by design
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            LearnEventBus.shared.send(.tunerETJIDidInteract)
-                        }
-                        .learnTarget(id: "tuner_et_ji")
-                        .gated("tuner_et_ji", gate: learnGate)
-                        Spacer()
-                        StatTile(label: "Hz", value: String(format: "%.1f", model.display.hz))
-                        StatTile(label: "Conf", value: String(format: "%.0f%%", model.display.confidence*100))
+                            HStack(spacing: 12) {
+                                StatTile(label: "ET", value: model.display.cents.isFinite ? String(format: "%+.1f¢", model.display.cents) : "—")
+                                if store.mode == .live, store.lockedTarget == nil {
+                                    StatTile(label: "vs JI", value: String(format: "%+.1f¢", model.display.cents))
+                                } else if let lock = store.lockedTarget {
+                                    let vsValue: String = {
+                                        guard rawCents.isFinite else { return "—" }
+                                        if rawCents < -200 { return "LOW" }
+                                        if rawCents >  200 { return "HIGH" }
+                                        return String(format: "%+.1f¢", centsShown)
+                                    }()
+                                    StatTile(label: "vs \(lock.num)/\(lock.den)", value: vsValue)
+                                }
+                            } // .strict hides the extra JI label by design
                             .contentShape(Rectangle())
                             .onTapGesture {
-                                LearnEventBus.shared.send(.tunerConfidenceInteracted)
+                                LearnEventBus.shared.send(.tunerETJIDidInteract)
                             }
-                            .learnTarget(id: "tuner_confidence")
-                            .gated("tuner_confidence", gate: learnGate)
-                    }
-
-                    // 9 o’clock: suggestions (tap to lock)
-                    if !(model.display.lowerText.isEmpty && model.display.higherText.isEmpty) {
-                        HStack {
-                            NextChip(title: "Lower",  text: model.display.lowerText)
+                            .learnTarget(id: "tuner_et_ji")
+                            .gated("tuner_et_ji", gate: learnGate)
+                            Spacer()
+                            StatTile(label: "Hz", value: String(format: "%.1f", model.display.hz))
+                            StatTile(label: "Conf", value: String(format: "%.0f%%", model.display.confidence*100))
+                                .contentShape(Rectangle())
                                 .onTapGesture {
-                                    if let r = ratioResultFromText(model.display.lowerText) {
-                                        LearnEventBus.shared.send(.tunerTargetPicked(model.display.lowerText))
-                                        store.lockedTarget = r
-                                    }
+                                    LearnEventBus.shared.send(.tunerConfidenceInteracted)
                                 }
-                                .gated("tuner_target", gate: learnGate)
-                            Spacer(minLength: 12)
-                            NextChip(title: "Higher", text: model.display.higherText)
-                                .onTapGesture {
-                                    if let r = ratioResultFromText(model.display.higherText) {
-                                        LearnEventBus.shared.send(.tunerTargetPicked(model.display.higherText))
-                                        store.lockedTarget = r
-                                    }
-                                }
-                                .gated("tuner_target", gate: learnGate)
+                                .learnTarget(id: "tuner_confidence")
+                                .gated("tuner_confidence", gate: learnGate)
                         }
-                        .transition(.opacity)
+
+                        // 9 o’clock: suggestions (tap to lock)
+                        if !(model.display.lowerText.isEmpty && model.display.higherText.isEmpty) {
+                            HStack {
+                                NextChip(title: "Lower",  text: model.display.lowerText)
+                                    .onTapGesture {
+                                        if let r = ratioResultFromText(model.display.lowerText) {
+                                            LearnEventBus.shared.send(.tunerTargetPicked(model.display.lowerText))
+                                            store.lockedTarget = r
+                                        }
+                                    }
+                                    .gated("tuner_target", gate: learnGate)
+                                Spacer(minLength: 12)
+                                NextChip(title: "Higher", text: model.display.higherText)
+                                    .onTapGesture {
+                                        if let r = ratioResultFromText(model.display.higherText) {
+                                            LearnEventBus.shared.send(.tunerTargetPicked(model.display.higherText))
+                                            store.lockedTarget = r
+                                        }
+                                    }
+                                    .gated("tuner_target", gate: learnGate)
+                            }
+                            .transition(.opacity)
+                        }
                     }
                 }
                 .onChange(of: model.display.ratioText) { txt in
@@ -1879,49 +2096,53 @@ extension Notification.Name {
                             .offset(y: 12)
                     }
 
-                    let ratioLabel = ratioDisplayText
-                    ratioReadoutRow(label: ratioLabel, hejiLabel: hejiLabelText)
+                    hejiHeroSection(rawCents: rawCents, held: held)
 
-                    HStack(spacing: 10) {
-                        StatTile(label: centsLabel,
-                                 value: (store.lockedTarget != nil ? vsValue : String(format: "%+.1f", centsShown)))
+                    if !readabilityMode {
+                        let ratioLabel = ratioDisplayText
+                        ratioReadoutRow(label: ratioLabel, hejiLabel: nil)
+
+                        HStack(spacing: 10) {
+                            StatTile(label: centsLabel,
+                                     value: (store.lockedTarget != nil ? vsValue : String(format: "%+.1f", centsShown)))
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    LearnEventBus.shared.send(.tunerETJIDidInteract)
+                                }
+                                .learnTarget(id: "tuner_et_ji")
+                                .gated("tuner_et_ji", gate: learnGate)
+                            StatTile(label: "Hz", value: String(format: "%.1f", liveHz))
+                        }
+
+                        StatTile(label: "Conf", value: String(format: "%.0f%%", liveConf*100))
                             .contentShape(Rectangle())
                             .onTapGesture {
-                                LearnEventBus.shared.send(.tunerETJIDidInteract)
+                                LearnEventBus.shared.send(.tunerConfidenceInteracted)
                             }
-                            .learnTarget(id: "tuner_et_ji")
-                            .gated("tuner_et_ji", gate: learnGate)
-                        StatTile(label: "Hz", value: String(format: "%.1f", liveHz))
-                    }
+                            .learnTarget(id: "tuner_confidence")
+                            .gated("tuner_confidence", gate: learnGate)
 
-                    StatTile(label: "Conf", value: String(format: "%.0f%%", liveConf*100))
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            LearnEventBus.shared.send(.tunerConfidenceInteracted)
+                        HStack(spacing: 10) {
+                            NextChip(title: "Lower",  text: model.display.lowerText)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .onTapGesture {
+                                    if let r = ratioResultFromText(model.display.lowerText) {
+                                        LearnEventBus.shared.send(.tunerTargetPicked(model.display.lowerText))
+                                        withAnimation(.snappy) { store.lockedTarget = r }
+                                    }
+                                }
+                                .gated("tuner_target", gate: learnGate)
+
+                            NextChip(title: "Higher", text: model.display.higherText)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .onTapGesture {
+                                    if let r = ratioResultFromText(model.display.higherText) {
+                                        LearnEventBus.shared.send(.tunerTargetPicked(model.display.higherText))
+                                        withAnimation(.snappy) { store.lockedTarget = r }
+                                    }
+                                }
+                                .gated("tuner_target", gate: learnGate)
                         }
-                        .learnTarget(id: "tuner_confidence")
-                        .gated("tuner_confidence", gate: learnGate)
-
-                    HStack(spacing: 10) {
-                        NextChip(title: "Lower",  text: model.display.lowerText)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .onTapGesture {
-                                if let r = ratioResultFromText(model.display.lowerText) {
-                                    LearnEventBus.shared.send(.tunerTargetPicked(model.display.lowerText))
-                                    withAnimation(.snappy) { store.lockedTarget = r }
-                                }
-                            }
-                            .gated("tuner_target", gate: learnGate)
-
-                        NextChip(title: "Higher", text: model.display.higherText)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .onTapGesture {
-                                if let r = ratioResultFromText(model.display.higherText) {
-                                    LearnEventBus.shared.send(.tunerTargetPicked(model.display.higherText))
-                                    withAnimation(.snappy) { store.lockedTarget = r }
-                                }
-                            }
-                            .gated("tuner_target", gate: learnGate)
                     }
 
                     Spacer(minLength: 0)
