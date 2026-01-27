@@ -42,6 +42,12 @@
       "hidden" : false,
       "layers" : [
         {
+          "blend-mode-specializations" : [
+            {
+              "appearance" : "tinted",
+              "value" : "normal"
+            }
+          ],
           "fill-specializations" : [
             {
               "value" : {
@@ -100,10 +106,18 @@
               }
             }
           ],
-          "hidden" : false,
+          "hidden" : true,
           "image-name" : "assets2 2.png",
           "name" : "assets2 2",
-          "opacity" : 0.55,
+          "opacity-specializations" : [
+            {
+              "value" : 0.55
+            },
+            {
+              "appearance" : "tinted",
+              "value" : 0.13
+            }
+          ],
           "position" : {
             "scale" : 0.15,
             "translation-in-points" : [
@@ -113,6 +127,12 @@
           }
         },
         {
+          "blend-mode-specializations" : [
+            {
+              "appearance" : "tinted",
+              "value" : "normal"
+            }
+          ],
           "fill-specializations" : [
             {
               "value" : {
@@ -171,10 +191,18 @@
               }
             }
           ],
-          "hidden" : false,
+          "hidden" : true,
           "image-name" : "assets2 2.png",
           "name" : "assets2 2",
-          "opacity" : 0.55,
+          "opacity-specializations" : [
+            {
+              "value" : 0.55
+            },
+            {
+              "appearance" : "tinted",
+              "value" : 0.13
+            }
+          ],
           "position" : {
             "scale" : 0.11,
             "translation-in-points" : [
@@ -184,6 +212,12 @@
           }
         },
         {
+          "blend-mode-specializations" : [
+            {
+              "appearance" : "tinted",
+              "value" : "normal"
+            }
+          ],
           "fill-specializations" : [
             {
               "value" : {
@@ -207,7 +241,7 @@
               "appearance" : "dark",
               "value" : {
                 "linear-gradient" : [
-                  "display-p3:1.00000,0.62745,0.00000,1.00000",
+                  "srgb:0.99953,0.98836,0.47266,1.00000",
                   "display-p3:0.96611,0.30744,0.00000,1.00000"
                 ],
                 "orientation" : {
@@ -242,10 +276,18 @@
               }
             }
           ],
-          "hidden" : false,
+          "hidden" : true,
           "image-name" : "assets 2.png",
           "name" : "assets 2",
-          "opacity" : 0.56,
+          "opacity-specializations" : [
+            {
+              "value" : 0.56
+            },
+            {
+              "appearance" : "tinted",
+              "value" : 0.13
+            }
+          ],
           "position" : {
             "scale" : 0.15,
             "translation-in-points" : [
@@ -255,7 +297,15 @@
           }
         },
         {
-          "blend-mode" : "normal",
+          "blend-mode-specializations" : [
+            {
+              "value" : "normal"
+            },
+            {
+              "appearance" : "tinted",
+              "value" : "normal"
+            }
+          ],
           "fill-specializations" : [
             {
               "value" : {
@@ -279,7 +329,7 @@
               "appearance" : "dark",
               "value" : {
                 "linear-gradient" : [
-                  "srgb:1.00000,0.14913,0.00000,1.00000",
+                  "srgb:1.00000,0.49327,0.47400,1.00000",
                   "srgb:0.58072,0.06673,0.00000,1.00000"
                 ],
                 "orientation" : {
@@ -314,9 +364,18 @@
               }
             }
           ],
+          "hidden" : true,
           "image-name" : "assets 2.png",
           "name" : "assets 2",
-          "opacity" : 0.55,
+          "opacity-specializations" : [
+            {
+              "value" : 0.55
+            },
+            {
+              "appearance" : "tinted",
+              "value" : 0.13
+            }
+          ],
           "position" : {
             "scale" : 0.09,
             "translation-in-points" : [
@@ -326,7 +385,15 @@
           }
         },
         {
-          "blend-mode" : "normal",
+          "blend-mode-specializations" : [
+            {
+              "value" : "normal"
+            },
+            {
+              "appearance" : "tinted",
+              "value" : "normal"
+            }
+          ],
           "fill-specializations" : [
             {
               "value" : {
@@ -385,9 +452,22 @@
               }
             }
           ],
+          "hidden" : true,
           "image-name" : "assets 2.png",
           "name" : "assets 2",
-          "opacity" : 0.56,
+          "opacity-specializations" : [
+            {
+              "value" : 0.56
+            },
+            {
+              "appearance" : "dark",
+              "value" : 0
+            },
+            {
+              "appearance" : "tinted",
+              "value" : 0.13
+            }
+          ],
           "position" : {
             "scale" : 0.05,
             "translation-in-points" : [
@@ -435,7 +515,15 @@
       "blur-material" : 0.36,
       "layers" : [
         {
-          "blend-mode" : "normal",
+          "blend-mode-specializations" : [
+            {
+              "value" : "normal"
+            },
+            {
+              "appearance" : "tinted",
+              "value" : "plus-darker"
+            }
+          ],
           "fill-specializations" : [
             {
               "value" : {
@@ -506,7 +594,15 @@
           }
         },
         {
-          "blend-mode" : "normal",
+          "blend-mode-specializations" : [
+            {
+              "value" : "normal"
+            },
+            {
+              "appearance" : "tinted",
+              "value" : "plus-darker"
+            }
+          ],
           "fill-specializations" : [
             {
               "value" : {
@@ -530,7 +626,7 @@
               "appearance" : "dark",
               "value" : {
                 "linear-gradient" : [
-                  "display-p3:1.00000,0.62745,0.00000,1.00000",
+                  "srgb:0.99953,0.98836,0.47266,1.00000",
                   "display-p3:0.96611,0.30744,0.00000,1.00000"
                 ],
                 "orientation" : {
@@ -577,7 +673,15 @@
           }
         },
         {
-          "blend-mode" : "normal",
+          "blend-mode-specializations" : [
+            {
+              "value" : "normal"
+            },
+            {
+              "appearance" : "tinted",
+              "value" : "plus-darker"
+            }
+          ],
           "fill-specializations" : [
             {
               "value" : {
@@ -648,7 +752,15 @@
           }
         },
         {
-          "blend-mode" : "normal",
+          "blend-mode-specializations" : [
+            {
+              "value" : "normal"
+            },
+            {
+              "appearance" : "tinted",
+              "value" : "plus-darker"
+            }
+          ],
           "fill-specializations" : [
             {
               "value" : {
@@ -707,9 +819,18 @@
               }
             }
           ],
+          "hidden" : true,
           "image-name" : "assets 2.png",
           "name" : "assets 2",
-          "opacity" : 1,
+          "opacity-specializations" : [
+            {
+              "value" : 1
+            },
+            {
+              "appearance" : "dark",
+              "value" : 0
+            }
+          ],
           "position" : {
             "scale" : 0.05,
             "translation-in-points" : [
