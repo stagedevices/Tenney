@@ -71,7 +71,7 @@ struct LatticeView: View {
         }
     }
 
-    private struct InfoCardSafeAreaInfo {
+    private struct InfoCardSafeAreaInfo: Equatable {
         let size: CGSize
         let insets: EdgeInsets
 
@@ -4351,7 +4351,7 @@ struct LatticeView: View {
                 if focusedPoint != nil {
                     infoCard
                         .padding(.top, topPadding)
-                        .padding(infoCardEdgeInsets(baseLeading: 0, baseTrailing: 12, extra: 14, info: infoCardSafeAreaInfo))
+                        .padding(infoCardEdgeInsets(baseLeading: 0, baseTrailing: 12, extra: 400, info: infoCardSafeAreaInfo))
                         .frame(maxWidth: infoCardMaxWidth, alignment: .trailing)
                         .fixedSize(horizontal: false, vertical: true)
                         .background(
