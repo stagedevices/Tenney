@@ -4349,9 +4349,8 @@ struct LatticeView: View {
             HStack {
                 Spacer()
                 if focusedPoint != nil {
-                    infoCard
+                    let card = infoCard
                         .padding(.top, topPadding)
-                        .padding(infoCardEdgeInsets(baseLeading: 0, baseTrailing: 12, extra: 60, info: infoCardSafeAreaInfo))
                         .frame(maxWidth: infoCardMaxWidth, alignment: .trailing)
                         .fixedSize(horizontal: false, vertical: true)
                         .background(
@@ -4361,6 +4360,8 @@ struct LatticeView: View {
                             }
                         )
                         // .contentShape(Rectangle())
+                    card
+                        .padding(infoCardEdgeInsets(baseLeading: 0, baseTrailing: 12, extra: 60, info: infoCardSafeAreaInfo))
                 }
             }
             Spacer()
@@ -5032,6 +5033,60 @@ private func keyWindowSafeAreaInsets() -> UIEdgeInsets {
 }
 #endif
 
+    private enum IslandSide {
+        case leading
+        case trailing
+    }
+
+#if DEBUG
+    private static var infoCardIslandDebugExtra: CGFloat = 0
+#endif
+
+    private func islandSideForLandscapePhone() -> IslandSide? {
+#if canImport(UIKit)
+        let isPhone = UIDevice.current.userInterfaceIdiom == .phone
+#else
+        let isPhone = false
+#endif
+        guard isPhone, isPhoneLandscape else { return nil }
+
+#if canImport(UIKit)
+        let insets = keyWindowSafeAreaInsets()
+        let left = insets.left
+        let right = insets.right
+#else
+        let left: CGFloat = 0
+        let right: CGFloat = 0
+#endif
+        let side: IslandSide?
+        if abs(left - right) > 1 {
+            side = left > right ? .leading : .trailing
+        } else {
+#if canImport(UIKit)
+            let keyWindowScene = UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
+                .first(where: { $0.windows.contains(where: { $0.isKeyWindow }) })
+            let scene = keyWindowScene
+                ?? UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+            switch scene?.interfaceOrientation {
+            case .landscapeLeft:
+                side = .leading
+            case .landscapeRight:
+                side = .trailing
+            default:
+                side = nil
+            }
+#else
+            side = nil
+#endif
+        }
+#if DEBUG
+        let extra = Self.infoCardIslandDebugExtra
+        print("[InfoCardIslandPad] phone=\(isPhone) landscape=\(isPhoneLandscape) side=\(String(describing: side)) L=\(left) R=\(right) extra=\(extra)")
+#endif
+        return side
+    }
+
 
     private func infoCardEdgeInsets(
         baseLeading: CGFloat,
@@ -5039,32 +5094,24 @@ private func keyWindowSafeAreaInsets() -> UIEdgeInsets {
         extra: CGFloat,
         info: InfoCardSafeAreaInfo
     ) -> EdgeInsets {
-#if canImport(UIKit)
-        let isPhone = UIDevice.current.userInterfaceIdiom == .phone
-#else
-        let isPhone = false
+#if DEBUG
+        Self.infoCardIslandDebugExtra = extra
 #endif
-        let isLandscape = isPhoneLandscape
-           let leftInset: CGFloat
-           let rightInset: CGFloat
-        #if canImport(UIKit)
-           if isPhone {
-               let w = keyWindowSafeAreaInsets()
-               leftInset = w.left
-               rightInset = w.right
-           } else {
-               leftInset = info.insets.leading
-               rightInset = info.insets.trailing
-           }
-        #else
-           leftInset = info.insets.leading
-           rightInset = info.insets.trailing
-        #endif
-        
-        let biasRight = isLandscape && rightInset > leftInset + 1
-        let biasLeft = isLandscape && leftInset > rightInset + 1
-        let leadingExtra = (isPhone && biasLeft) ? extra : 0
-        let trailingExtra = (isPhone && biasRight) ? extra : 0
+        _ = info
+        let side = islandSideForLandscapePhone()
+        let leadingExtra: CGFloat
+        let trailingExtra: CGFloat
+        switch side {
+        case .leading:
+            leadingExtra = extra
+            trailingExtra = 0
+        case .trailing:
+            leadingExtra = 0
+            trailingExtra = extra
+        case .none:
+            leadingExtra = 0
+            trailingExtra = 0
+        }
 
         return EdgeInsets(
             top: 0,
