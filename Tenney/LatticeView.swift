@@ -4351,17 +4351,13 @@ struct LatticeView: View {
                 if focusedPoint != nil {
                     infoCard
                         .padding(.top, topPadding)
-                        .padding(infoCardEdgeInsets(baseLeading: 0, baseTrailing: 12, extra: 14, info: infoCardSafeAreaInfo))
+                        .padding(infoCardEdgeInsets(baseLeading: 0, baseTrailing: 12, extra: 60, info: infoCardSafeAreaInfo))
                         .frame(maxWidth: infoCardMaxWidth, alignment: .trailing)
                         .fixedSize(horizontal: false, vertical: true)
                         .background(
                             GeometryReader { proxy in
                                 Color.clear
                                     .preference(key: InfoCardHeightKey.self, value: proxy.size.height)
-                                    .preference(
-                                        key: InfoCardSafeAreaKey.self,
-                                        value: InfoCardSafeAreaInfo(size: proxy.size, insets: proxy.safeAreaInsets)
-                                    )
                             }
                         )
                         // .contentShape(Rectangle())
@@ -5026,6 +5022,16 @@ struct LatticeView: View {
         .shadow(color: Color.black.opacity(0.18), radius: 22, x: 0, y: 14)
         .shadow(color: Color.black.opacity(0.10), radius: 6,  x: 0, y: 2)
      }
+    
+#if canImport(UIKit)
+private func keyWindowSafeAreaInsets() -> UIEdgeInsets {
+    // Works even if SwiftUI subtree ignores safe area.
+    let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+    let window = scenes.flatMap(\.windows).first(where: { $0.isKeyWindow })
+    return window?.safeAreaInsets ?? .zero
+}
+#endif
+
 
     private func infoCardEdgeInsets(
         baseLeading: CGFloat,
@@ -5038,9 +5044,23 @@ struct LatticeView: View {
 #else
         let isPhone = false
 #endif
-        let isLandscape = info.size.width > info.size.height
-        let leftInset = info.insets.leading
-        let rightInset = info.insets.trailing
+        let isLandscape = isPhoneLandscape
+           let leftInset: CGFloat
+           let rightInset: CGFloat
+        #if canImport(UIKit)
+           if isPhone {
+               let w = keyWindowSafeAreaInsets()
+               leftInset = w.left
+               rightInset = w.right
+           } else {
+               leftInset = info.insets.leading
+               rightInset = info.insets.trailing
+           }
+        #else
+           leftInset = info.insets.leading
+           rightInset = info.insets.trailing
+        #endif
+        
         let biasRight = isLandscape && rightInset > leftInset + 1
         let biasLeft = isLandscape && leftInset > rightInset + 1
         let leadingExtra = (isPhone && biasLeft) ? extra : 0
