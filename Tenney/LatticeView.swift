@@ -53,6 +53,7 @@ struct LatticeView: View {
 
     @State private var infoCardStaffWidth: CGFloat = 0
     @State private var infoCardHeight: CGFloat = 0
+    @State private var infoCardSafeAreaInfo: InfoCardSafeAreaInfo = .init()
     @State private var chipsHUDHeight: CGFloat = 0
     @State private var activeDistanceDetail: DistanceDetailSheet.Model? = nil
 
@@ -67,6 +68,23 @@ struct LatticeView: View {
         static var defaultValue: CGFloat = 0
         static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
             value = max(value, nextValue())
+        }
+    }
+
+    private struct InfoCardSafeAreaInfo: Equatable {
+        let size: CGSize
+        let insets: EdgeInsets
+
+        init(size: CGSize = .zero, insets: EdgeInsets = EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)) {
+            self.size = size
+            self.insets = insets
+        }
+    }
+
+    private struct InfoCardSafeAreaKey: PreferenceKey {
+        static var defaultValue: InfoCardSafeAreaInfo = .init()
+        static func reduce(value: inout InfoCardSafeAreaInfo, nextValue: () -> InfoCardSafeAreaInfo) {
+            value = nextValue()
         }
     }
 
@@ -4333,12 +4351,17 @@ struct LatticeView: View {
                 if focusedPoint != nil {
                     infoCard
                         .padding(.top, topPadding)
-                        .padding(.trailing, 12)
+                        .padding(infoCardEdgeInsets(baseLeading: 0, baseTrailing: 12, extra: 14, info: infoCardSafeAreaInfo))
                         .frame(maxWidth: infoCardMaxWidth, alignment: .trailing)
                         .fixedSize(horizontal: false, vertical: true)
                         .background(
                             GeometryReader { proxy in
-                                Color.clear.preference(key: InfoCardHeightKey.self, value: proxy.size.height)
+                                Color.clear
+                                    .preference(key: InfoCardHeightKey.self, value: proxy.size.height)
+                                    .preference(
+                                        key: InfoCardSafeAreaKey.self,
+                                        value: InfoCardSafeAreaInfo(size: proxy.size, insets: proxy.safeAreaInsets)
+                                    )
                             }
                         )
                         // .contentShape(Rectangle())
@@ -4535,6 +4558,7 @@ struct LatticeView: View {
                 }
             }
             .onPreferenceChange(InfoCardHeightKey.self) { infoCardHeight = $0 }
+            .onPreferenceChange(InfoCardSafeAreaKey.self) { infoCardSafeAreaInfo = $0 }
             .onChange(of: app.builderLoadedScale?.id) { id in
                     if id != nil {
                         store.captureLoadedScaleBaseline()
@@ -4577,6 +4601,7 @@ struct LatticeView: View {
         .modifier(LandscapeSideUnsafe(isOn: isPhoneLandscape))
         .onPreferenceChange(ChipsHUDHeightKey.self) { chipsHUDHeight = $0 }
         .onPreferenceChange(InfoCardHeightKey.self) { infoCardHeight = $0 }
+        .onPreferenceChange(InfoCardSafeAreaKey.self) { infoCardSafeAreaInfo = $0 }
         .sheet(item: $activeDistanceDetail) { model in
             distanceDetailSheet(for: model)
         }
@@ -5001,6 +5026,33 @@ struct LatticeView: View {
         .shadow(color: Color.black.opacity(0.18), radius: 22, x: 0, y: 14)
         .shadow(color: Color.black.opacity(0.10), radius: 6,  x: 0, y: 2)
      }
+
+    private func infoCardEdgeInsets(
+        baseLeading: CGFloat,
+        baseTrailing: CGFloat,
+        extra: CGFloat,
+        info: InfoCardSafeAreaInfo
+    ) -> EdgeInsets {
+#if canImport(UIKit)
+        let isPhone = UIDevice.current.userInterfaceIdiom == .phone
+#else
+        let isPhone = false
+#endif
+        let isLandscape = info.size.width > info.size.height
+        let leftInset = info.insets.leading
+        let rightInset = info.insets.trailing
+        let biasRight = isLandscape && rightInset > leftInset + 1
+        let biasLeft = isLandscape && leftInset > rightInset + 1
+        let leadingExtra = (isPhone && biasLeft) ? extra : 0
+        let trailingExtra = (isPhone && biasRight) ? extra : 0
+
+        return EdgeInsets(
+            top: 0,
+            leading: baseLeading + leadingExtra,
+            bottom: 0,
+            trailing: baseTrailing + trailingExtra
+        )
+    }
     
     private struct DrawerGlassButton: View {
         let title: String
