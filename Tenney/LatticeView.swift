@@ -4351,7 +4351,7 @@ struct LatticeView: View {
                 if focusedPoint != nil {
                     infoCard
                         .padding(.top, topPadding)
-                        .padding(infoCardEdgeInsets(baseLeading: 0, baseTrailing: 12, extra: 400, info: infoCardSafeAreaInfo))
+                        .padding(infoCardEdgeInsets(baseLeading: 0, baseTrailing: 12, extra: 14, info: infoCardSafeAreaInfo))
                         .frame(maxWidth: infoCardMaxWidth, alignment: .trailing)
                         .fixedSize(horizontal: false, vertical: true)
                         .background(
