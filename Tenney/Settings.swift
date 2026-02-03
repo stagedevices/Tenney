@@ -1748,7 +1748,7 @@ struct StudioConsoleView: View {
                             get: { cfg.attackMs },
                             set: { cfg.attackMs = $0; ToneOutputEngine.shared.config = cfg }
                         ),
-                        in: 1...200
+                        in: 1...120000
                     )
                     Text("\(Int(cfg.attackMs))ms")
                         .monospacedDigit()
@@ -1762,7 +1762,7 @@ struct StudioConsoleView: View {
                             get: { cfg.releaseMs },
                             set: { cfg.releaseMs = $0; ToneOutputEngine.shared.config = cfg }
                         ),
-                        in: 20...2000
+                        in: 20...120000
                     )
                     Text("\(Int(cfg.releaseMs))ms")
                         .monospacedDigit()

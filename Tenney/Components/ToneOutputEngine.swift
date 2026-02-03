@@ -87,8 +87,8 @@ final class ToneOutputEngine {
         var wave: GlobalWave = .foldedSine                // (1) folded sine (Buchla-style mirror folds)
         var foldAmount: Float = 1.25                      // folds, ~0.0 … 5.0
         var drive_dB: Float = 6.0                         // pre-gain into folder, dB
-        var attackMs: Double = 500.0                        // global AR
-        var releaseMs: Double = 1000.0
+        var attackMs: Double = 120000.0                        // global AR
+        var releaseMs: Double = 120000.0
         var outputGain_dB: Float = -6.0                   // final gain before soft limiter
         var limiterOn: Bool = true                        // soft clip safety
     }
